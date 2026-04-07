@@ -1,64 +1,71 @@
-# MikuWin v4 - Hatsune Miku Edition
+# MikuWin v11 🎤💻 
 
-MikuWin v4 adalah versi fokus Hatsune Miku dari v3.
-Backend tetap sama, tetapi UI ditingkatkan menjadi avatar sprite animasi Miku.
+MikuWin adalah asisten virtual desktop interaktif berbasis AI yang berwujud **Hatsune Miku**. Proyek ini menggunakan 100% LLM (Ollama) lokal yang dipadukan dengan pengenalan suara (STT), pemrosesan suara AI (RVC), dan antarmuka interaktif.
 
-## Highlight
+Versi ke-11 (`v11`) ini berfokus pada fitur **Agentic** — artinya Miku dapat memikirkan dan mengeksekusi instruksi sistem (Macro) secara otonom (mandiri) di komputer Anda, lalu memberikan hasil laporan secara real-time.
 
-- Miku-only mode (tanpa switch karakter)
-- Animated sprite avatar dari sheet Miku yang sudah diproses
-- Pipeline tetap: Whisper -> Ollama -> Edge-TTS -> RVC (opsional) -> Playback
-- Fallback aman:
-  - Tanpa RVC: tetap jalan pakai Edge-TTS
-  - Tanpa sprite sheet: GUI fallback ke emoji
+## ✨ Fitur Utama (v11)
 
-## Struktur Utama
+1. **Native Offline LLM Intelligence (Ollama)**
+   - Menggunakan LLM open-source (seperti `llama3.2` atau `qwen`) yang berjalan *offline* untuk menjamin respons cepat dan perlindungan privasi data.
 
-- gui.py: GUI utama v4 + animator sprite Miku
-- config.py: konfigurasi Miku-only + path sprite sheet
-- core/: modul backend (voice_input, ai_brain, voice_output, system_control, memory, dll)
-- assets/avatar/miku_smart_sheet.png: sprite sheet Miku
+2. **Advanced Audio Pipeline V2 (Microphone Input)**
+   - **Google WebRTC VAD**: Pendeteksi aktivitas suara tingkat agresi tinggi untuk memotong jeda dengan presisi instan (1.5 detik!). Bebas lag/ZCR jadul.
+   - **Gating Spektral Otomatis & Safe Auto-Gain**: Membersihkan statik/noise background kipas atau mikrofon (Prop Decrease: 0.85) secara otomatis lalu menormalkan suara manusia tanpa *hard-clipping*.
+   - **Multi-pass STT**: Memakai model `faster-whisper` dengan anti-hallucination engine.
 
-## Prasyarat
+3. **Miku Sprite GUI (Animated)**
+   - Antarmuka *CustomTkinter* bersih yang menampilkan Miku dalam bentuk sprite. Sprite Miku bisa bergerak layaknya avatar hidup dan berganti ekspresi berdasarkan metadata konteks emosi (`[EMOTION:happy]`, `[EMOTION:confused]`) dari AI.
+   - Live transcription chat, log status tools, dan push-to-talk button (`🎤 Hold to Speak`).
 
-- Windows 10/11
-- Python 3.9+
-- Ollama aktif (model tersedia)
-- Environment Python sudah aktif
+4. **Agentic System Control (Macro Tools)**
+   - AI memiliki akses ke sistem eksekusi Python. Apabila Anda berkata, *"Kirim pesan ke grup Whatsapp PKM bersi Halo, saya Miku"*, maka Miku secara otomatis merakit Action JSON yang menjalankan `send_whatsapp_message`.
+   - Tool bisa ditambahkan di folder `core/macro_tools.py` secara modular (Automasi Microsoft Word, System Volume, YouTube Search, dll).
 
-Opsional:
-- rvc-python (untuk konversi suara Miku)
+5. **Voice Cloning (RVC x Edge-TTS)**
+   - Modul RVC bawaan menggunakan `rvc_python` sehingga jawaban yang dikeluarkan AI memiliki timbre khas Hatsune Miku beraksen Jepang. Tersedia opsi `Wake Phrase` ("Oke Miku!").
 
-## Instalasi
+---
 
+## 🛠️ Instalasi & Prasyarat
+
+1. Pastikan Anda telah menginstal [Anaconda/Miniconda](https://docs.anaconda.com/), Python 3.10+, dan Git.
+2. Diperlukan GPU (CUDA) dari NVIDIA yang kompatibel (Rekomendasi VRAM minimal 6GB) untuk menjalankan model LLM, Whisper, dan RVC secara *real-time*.
+3. Install model bahasa melalui terminal Ollama:
+   ```bash
+   ollama pull qwen3:4b
+   ```
+   *(Atau ubah LLM di file `config.py` ke model pilihan Anda).*
+
+### Menjalankan MikuWin:
+Gunakan environment conda miku jika Anda menggunakan setup conda:
 ```bash
-cd v4
-pip install -r requirements.txt
+conda activate miku
 ```
 
-Opsional RVC:
+Ada dua versi cara berinteraksi:
+1. **GUI (Recommended)**  
+   Membuka antarmuka interaktif berserta sprite avatar Miku:
+   ```bash
+   python gui.py
+   ```
+2. **Terminal (CLI Console)**  
+   Mode murni konsol terminal tanpa GUI. Ringan, bagus untuk debug:
+   ```bash
+   python miku.py
+   ```
 
-```bash
-pip install rvc-python
-```
+---
 
-## Menjalankan
+## 📂 Struktur Direktori Utama
 
-GUI:
+- `assets/` : Gambar, file UI, dan spritesheet avatar.
+- `core/`   : Kumpulan modul logika.
+  - `ai_brain.py`      : Menghubungkan Ollama, mendeteksi emosi, parse `tool calls`.
+  - `voice_input.py`   : Sistem Mic, *Faster-Whisper*, WebRTC VAD, Noisereduce.
+  - `macro_tools.py`   : Koleksi function/system calls yang bisa di-_invoke_ LLM.
+- `data/`   : Penyimpanan history percakapan dan database kontak JSON.
+- `miku.py` & `gui.py` : Skrip peluncuran asisten utama.
+- `config.py`          : Pengaturan tuning parameter (Model, Warna, Hotkeys).
 
-```bash
-cd v4
-python gui.py
-```
-
-CLI:
-
-```bash
-cd v4
-python miku.py --text
-```
-
-## Catatan
-
-- v4 mempertahankan kompatibilitas perilaku backend dari v3.
-- Perbedaan utama ada pada pengalaman visual dan mode karakter tunggal (Miku).
+*(Backup dan Sinkronisasi Repositori v11 di-handle mandiri oleh Git).*
