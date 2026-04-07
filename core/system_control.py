@@ -44,10 +44,14 @@ class SystemControl:
         if AUTOMATION_AVAILABLE:
             self.automation = AutomationManager(
                 spotify_client_id=spotify_client_id,
-                spotify_client_secret=spotify_client_secret
+                spotify_client_secret=spotify_client_secret,
+                system_control=self
             )
         else:
             self.automation = None
+        
+        # Track PIDs of opened applications
+        self._opened_apps: Dict[str, int] = {}
     
     def _init_audio(self):
         """Initialize audio interface"""
@@ -141,12 +145,29 @@ class SystemControl:
         try:
             print(f"[SystemControl] Running command: {command}")
             
-            if command.startswith("start "):
-                subprocess.Popen(command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            else:
-                subprocess.Popen(f'start "" "{command}"', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # Remove "start " prefix and handle URI/Executable
+            exec_command = command
+            if exec_command.startswith("start "):
+                exec_command = exec_command[6:].strip()
             
-            return True, f"Membuka {app_name}..."
+            # Check if it's a URI (contains : and no spaces) or just a simple command
+            if ":" in exec_command and " " not in exec_command:
+                os.startfile(exec_command)
+                return True, f"Membuka {app_name} via URI..."
+            
+            # Launch executable and track PID
+            cmd_list = exec_command.split() if " " in exec_command else [exec_command]
+            proc = subprocess.Popen(
+                cmd_list, 
+                stdout=subprocess.DEVNULL, 
+                stderr=subprocess.DEVNULL,
+                shell=False # Security: Disable shell
+            )
+            
+            # Store PID for close_application
+            self._opened_apps[app_lower] = proc.pid
+            
+            return True, f"Membuka {app_name} (PID: {proc.pid})..."
         except Exception as e:
             return False, f"Gagal membuka {app_name}: {e}"
     
@@ -156,6 +177,22 @@ class SystemControl:
         app_lower = app_name.lower().strip()
         
         try:
+            # 1. Try closing by tracked PID first (Fast path)
+            pid = self._opened_apps.get(app_lower)
+            if pid:
+                try:
+                    proc = psutil.Process(pid)
+                    if proc.is_running():
+                        proc.terminate()
+                        del self._opened_apps[app_lower]
+                        return True, f"Menutup {app_name} (PID: {pid})"
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+                # Remove stale PID
+                if app_lower in self._opened_apps:
+                    del self._opened_apps[app_lower]
+
+            # 2. Fallback to process iteration by name
             for proc in psutil.process_iter(['name', 'pid']):
                 proc_name = proc.info['name'].lower()
                 if app_lower in proc_name:
@@ -203,8 +240,12 @@ class SystemControl:
                     return True, f"Membuka folder {path} di sistem..."
                     
         try:
-            # Fallback pakai explorer biasa jika tidak ketemu
-            subprocess.Popen(f'explorer "{path}"', shell=True)
+            # Fallback pakai explorer biasa jika tidak ketemu - list arguments lebih aman
+            # Jika target adalah path yang valid, gunakan os.startfile
+            if os.path.exists(path):
+                os.startfile(path)
+            else:
+                subprocess.Popen(['explorer', path])
             return True, f"Membuka {path}..."
         except Exception as e:
             return False, f"Gagal membuka folder: {e}"

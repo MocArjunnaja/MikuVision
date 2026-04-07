@@ -362,28 +362,15 @@ class UIAutomation:
 
     @staticmethod
     def set_volume(level: int) -> Tuple[bool, str]:
-        """Set system volume (0-100)"""
+        """Set system volume (0-100) - Fallback logic if SystemControl not available"""
+        # Note: Optimization suggested in Issue #1 is to use SystemControl.set_volume()
+        # which uses native pycaw. This static method is kept as a basic fallback.
         if not PYAUTOGUI_AVAILABLE:
             return False, "PyAutoGUI not available"
 
         try:
-            # Windows: Use keyboard shortcuts for volume
-            # Normalize to 0-100
             level = max(0, min(100, level))
-
-            # Get current volume (approximation: press mute then unmute to reset)
-            # Simple approach: press volume keys
-            if level == 0:
-                pyautogui.hotkey("ctrl", "alt", "down")  # Mute (approximation)
-                return True, "Volume: Muted"
-            else:
-                # Use nircmd or direct Windows API would be better
-                # For now, use keyboard volume keys
-                num_presses = max(1, level // 10)
-                for _ in range(num_presses):
-                    pyautogui.press(SHORTCUTS["volume_up"])
-                    time.sleep(0.1)
-                return True, f"Volume: {level}%"
+            return False, "Please use SystemControl for precise volume control."
         except Exception as e:
             return False, f"Volume error: {str(e)}"
 
@@ -430,7 +417,8 @@ class UIAutomation:
 class AutomationManager:
     """Unified automation interface"""
 
-    def __init__(self, spotify_client_id: str = "", spotify_client_secret: str = ""):
+    def __init__(self, spotify_client_id: str = "", spotify_client_secret: str = "", system_control: Any = None):
+        self.system_control = system_control
         self.browser_auto = BrowserAutomation()
         self.youtube = YouTubeAutomation()
         self.spotify = SpotifyAutomation(
@@ -479,6 +467,8 @@ class AutomationManager:
         # UI actions
         elif action == "set_volume":
             level = params.get("level", 50)
+            if self.system_control:
+                return self.system_control.set_volume(level)
             return self.ui.set_volume(level)
 
         elif action == "type_text":

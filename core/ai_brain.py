@@ -204,35 +204,46 @@ class AIBrain:
                     "params": args
                 })
         
-        # Fallback regex manual jika AI bandel menulis JSON di content
+        # Fallback regex manual jika AI bandel menulis JSON di content atau menggunakan tag XML
         if not function_calls and clean_response:
+            # Pattern list to catch various formats (JSON, Markdown JSON, XML tool_call)
             patterns = [
-                r'(\{\s*"action"\s*:\s*"[^"]+"\s*,\s*"params"\s*:\s*\{[^}]*\}\s*\})',
-                # Fallback untuk model Qwen yang senang generate format <tool_call> {"name": "action", "arguments": {...}} </tool_call>
-                r'<tool_call>\s*(\{\s*"name"\s*:\s*"[^"]+"\s*,\s*"arguments"\s*:\s*\{[^}]*\}\s*\})\s*</tool_call>',
+                # 1. XML Format: <tool_call> {"name": "...", "arguments": {...}} </tool_call>
+                r'<tool_call>\s*(\{.*?\})\s*</tool_call>',
+                # 2. Markdown Code Block: ```json {"action": "...", "params": {...}} ```
+                r'```json\s*(\{.*?\})\s*```',
+                # 3. Plain JSON in text: {"action": "...", "params": {...}}
+                r'(\{\s*"action"\s*:\s*"[^"]+"\s*,\s*"params"\s*:\s*\{.*?\})' 
             ]
+            
             for pattern in patterns:
-                matches = re.findall(pattern, clean_response, re.DOTALL)      
+                matches = re.finditer(pattern, clean_response, re.DOTALL)
                 for match in matches:
                     try:
-                        parsed = json.loads(match.strip())
+                        json_str = match.group(1) if len(match.groups()) > 0 else match.group(0)
+                        # Basic cleanup for common AI typos
+                        json_str = json_str.strip()
                         
-                        # Handle pola <tool_call> {"name": "...", "arguments": {...}}
-                        if "name" in parsed and "arguments" in parsed:
-                            transformed = {
-                                "action": parsed["name"],
-                                "params": parsed["arguments"]
-                            }
-                            function_calls.append(transformed)
-                            clean_response = clean_response.replace(match, "").strip()
-                            # Strip the XML tag as well if present
-                            clean_response = re.sub(r'<tool_call>.*?</tool_call>', '', clean_response, flags=re.DOTALL)
-                        elif isinstance(parsed, dict) and "action" in parsed: 
-                            function_calls.append(parsed)
-                            clean_response = clean_response.replace(match, "").strip()
+                        parsed = json.loads(json_str)
+                        
+                        # Normalize format
+                        if isinstance(parsed, dict):
+                            action = parsed.get("action") or parsed.get("name")
+                            params = parsed.get("params") or parsed.get("arguments") or {}
+                            
+                            if action:
+                                function_calls.append({
+                                    "action": action,
+                                    "params": params
+                                })
+                                # Remove the matched string from clean_response
+                                clean_response = clean_response.replace(match.group(0), "").strip()
                     except json.JSONDecodeError:
                         continue
         
+        # Final cleanup: Remove XML tags and multiple newlines
+        clean_response = re.sub(r'<tool_call>.*?</tool_call>', '', clean_response, flags=re.DOTALL)
+        clean_response = re.sub(r'```json.*?```', '', clean_response, flags=re.DOTALL)
         clean_response = re.sub(r'\n\s*\n', '\n', clean_response).strip()
         
         return function_calls, clean_response
