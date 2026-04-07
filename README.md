@@ -3,8 +3,6 @@
 <!-- HEADER STYLE: CLASSIC -->
 <div align="center">
 
-<img src="MikuWin_V11_Stable.png" width="30%" style="position: relative; top: 0; right: 0;" alt="Project Logo"/>
-
 # MIKUWIN_V11_STABLE
 
 <em>Empowering Seamless Interactions Through Intelligent Automation</em>
