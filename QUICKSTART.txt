@@ -1,0 +1,15 @@
+﻿MikuWin v4 - QUICKSTART
+=======================
+
+1) Activate your existing Python environment.
+2) Go to project folder:
+   cd v4
+3) Install dependencies:
+   pip install -r requirements.txt
+4) Run GUI:
+   python gui.py
+
+Notes:
+- v4 is Miku-only (no character switch UI).
+- If RVC is unavailable, app falls back to Edge-TTS automatically.
+- Required for LLM responses: Ollama running locally.

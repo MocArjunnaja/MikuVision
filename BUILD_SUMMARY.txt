@@ -1,0 +1,26 @@
+﻿============================================================
+             MikuWin v4 - BUILD SUMMARY
+============================================================
+
+Status: SUCCESS
+
+Highlights:
+- Migrated from v3 baseline to v4 Miku-only edition.
+- UI now uses animated Hatsune Miku sprite sheet.
+- Backend logic remains compatible with v3 architecture.
+- RVC support retained for Miku voice conversion.
+
+Main artifacts:
+- gui.py            : Miku-only GUI with sprite animator
+- config.py         : Miku-only character configuration
+- assets/avatar/    : miku_smart_sheet.png
+
+Run:
+1) Activate environment
+2) cd v4
+3) python gui.py
+
+Fallback behavior:
+- If RVC unavailable -> Edge-TTS only
+- If sprite sheet missing -> emoji fallback in GUI
+============================================================

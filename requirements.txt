@@ -1,0 +1,32 @@
+# MikuWin v3 Requirements
+
+# ── Core AI ──
+ollama>=0.1.0
+
+# ── Speech Recognition ──
+faster-whisper>=0.9.0
+
+# ── Text-to-Speech ──
+edge-tts>=6.1.0
+
+# ── Audio I/O ──
+sounddevice>=0.4.6
+soundfile>=0.12.1
+
+# ── GUI ──
+customtkinter>=5.2.0
+Pillow>=10.0.0
+
+# ── Windows Automation ──
+pycaw>=20240210
+pyautogui>=0.9.54
+pygetwindow>=0.0.9
+psutil>=5.9.0
+pywin32>=306
+keyboard>=0.13.5
+
+# ── RVC Voice Conversion (Optional) ──
+# Only install if you want Miku voice conversion.
+# This has dependency issues, so it's optional.
+# If installing: use isolated venv and follow rvc-python docs.
+# Without it: v3 works fine with Edge-TTS (Nanami voice)
