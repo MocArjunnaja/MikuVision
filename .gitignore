@@ -5,3 +5,4 @@ data/debug_audio/
 *.pth
 *.log
 *.index
+contacts_db.json
