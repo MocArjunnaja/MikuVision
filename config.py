@@ -9,20 +9,23 @@ from typing import Dict, List, Optional
 
 # ============ Paths ============
 BASE_DIR = Path(__file__).parent
-PROJECT_ROOT = BASE_DIR.parent
 ASSETS_DIR = BASE_DIR / "assets"
 AVATAR_DIR = ASSETS_DIR / "avatar"
 DATA_DIR = BASE_DIR / "data"
-AUDIO_DIR = PROJECT_ROOT / "temp_audio"
+AUDIO_DIR = BASE_DIR / "temp_audio"
 
 # Sprite-sheet UI assets for v4 GUI
 MIKU_SPRITE_SHEET = AVATAR_DIR / "miku_smart_sheet.png"
 MIKU_FRAME_W = 177
-MIKU_FRAME_H = 213
+MIKU_FRAME_H = 265
 MIKU_SHEET_COLS = 20
 
 # RVC model directory (shared across versions)
-RVC_MODELS_DIR = PROJECT_ROOT / "miku_default_rvc"
+RVC_MODELS_DIR = BASE_DIR / "models" / "miku_default_rvc"
+
+# Set up Models folder and path
+MODELS_DIR = BASE_DIR / "models"
+MODELS_DIR.mkdir(exist_ok=True)
 
 # Pastikan folder ada
 ASSETS_DIR.mkdir(exist_ok=True)
