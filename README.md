@@ -36,7 +36,13 @@ Versi ke-11 (`v11`) ini berfokus pada fitur **Agentic** — artinya Miku dapat m
    ollama pull qwen3:4b
    ```
    _(Atau ubah LLM di file `config.py` ke model pilihan Anda)._
-
+### 🎤 Memasang Model RVC Hatsune Miku
+Secara default, GitHub **TIDAK** menyertakan file model suara `.pth` yang berukuran besar karena keterbatasan kuota. Anda wajib mengunggah file Model Suara Miku secara mandiri:
+1. Siapkan file Model RVC milik Anda (`miku_default_rvc.pth` dan file index `.index`-nya).
+2. Simpan (`paste`) file bobot `.pth` tersebut ke dalam folder:
+   👉 `models/miku_default_rvc/weights/`
+3. Simpan file index `.index` ke dalam folder:
+   👉 `models/miku_default_rvc/logs/miku_default_rvc/`
 ### Menjalankan MikuWin:
 
 Gunakan environment conda miku jika Anda menggunakan setup conda:
