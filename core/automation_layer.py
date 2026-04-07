@@ -63,8 +63,6 @@ SHORTCUTS = {
     "youtube_fullscreen": "f",           # Fullscreen
     "youtube_mute": "m",                 # Mute
     "spotify_play_pause": " ",           # Space (in Spotify web)
-    "volume_up": "up",                   # Windows volume up
-    "volume_down": "down",               # Windows volume down
 }
 
 
@@ -362,17 +360,8 @@ class UIAutomation:
 
     @staticmethod
     def set_volume(level: int) -> Tuple[bool, str]:
-        """Set system volume (0-100) - Fallback logic if SystemControl not available"""
-        # Note: Optimization suggested in Issue #1 is to use SystemControl.set_volume()
-        # which uses native pycaw. This static method is kept as a basic fallback.
-        if not PYAUTOGUI_AVAILABLE:
-            return False, "PyAutoGUI not available"
-
-        try:
-            level = max(0, min(100, level))
-            return False, "Please use SystemControl for precise volume control."
-        except Exception as e:
-            return False, f"Volume error: {str(e)}"
+        """Deprecated. Please use SystemControl.set_volume()"""
+        return False, "Gunakan SystemControl untuk kontrol volume presisi."
 
     @staticmethod
     def type_text(text: str, delay: float = 0.05) -> Tuple[bool, str]:
@@ -469,7 +458,7 @@ class AutomationManager:
             level = params.get("level", 50)
             if self.system_control:
                 return self.system_control.set_volume(level)
-            return self.ui.set_volume(level)
+            return False, "Kontrol volume tidak tersedia (SystemControl missing)"
 
         elif action == "type_text":
             text = params.get("text", "")
