@@ -30,6 +30,7 @@ from config import (
     MIKU_FRAME_W,
     MIKU_FRAME_H,
     MIKU_SHEET_COLS,
+    MIKU_EMOTION_FRAMES,
 )
 
 
@@ -56,16 +57,7 @@ class MikuSpriteAnimator:
         self._running = False
         self._direction = 1
 
-        self.sequences: Dict[str, List[int]] = {
-            "neutral": [0, 1, 2, 3, 4],
-            "happy": [120, 121, 122, 123],
-            "excited": [124, 125, 126, 127],
-            "thinking": [5, 6, 7, 8],
-            "confused": [9, 10, 11],
-            "sad": [110, 111],
-            "embarrassed": [15, 16, 17, 18, 19],
-            "annoyed": [128, 129, 130, 131],
-        }
+        self.sequences: Dict[str, List[int]] = dict(MIKU_EMOTION_FRAMES)
 
         self.timing_ms: Dict[str, int] = {
             "neutral": 140,
