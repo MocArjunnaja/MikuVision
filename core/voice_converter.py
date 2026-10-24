@@ -78,8 +78,11 @@ class VoiceConverter:
             self._available = True
             print(f"[VoiceConverter] RVC model loaded in {self._load_time:.1f}s ({device})")
 
-        except ImportError:
-            print("[VoiceConverter] rvc-python not installed. Run: pip install rvc-python")
+        except ImportError as e:
+            # Bisa berarti belum terinstall, atau terinstall tapi dependency-nya rusak
+            # (mis. faiss-cpu 1.7.x yang dikompilasi untuk NumPy 1 di env NumPy 2)
+            print(f"[VoiceConverter] Cannot import rvc-python: {e}")
+            print("[VoiceConverter] Check `pip install rvc-python` and that faiss-cpu matches your NumPy version.")
             print("[VoiceConverter] Voice conversion disabled, using MeloTTS voice only.")
 
         except Exception as e:

@@ -53,6 +53,11 @@ class VoiceOutput:
         self.converter = converter
         self.current_process = None
         self._is_speaking = False
+        # sounddevice memakai satu stream global: play() dari thread lain akan
+        # menghentikan stream yang sedang diputar dan bisa membuat PortAudio segfault.
+        self._playback_lock = threading.Lock()
+        self._playback_threads: list = []
+        self._closed = False
 
     def set_converter(self, converter: Optional[VoiceConverter]):
         """Set or replace the voice converter"""
@@ -114,8 +119,13 @@ class VoiceOutput:
             import sounddevice as sd
 
             data, samplerate = sf.read(audio_path)
-            sd.play(data, samplerate)
-            sd.wait()
+            # Antre: balasan berikutnya menunggu suara sebelumnya selesai
+            with self._playback_lock:
+                # Setelah cleanup, PortAudio sedang/akan di-terminate saat exit
+                if self._closed:
+                    return
+                sd.play(data, samplerate)
+                sd.wait()
 
         except Exception as e:
             print(f"[VoiceOutput] Error playing audio: {e}")
@@ -177,6 +187,8 @@ class VoiceOutput:
             )
             thread.daemon = True
             thread.start()
+            self._playback_threads = [t for t in self._playback_threads if t.is_alive()]
+            self._playback_threads.append(thread)
 
         return True
 
@@ -211,7 +223,12 @@ class VoiceOutput:
 
     def cleanup(self):
         """Cleanup temp files and resources"""
+        # Hentikan audio yang masih antre sebelum interpreter keluar; kalau tidak,
+        # thread daemon memanggil sd.play() bersamaan dengan Pa_Terminate di atexit.
+        self._closed = True
         self.stop()
+        for thread in self._playback_threads:
+            thread.join(timeout=3)
         if self.converter:
             self.converter.cleanup()
         for f in AUDIO_DIR.glob("tts_*.wav"):

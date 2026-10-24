@@ -234,3 +234,36 @@ def test_automation_volume_delegates_to_system_control():
 def test_automation_volume_without_system_control_fails():
     success, _ = AutomationManager().execute("set_volume", {"level": 40})
     assert not success
+
+
+# ── close_application: jendela ditutup sopan, tidak di-kill ──
+
+def test_window_process_gets_wm_close_not_terminate(monkeypatch):
+    ctrl = SystemControl()
+    proc = _proc(50, "notepad.exe")
+    posted = []
+    monkeypatch.setattr(sc_module.psutil, "process_iter", lambda attrs: [proc])
+    monkeypatch.setattr(sc_module, "_windows_by_pid", lambda pids: {50: [111, 222]})
+    monkeypatch.setattr(sc_module, "_post_close", posted.append)
+    monkeypatch.setattr(sc_module.psutil, "wait_procs", lambda procs, timeout: (list(procs), []))
+
+    success, _ = ctrl.close_application("notepad")
+
+    assert success
+    assert posted == [111, 222]
+    proc.terminate.assert_not_called()
+    proc.kill.assert_not_called()
+
+
+def test_window_waiting_for_save_dialog_is_never_killed(monkeypatch):
+    ctrl = SystemControl()
+    proc = _proc(60, "notepad.exe")
+    monkeypatch.setattr(sc_module.psutil, "process_iter", lambda attrs: [proc])
+    monkeypatch.setattr(sc_module, "_windows_by_pid", lambda pids: {60: [333]})
+    monkeypatch.setattr(sc_module.psutil, "wait_procs", lambda procs, timeout: ([], list(procs)))
+
+    success, msg = ctrl.close_application("notepad")
+
+    assert success
+    assert "masih terbuka" in msg
+    proc.kill.assert_not_called()

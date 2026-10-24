@@ -15,6 +15,14 @@ from tkinter import messagebox
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
 
+# Saat stdout bukan konsol (di-redirect, panel Run IDE, shortcut), Python memakai
+# codepage ANSI dan print("初音ミク") melempar UnicodeEncodeError di thread
+# inisialisasi, sehingga GUI tidak pernah siap. Paksa UTF-8.
+if sys.platform == "win32":
+    for _stream in (sys.stdout, sys.stderr):
+        if _stream is not None:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+
 from core.voice_input import VoiceInput
 from core.voice_output import VoiceOutput
 from core.voice_converter import VoiceConverter

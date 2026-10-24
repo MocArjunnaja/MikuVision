@@ -30,6 +30,8 @@ Kamu adalah AI UI-Agent Otonom yang mengendalikan sistem komputer.
 4. SELALU mulai kalimat respons akhirmu dengan tag emosi. Emosi: neutral, happy, excited, thinking, confused, sad, embarrassed, annoyed.
 5. [TOLERANSI TYPO]: Pengguna menggunakan Voice-to-Text (A.I. Transcription). Maklumi jika ada kata-kata yang typo, terdengar salah, atau fonetiknya mirip (misal: "buka kron" -> maksudnya "buka chrome", "krim we a" -> "kirim WA"). Tarik kesimpulan logis dari maksud aslinya!
 6. [FEEDBACK LOOP]: Jika perintah pengguna kurang jelas, terlalu ambigu, atau kekurangan parameter (misal: "tolong kirim pesan ini" tanpa menyebut nama / "tolong cari video" tanpa memberi judul), JANGAN MENEBAK ASAL. Bertanyalah kepada pengguna dengan ramah untuk memperjelas konteks sebelum mengeksekusi tool. Buat percakapan mengalir (Two-way communication).
+7. [JANGAN KLAIM PALSU]: Jangan pernah bilang aksi "sudah dibuka/ditutup/diatur" tanpa memanggil tool. Laporkan hasil hanya setelah menerima System Observation. Jika tidak ada tool yang cocok, katakan jujur bahwa kamu belum bisa melakukannya.
+8. Hanya pakai tool yang ada di definisi tools, dengan nama fungsi dan nama parameter persis seperti definisinya.
 """
 
 FUNCTION_CALL_PROMPT_JA = f"""
@@ -43,10 +45,25 @@ FUNCTION_CALL_PROMPT_JA = f"""
 5. 【絶対厳守】: あなたのセリフ（返答）は必ず自然な「日本語」のみで行い、インドネシア語や中国語でのテキスト生成は絶対に避けてください。
 6. [音声入力の許容]: ユーザーは音声認識(Voice-to-Text)を使用しています。誤字脱字や発音が似た単語の間違い(例: "chrome" が "kron" になる等)がある場合、元の意図を文脈から推測してください。
 7. [フィードバックループ]: ユーザーの指示が曖昧だったり、必要な情報が不足している場合（例: 名前を指定せずに「メッセージを送って」と言うなど）、ツールを無理に実行せずにユーザーに優しく質問を返して詳細を確認してください。一方通行ではなく、自然な会話のキャッチボールを心がけてください。
+8. 【嘘の完了報告の禁止】: ツールを呼び出さずに「開きました」「閉じました」「設定しました」など、操作が完了したと言ってはいけません。System Observation で結果を受け取ってから報告してください。対応するツールがない操作は、正直に「それはまだできないよ」と伝えてください。
+9. 使えるツールは関数定義(tools)に書かれているものだけです。関数名と引数名は定義どおりに使ってください。
 """
 
 # Default (for backward compatibility)
 FUNCTION_CALL_PROMPT = FUNCTION_CALL_PROMPT_ID
+
+
+def _strip_thinking(text: str) -> str:
+    """
+    Buang penalaran model dari content.
+
+    qwen3:4b (Thinking-2507) mengabaikan think=False dan menaruh penalaran di
+    content, diakhiri </think> tanpa tag pembuka. Tanpa ini penalaran ikut
+    diucapkan, membengkakkan memori, dan JSON draf di dalamnya bisa tereksekusi.
+    """
+    if "</think>" in text:
+        text = text.rsplit("</think>", 1)[1]
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
 
 def _find_json_objects(text: str) -> List[Tuple[int, int]]:
@@ -234,7 +251,7 @@ class AIBrain:
         function_calls = []
         # Field 'thinking' sengaja diabaikan: isinya penalaran internal model,
         # bukan jawaban untuk diucapkan ke user.
-        clean_response = response_message.get('content', '') or ''
+        clean_response = _strip_thinking(response_message.get('content', '') or '')
 
         # Mencegah NoneType object is not iterable (Ollama kadang mereturn None bukan [])
         tool_calls = response_message.get('tool_calls') or []
@@ -278,15 +295,25 @@ class AIBrain:
         clean_response = re.sub(r'```json.*?```', '', clean_response, flags=re.DOTALL)
         clean_response = re.sub(r'\n\s*\n', '\n', clean_response).strip()
 
-        return function_calls, clean_response
+        # Model kecil kadang mengulang tool call yang sama dalam satu respons
+        # (mis. membuka Notepad 6x); eksekusi masing-masing cukup sekali.
+        unique_calls, seen = [], set()
+        for call in function_calls:
+            key = (call.get("action"), json.dumps(call.get("params"), sort_keys=True, default=str))
+            if key not in seen:
+                seen.add(key)
+                unique_calls.append(call)
+
+        return unique_calls, clean_response
 
     def _chat(self, messages: List[Dict[str, str]]):
         """Kirim percakapan ke Ollama beserta skema tool."""
+        think_kwargs = {} if OLLAMA_THINK is None else {"think": OLLAMA_THINK}
         return self.client.chat(
             model=self.model,
             messages=messages,
             tools=registry.get_all_tools_schema(),
-            think=OLLAMA_THINK,
+            **think_kwargs,
             options={
                 "temperature": 0.7,
                 "top_p": 0.9,
@@ -315,7 +342,7 @@ class AIBrain:
             print(f"\n[DEBUG AIBrain] RAW Ollama output:\n{response}\n")
 
             response_msg = response.get('message', {})
-            response_text = response_msg.get('content', '') or ''
+            response_text = _strip_thinking(response_msg.get('content', '') or '')
 
             # Parse function calls dari tools metadata
             function_calls, clean_response = self._parse_function_calls(response_msg)
@@ -335,15 +362,21 @@ class AIBrain:
                 if len(self.conversation_history) > self.max_history * 2:
                     self.conversation_history = self.conversation_history[-self.max_history * 2:]
             
+            # Kalimat cadangan mengikuti bahasa karakter (MeloTTS JP tidak bisa membaca bahasa Indonesia)
+            is_ja = getattr(self.current_character, "lang", None) == "ja"
+
             # If no clean response but has function calls
             if not clean_response and function_calls:
-                clean_response = f"[EMOTION:happy] Oke, sedang mengeksekusi..."
-                _, clean_response = self.emotion_detector.detect_emotion(clean_response)
-            
+                clean_response = "オッケー、やってみるね！" if is_ja else "Oke, sedang mengeksekusi..."
+
             # --- FAILSAFE JIKA LLM BLANK (Tidak ada tool_call & tidak ada teks) ---
             if not clean_response and not function_calls:
-                clean_response = "[EMOTION:confused] Hmm, maaf. Sistem function call LLM barusan menghasilkan blank response. Aku sedikit kebingungan..."
-                _, clean_response = self.emotion_detector.detect_emotion(clean_response)
+                clean_response = (
+                    "うーん、ごめんね。うまく答えられなかったみたい。もう一回言ってくれる？"
+                    if is_ja else
+                    "Hmm, maaf. Aku tidak berhasil menjawab barusan. Bisa diulangi?"
+                )
+                emotion = self.emotion_detector.detect_emotion("[EMOTION:confused]")[0]
             return clean_response, function_calls, emotion.name
 
         except Exception as e:
@@ -365,7 +398,7 @@ class AIBrain:
             print(f"\n[DEBUG AIBrain Observation] RAW Ollama output:\n{response}\n")
 
             response_msg = response.get('message', {})
-            response_text = response_msg.get('content', '') or ''
+            response_text = _strip_thinking(response_msg.get('content', '') or '')
 
             # Remove any function calls that might have been accidentally generated
             _, clean_response = self._parse_function_calls(response_msg)
