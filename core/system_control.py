@@ -22,6 +22,27 @@ except ImportError:
 
 from config import ALLOWED_APPS, COMMON_WEBSITES
 from .tools import registry
+from .confirmation import ConfirmCallback, describe_action, requires_confirmation
+
+# Nama proses (tanpa .exe) yang tidak boleh dimatikan lewat close_application
+PROTECTED_PROCESSES = {
+    "system", "smss", "csrss", "wininit", "winlogon", "services", "lsass",
+    "svchost", "dwm", "explorer", "python", "pythonw", "ollama",
+}
+
+# Alias nama aplikasi -> nama proses (tanpa .exe)
+PROCESS_ALIASES = {
+    "google chrome": "chrome",
+    "browser": "chrome",
+    "edge": "msedge",
+    "microsoft edge": "msedge",
+    "word": "winword",
+    "powerpoint": "powerpnt",
+    "vscode": "code",
+    "visual studio code": "code",
+    "kalkulator": "calculatorapp",
+    "calculator": "calculatorapp",
+}
 
 try:
     from .automation_layer import AutomationManager
@@ -36,7 +57,14 @@ class SystemControl:
     Handles Windows system operations and automation.
     """
     
-    def __init__(self, spotify_client_id: str = "", spotify_client_secret: str = ""):
+    def __init__(
+        self,
+        spotify_client_id: str = "",
+        spotify_client_secret: str = "",
+        confirm_callback: Optional[ConfirmCallback] = None,
+    ):
+        # Tanpa callback, aksi berisiko selalu ditolak (fail closed)
+        self.confirm_callback = confirm_callback
         self._volume_interface = None
         self._init_audio()
         
@@ -152,19 +180,33 @@ class SystemControl:
     
     @registry.register("Close an application by name")
     def close_application(self, app_name: str) -> Tuple[bool, str]:
-        """Close an application by name"""
-        app_lower = app_name.lower().strip()
-        
-        try:
-            for proc in psutil.process_iter(['name', 'pid']):
-                proc_name = proc.info['name'].lower()
-                if app_lower in proc_name:
-                    proc.terminate()
-                    return True, f"Menutup {app_name}"
-            
-            return False, f"Tidak menemukan proses {app_name}"
-        except Exception as e:
-            return False, f"Error: {e}"
+        """Close an application by exact process name (no substring match)"""
+        target = app_name.lower().strip()
+        target = PROCESS_ALIASES.get(target, target)
+        if target.endswith(".exe"):
+            target = target[:-4]
+
+        if not target:
+            return False, "Nama aplikasi kosong"
+        if target in PROTECTED_PROCESSES:
+            return False, f"Proses '{target}' dilindungi dan tidak boleh ditutup"
+
+        closed = 0
+        for proc in psutil.process_iter(['name']):
+            proc_name = (proc.info['name'] or "").lower()
+            if proc_name.endswith(".exe"):
+                proc_name = proc_name[:-4]
+            if proc_name != target:
+                continue
+            try:
+                proc.terminate()
+                closed += 1
+            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                print(f"[SystemControl] Gagal menutup PID {proc.pid}: {e}")
+
+        if closed:
+            return True, f"Menutup {app_name} ({closed} proses)"
+        return False, f"Tidak menemukan proses {app_name}"
             
     @registry.register("Open a specific local folder or directory path in Windows Explorer. E.g. 'Desktop', 'Downloads', atau nama folder spesifik.")
     def open_folder(self, folder_name_or_path: str) -> Tuple[bool, str]:
@@ -202,11 +244,14 @@ class SystemControl:
                     os.startfile(c)
                     return True, f"Membuka folder {path} di sistem..."
                     
+        if not os.path.isdir(path):
+            return False, f"Folder '{path}' tidak ditemukan"
+
         try:
-            # Fallback pakai explorer biasa jika tidak ketemu
-            subprocess.Popen(f'explorer "{path}"', shell=True)
+            # Argumen list tanpa shell: path dari LLM tidak bisa menyisipkan perintah
+            subprocess.Popen(["explorer", path])
             return True, f"Membuka {path}..."
-        except Exception as e:
+        except OSError as e:
             return False, f"Gagal membuka folder: {e}"
     
     def list_running_apps(self) -> list:
@@ -433,6 +478,14 @@ class SystemControl:
         if not WINDOWS_AVAILABLE:
             return False, "PyAutoGUI not available"
         
+        # LLM kadang mengirim string "ctrl+c" alih-alih list; tanpa ini
+        # pyautogui.hotkey(*"ctrl+c") menekan tiap karakter satu per satu.
+        if isinstance(keys, str):
+            keys = keys.split("+")
+        keys = [k.strip().lower() for k in keys if k and k.strip()]
+        if not keys:
+            return False, "Hotkey kosong"
+
         try:
             pyautogui.hotkey(*keys)
             return True, f"Hotkey: {'+'.join(keys)}"
@@ -474,7 +527,16 @@ class SystemControl:
     
     def execute_action(self, action: str, params: Dict[str, Any]) -> Tuple[bool, str]:
         """Execute an action dynamically via registry"""
+        params = params or {}
+        if requires_confirmation(action):
+            summary = describe_action(action, params)
+            approved = bool(self.confirm_callback and self.confirm_callback(summary))
+            if not approved:
+                return False, f"Dibatalkan, user tidak mengonfirmasi: {summary}"
+
         result = registry.execute(action, self, params)
         if isinstance(result, tuple) and len(result) == 2:
             return result
-        return True, str(result)
+        # Macro tools mengembalikan string; pesan "Gagal..." jangan dilaporkan sebagai sukses
+        text = str(result)
+        return not text.startswith("Gagal"), text

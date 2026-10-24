@@ -1,32 +1,49 @@
-# MikuWin v3 Requirements
+# MikuWin v11 Requirements (Python 3.10+, Windows)
 
 # ── Core AI ──
-ollama>=0.1.0
+ollama>=0.5.0            # >=0.5 dibutuhkan untuk parameter think=
 
 # ── Speech Recognition ──
-faster-whisper>=0.9.0
+faster-whisper>=1.0.0
+numpy>=1.24.0
+scipy>=1.10.0
+noisereduce>=3.0.0
+webrtcvad-wheels>=2.0.11  # menyediakan modul `webrtcvad` dengan wheel Windows
 
-# ── Text-to-Speech ──
-edge-tts>=6.1.0
+# ── Text-to-Speech (MeloTTS, offline) ──
+# Setelah install, jalankan sekali: python -m unidic download
+melotts @ git+https://github.com/myshell-ai/MeloTTS.git
+torch>=2.1.0             # GPU: install dari https://pytorch.org sesuai versi CUDA
 
 # ── Audio I/O ──
 sounddevice>=0.4.6
 soundfile>=0.12.1
 
-# ── GUI ──
+# ── GUI & Avatar ──
 customtkinter>=5.2.0
 Pillow>=10.0.0
+pygame>=2.5.0
 
 # ── Windows Automation ──
 pycaw>=20240210
+comtypes>=1.2.0
 pyautogui>=0.9.54
 pygetwindow>=0.0.9
 psutil>=5.9.0
 pywin32>=306
 keyboard>=0.13.5
+websocket-client>=1.6.0  # browser_media_control (Chrome DevTools Protocol)
 
-# ── RVC Voice Conversion (Optional) ──
-# Only install if you want Miku voice conversion.
-# This has dependency issues, so it's optional.
-# If installing: use isolated venv and follow rvc-python docs.
-# Without it: v3 works fine with Edge-TTS (Nanami voice)
+# ── Office Macros ──
+python-docx>=1.1.0
+python-pptx>=0.6.23
+
+# ── Optional: automation_layer (fitur aktif hanya jika terinstall) ──
+# playwright>=1.40.0
+# yt-dlp>=2024.1.0
+# spotipy>=2.23.0
+
+# ── Optional: RVC Voice Conversion ──
+# Dependency-nya sering bentrok; pakai venv terpisah dan ikuti dokumentasi rvc-python.
+# Tanpa RVC, suara memakai MeloTTS JP langsung.
+# rvc-python

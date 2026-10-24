@@ -5,6 +5,9 @@ Lightweight automation for YouTube, Spotify, Browser, and UI control.
 No computer vision — uses APIs, web automation, and keyboard control.
 """
 
+# Anotasi lazy: tanpa ini, type hint Browser/Page memicu NameError saat playwright tidak terinstall
+from __future__ import annotations
+
 import subprocess
 import sys
 import time

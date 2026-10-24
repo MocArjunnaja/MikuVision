@@ -161,17 +161,24 @@ class MacroTools:
             target_phone = None
             search_name = contact_name.lower().strip()
             
+            if not search_name:
+                return "Gagal: nama kontak kosong."
+
+            contacts_lower = {name.lower(): phone for name, phone in contacts.items()}
+
             # 1. Exact Match dulu
-            if search_name in contacts:
-                target_phone = contacts[search_name]
+            if search_name in contacts_lower:
+                target_phone = contacts_lower[search_name]
             else:
-                # 2. Partial Match (Pencarian nama yang mengandung kata tersebut)
-                for db_name, phone in contacts.items():
-                    if search_name in db_name:
-                        target_phone = phone
-                        print(f"[MacroTools] Ditemukan partial match: {db_name} -> {phone}")
-                        contact_name = db_name # Perbarui ke nama lengkap yang ketemu
-                        break
+                # 2. Partial Match hanya dipakai jika hasilnya tunggal,
+                #    agar nama yang salah dengar tidak terkirim ke orang lain
+                matches = [(name, phone) for name, phone in contacts_lower.items() if search_name in name]
+                if len(matches) > 1:
+                    candidates = ", ".join(name for name, _ in matches[:5])
+                    return f"Gagal: nama '{contact_name}' ambigu, cocok dengan: {candidates}. Tanyakan user kontak yang dimaksud."
+                if matches:
+                    contact_name, target_phone = matches[0]
+                    print(f"[MacroTools] Ditemukan partial match: {contact_name} -> {target_phone}")
             
             if target_phone:
                 # JALUR A: Kontak Personal (Menggunakan URI Scheme Canggih)

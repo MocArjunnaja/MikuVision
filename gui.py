@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional, Dict, List, Tuple
 import queue
 import re
+from tkinter import messagebox
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
@@ -403,7 +404,19 @@ class MikuGUIv4(ctk.CTk):
             char.expressions.get("thinking", "🤔")
         )
 
-        self.system_control = SystemControl()
+        self.system_control = SystemControl(confirm_callback=self._confirm_action)
+
+    def _confirm_action(self, summary: str) -> bool:
+        """
+        Dipanggil dari worker thread. Dialog Tk harus dibuat di main thread,
+        jadi permintaan dikirim lewat message_queue lalu ditunggu jawabannya.
+        """
+        done = threading.Event()
+        result = {"approved": False}
+        self.message_queue.put(("confirm", (summary, done, result)))
+        # Tidak dijawab dalam 60 detik = batal
+        done.wait(timeout=60)
+        return result["approved"]
 
     # ─────────────────────── Character mode ───────────────────────
     # v4 intentionally keeps a single character: Hatsune Miku.
@@ -692,6 +705,13 @@ class MikuGUIv4(ctk.CTk):
 
                 elif msg_type == "avatar":
                     self._update_avatar(data)
+
+                elif msg_type == "confirm":
+                    summary, done, result = data
+                    result["approved"] = messagebox.askyesno(
+                        "Konfirmasi Aksi", f"{summary}\n\nLanjutkan?", parent=self
+                    )
+                    done.set()
 
         except queue.Empty:
             pass
