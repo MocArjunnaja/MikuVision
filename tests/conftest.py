@@ -39,3 +39,10 @@ def _no_real_windows(monkeypatch):
     from core import system_control
     monkeypatch.setattr(system_control, "_windows_by_pid", lambda pids: {})
     monkeypatch.setattr(system_control, "_post_close", lambda hwnd: None)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_long_term_memory(monkeypatch, tmp_path):
+    """Test tidak boleh membaca/menulis memori jangka panjang asli di data/."""
+    from core import long_term_memory
+    monkeypatch.setattr(long_term_memory, "store", long_term_memory.LongTermMemory(tmp_path / "ltm.json"))

@@ -13,6 +13,11 @@ ASSETS_DIR = BASE_DIR / "assets"
 AVATAR_DIR = ASSETS_DIR / "avatar"
 DATA_DIR = BASE_DIR / "data"
 AUDIO_DIR = BASE_DIR / "temp_audio"
+# Log JSONL per giliran (input, tool, token, latensi) dan memori jangka panjang
+TURN_LOG_DIR = DATA_DIR / "logs"
+LONG_TERM_MEMORY_FILE = DATA_DIR / "long_term_memory.json"
+# Jumlah fakta yang selalu disisipkan ke system prompt (dibatasi demi konteks 8k)
+MEMORY_PROMPT_MAX_FACTS = 15
 
 # Sprite-sheet UI assets for v4 GUI
 MIKU_SPRITE_SHEET = AVATAR_DIR / "miku_smart_sheet.png"
@@ -86,6 +91,7 @@ print(f"[Config] Whisper will use: {WHISPER_DEVICE}")
 # qwen3:4b (Thinking-2507) 30/30 tapi median 11,5 s. Lihat README "Pilihan model".
 OLLAMA_MODEL = "qwen3:4b-instruct"
 OLLAMA_BASE_URL = "http://localhost:11434"
+OLLAMA_TIMEOUT_SEC = 120  # batas tunggu per request ke Ollama
 OLLAMA_NUM_CTX = 8192   # Persona + skema tool + 20 pesan history butuh > default Ollama
 # None = parameter think tidak dikirim: Ollama memisahkan penalaran model ke field
 # `thinking` (diabaikan app). qwen3:4b (Thinking-2507) dengan think=False justru

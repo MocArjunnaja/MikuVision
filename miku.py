@@ -59,7 +59,9 @@ from core.system_control import SystemControl
 from core.macro_tools import MacroTools
 from core.avatar_window import initialize_avatar_window, cleanup_avatar_window, get_avatar_window
 from core.confirmation import is_affirmative
-from config import DATA_DIR, CHARACTERS, DEFAULT_CHARACTER
+from core.conversation import ToolResult, run_turn
+from core.turn_log import TurnLogger
+from config import DATA_DIR, CHARACTERS, DEFAULT_CHARACTER, TURN_LOG_DIR
 
 
 class MikuCLI:
@@ -145,6 +147,7 @@ class MikuCLI:
         # System Control
         self.system_control = SystemControl()
         self.macro_tools = MacroTools()
+        self.turn_logger = TurnLogger(TURN_LOG_DIR)
         print("      ✓ System control ready")
 
         print("\n✓ All systems ready!\n")
@@ -211,20 +214,13 @@ class MikuCLI:
                 print("[Goodbye!]")
                 break
 
-            # Get response
-            response, function_calls, emotion = self.ai_brain.think(user_input)
-
-            # Execute function calls (system actions)
-            if function_calls and self.system_control:
-                results = []
-                for call in function_calls:
-                    action = call.get("action")
-                    params = call.get("params", {})
-                    success, msg = self.system_control.execute_action(action, params)
-                    icon = "✅" if success else "❌"
-                    print(f"[System] {icon} {msg}")
-                    results.append((action, f"{'SUKSES' if success else 'GAGAL'} - {msg}"))
-                self.ai_brain.record_tool_results(results)
+            # Mode teks tidak meminta laporan hasil tool agar tetap cepat
+            turn = run_turn(
+                self.ai_brain, self.system_control, user_input,
+                source="text", report_results=False,
+                on_tool_result=self._print_tool_result, logger=self.turn_logger,
+            )
+            response, emotion, function_calls = turn.reply, turn.emotion, turn.tool_results
 
             # Clean response for display
             clean_response = re.sub(r"\{[^}]*\}", "", response)
@@ -236,8 +232,7 @@ class MikuCLI:
                 self.voice_output.speak(clean_response, blocking=False)
                 print()
 
-            if function_calls:
-                print(f"[Functions executed: {len(function_calls)}]")
+            self._print_usage(turn.latency_seconds)
 
     def _on_avatar_interacted(self):
         """Callback from avatar window when dragged/clicked"""
@@ -490,25 +485,25 @@ class MikuCLI:
             
         return best_text
 
+    @staticmethod
+    def _print_tool_result(result: ToolResult):
+        icon = "✅" if result.success else "❌"
+        print(f"[System] {icon} {result.message}")
+
+    def _print_usage(self, latency_seconds: float):
+        usage = self.ai_brain.turn_usage
+        print(f"[Usage] konteks {usage.context_text()} · +{usage.completion_tokens} token "
+              f"· {usage.calls} panggilan LLM · {latency_seconds:.1f} s\n")
+
     def _process_ai_response(self, user_text: str):
         """Process text input through AI and display response"""
-        response, function_calls, emotion = self.ai_brain.think(user_text)
-
-        # Execute function calls (system actions)
-        if function_calls and self.system_control:
-            results = []
-            for call in function_calls:
-                action = call.get("action")
-                params = call.get("params", {})
-                success, msg = self.system_control.execute_action(action, params)
-                icon = "✅" if success else "❌"
-                print(f"[System] {icon} {msg}")
-                results.append((action, f"{'SUKSES' if success else 'GAGAL'} - {msg}"))
-
-            # AGENTIC LOOP: hasil tool dicatat sebagai pesan role "tool", lalu AI melaporkannya
-            self.ai_brain.record_tool_results(results)
-            print("⏳ Agent is thinking about the observation...")
-            response, emotion = self.ai_brain.think_observation()
+        turn = run_turn(
+            self.ai_brain, self.system_control, user_text,
+            source="voice", report_results=True,
+            on_tool_result=self._print_tool_result, logger=self.turn_logger,
+        )
+        response, emotion = turn.reply, turn.emotion
+        self._print_usage(turn.latency_seconds)
 
         # Clean and display response
         clean_response = re.sub(r"\{[^}]*\}", "", response)
@@ -543,6 +538,7 @@ Examples:
   python miku.py                # Voice mode with sprite (default)
   python miku.py --text         # Text chat mode
   python miku.py --test         # Test initialization only
+  python miku.py --text --resume  # Lanjutkan sesi terakhir
         """,
     )
 
@@ -562,6 +558,11 @@ Examples:
         "--test", action="store_true", help="Test initialization only"
     )
 
+    parser.add_argument(
+        "--resume", nargs="?", const="latest", metavar="SESSION_ID",
+        help="Lanjutkan sesi sebelumnya (tanpa ID = sesi terakhir)",
+    )
+
     args = parser.parse_args()
 
     # CLI mode - create miku instance and run
@@ -570,6 +571,10 @@ Examples:
     # Initialize
     if not cli.initialize():
         sys.exit(1)
+
+    if args.resume:
+        ok, msg = cli.ai_brain.resume_session(None if args.resume == "latest" else args.resume)
+        print(f"[Session] {'✓' if ok else '⚠'} {msg}\n")
 
     try:
         # Test mode

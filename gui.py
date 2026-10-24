@@ -29,9 +29,12 @@ from core.voice_converter import VoiceConverter
 from core.ai_brain import AIBrain
 from core.system_control import SystemControl
 from core.memory import MemoryManager
+from core.conversation import ToolResult, run_turn
+from core.turn_log import TurnLogger
 
 from config import (
     DATA_DIR,
+    TURN_LOG_DIR,
     CHARACTERS,
     DEFAULT_CHARACTER,
     EMOTIONS,
@@ -306,6 +309,15 @@ class MikuGUIv4(ctk.CTk):
         )
         self.status_label.pack(pady=5)
 
+        # Pemakaian konteks LLM (angka asli dari Ollama)
+        self.usage_label = ctk.CTkLabel(
+            self.left_panel,
+            text="",
+            font=ctk.CTkFont(size=11),
+            text_color="gray",
+        )
+        self.usage_label.pack(pady=(0, 5))
+
         # Voice button
         self.voice_btn = ctk.CTkButton(
             self.left_panel,
@@ -363,6 +375,18 @@ class MikuGUIv4(ctk.CTk):
         )
         clear_btn.grid(row=0, column=1, padx=5)
 
+        resume_btn = ctk.CTkButton(
+            self.chat_header,
+            text="↺ Sesi lalu",
+            width=90,
+            height=28,
+            font=ctk.CTkFont(size=11),
+            fg_color="transparent",
+            border_width=1,
+            command=self._resume_last_session
+        )
+        resume_btn.grid(row=0, column=2, padx=5)
+
         # Chat display
         self.chat_display = ctk.CTkTextbox(
             self.right_panel,
@@ -405,6 +429,7 @@ class MikuGUIv4(ctk.CTk):
         )
 
         self.system_control = SystemControl(confirm_callback=self._confirm_action)
+        self.turn_logger = TurnLogger(TURN_LOG_DIR)
 
     def _confirm_action(self, summary: str) -> bool:
         """
@@ -680,6 +705,9 @@ class MikuGUIv4(ctk.CTk):
                 if msg_type == "status":
                     self.status_label.configure(text=data)
 
+                elif msg_type == "usage":
+                    self.usage_label.configure(text=data)
+
                 elif msg_type == "rvc_status":
                     self.rvc_status_label.configure(text=data)
 
@@ -733,6 +761,27 @@ class MikuGUIv4(ctk.CTk):
         self.emotion_label.configure(text=emotion)
 
     # ─────────────────────── Chat ───────────────────────
+
+    def _resume_last_session(self):
+        """Muat sesi terakhir ke memori AI dan tampilkan isinya di chat."""
+        if not self.ai_brain or self.is_processing:
+            return
+        ok, msg = self.ai_brain.resume_session()
+        if not ok:
+            self._add_chat_message("System", f"⚠ {msg}", "⚠")
+            return
+
+        self.chat_display.configure(state="normal")
+        self.chat_display.delete("1.0", "end")
+        self.chat_display.configure(state="disabled")
+        self._add_chat_message("System", f"↺ {msg}", "↺")
+        char = self.current_character
+        for message in self.ai_brain.memory.current_context.messages:
+            text = re.sub(r"\[EMOTION:[^\]]*\]", "", message.content).strip()
+            if message.role == "user" and text:
+                self._add_chat_message("You", text, "")
+            elif message.role == "assistant" and text:
+                self._add_chat_message(char.display_name, text, char.expressions.get(message.emotion or "neutral", "😊"))
 
     def _clear_chat(self):
         self.chat_display.configure(state="normal")
@@ -840,6 +889,11 @@ class MikuGUIv4(ctk.CTk):
 
     # ─────────────────────── AI Processing ───────────────────────
 
+    def _show_tool_result(self, result: ToolResult):
+        icon = "✅" if result.success else "❌"
+        self._add_chat_message("System", f"{icon} {result.message}", icon)
+        self._update_status("⏳ Checking observation...")
+
     def _process_input(self, text: str):
         if not self.ai_brain:
             return
@@ -849,25 +903,18 @@ class MikuGUIv4(ctk.CTk):
         self.message_queue.put(("avatar", "thinking"))
 
         try:
-            response, function_calls, emotion = self.ai_brain.think(text)
-
+            turn = run_turn(
+                self.ai_brain, self.system_control, text,
+                source="gui", report_results=True,
+                on_tool_result=self._show_tool_result, logger=self.turn_logger,
+            )
+            response, emotion = turn.reply, turn.emotion
             self.message_queue.put(("avatar", emotion))
-
-            if function_calls and self.system_control:
-                results = []
-                for call in function_calls:
-                    action = call.get("action", "")
-                    params = call.get("params", {})
-                    success, msg = self.system_control.execute_action(action, params)
-                    icon = "✅" if success else "❌"
-                    self._add_chat_message("System", f"{icon} {msg}", icon)
-                    results.append((action, f"{'SUKSES' if success else 'GAGAL'} - {msg}"))
-
-                # AGENTIC LOOP: hasil tool dicatat sebagai pesan role "tool", lalu AI melaporkannya
-                self.ai_brain.record_tool_results(results)
-                self._update_status("⏳ Checking observation...")
-                response, emotion = self.ai_brain.think_observation()
-                self.message_queue.put(("avatar", emotion))
+            usage = self.ai_brain.turn_usage
+            self.message_queue.put((
+                "usage",
+                f"🧠 {usage.context_text()} · {turn.latency_seconds:.1f} s",
+            ))
 
             if response:
                 char = self.current_character

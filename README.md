@@ -72,10 +72,17 @@ Mic → WebRTC VAD + noise reduction → Faster-Whisper (STT)
 | Suara + maskot | `python miku.py` | Seret (drag) maskot Miku di layar untuk mulai bicara |
 | Teks (terminal) | `python miku.py --text` | Paling mudah untuk mencoba pertama kali |
 | GUI | `python gui.py` | Jendela chat + tombol "Hold to Speak" |
+| Lanjutkan sesi | `python miku.py --text --resume` | Memuat sesi terakhir (atau `--resume <SESSION_ID>`); di GUI: tombol **↺ Sesi lalu** |
 
 Contoh perintah: "buka notepad", "kecilkan volume ke 30", "carikan lagu Yorushika di YouTube", "buka folder Downloads".
 
 Aksi berisiko (kirim WhatsApp/Telegram, menutup aplikasi) **selalu meminta konfirmasi** dulu: `y/n` di mode teks, jawaban suara "ya/はい" di mode suara, atau dialog Yes/No di GUI.
+
+## Memori & pemakaian token
+
+- **Konteks:** setiap balasan menampilkan pemakaian konteks LLM yang diambil langsung dari Ollama (`prompt_eval_count`), misalnya `konteks 3.2k / 8.2k token`. Di GUI angka ini ada di bawah status.
+- **Memori jangka panjang:** fakta yang disimpan dengan tool `remember` disisipkan ke system prompt (maksimal `MEMORY_PROMPT_MAX_FACTS`, default 15). Miku tetap ingat setelah aplikasi ditutup.
+- **Agent loop:** tool call dan hasilnya disimpan dalam format resmi Ollama (`tool_calls` + pesan `role: tool`), sehingga Miku tahu apa yang sudah dilakukannya di giliran sebelumnya.
 
 ## Pilihan model
 
@@ -104,6 +111,8 @@ File `.pth` adalah file pickle yang bisa menjalankan kode saat dimuat. Hanya pak
 ## Data & privasi
 
 - Riwayat percakapan tersimpan di `data/conversations/` (tidak ikut ke git).
+- Log per giliran (input, tool + hasil, token, latensi) di `data/logs/turns_YYYYMMDD.jsonl`.
+- Memori jangka panjang di `data/long_term_memory.json`. Isi lewat ucapan seperti "ingat ya, aku kuliah di ITS" atau "誕生日を覚えておいて", hapus dengan "lupakan …" / "…を忘れて".
 - Dokumen buatan Miku tersimpan di `Desktop/Miku_Documents/` milik user yang sedang login.
 - Fitur WhatsApp memakai `data/contacts_db.json` berformat `{"nama": "62812xxxx"}` (buat sendiri; tidak ikut ke git).
 - Rekaman mic tidak disimpan. Untuk debugging audio, set `DEBUG_DUMP_AUDIO = True` di `config.py`.
