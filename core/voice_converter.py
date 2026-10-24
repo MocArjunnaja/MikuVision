@@ -80,11 +80,11 @@ class VoiceConverter:
 
         except ImportError:
             print("[VoiceConverter] rvc-python not installed. Run: pip install rvc-python")
-            print("[VoiceConverter] Voice conversion disabled, using Edge-TTS only.")
+            print("[VoiceConverter] Voice conversion disabled, using MeloTTS voice only.")
 
         except Exception as e:
             print(f"[VoiceConverter] Failed to initialize RVC: {e}")
-            print("[VoiceConverter] Voice conversion disabled, using Edge-TTS only.")
+            print("[VoiceConverter] Voice conversion disabled, using MeloTTS voice only.")
 
     @property
     def is_available(self) -> bool:

@@ -2,6 +2,7 @@ import os
 import json
 import urllib.parse
 from pathlib import Path
+from config import DATA_DIR
 from core.tools import registry
 import pyautogui
 import time
@@ -18,8 +19,10 @@ except ImportError:
     print("[MacroTools] Warning: python-pptx not installed. PPT macros will fail.")
 
 # Definisikan Output direktori agar file buatan AI tersimpan rapi
-OUTPUT_DIR = Path("C:/Users/Arjun/Desktop/Miku_Documents")
+# Relatif ke home user, supaya jalan di laptop mana pun
+OUTPUT_DIR = Path.home() / "Desktop" / "Miku_Documents"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+CONTACTS_DB_PATH = DATA_DIR / "contacts_db.json"
 
 class MacroTools:
     """Kumpulan Makro (High-Level Actions) untuk MikuWin v10"""
@@ -149,7 +152,7 @@ class MacroTools:
             print(f"[MacroTools] Mencoba mengirim WA ke '{contact_name}' ...")
             
             # Load Database Kontak (JSON)
-            contacts_db_path = Path("data/contacts_db.json")
+            contacts_db_path = CONTACTS_DB_PATH
             if not contacts_db_path.exists():
                 return f"Gagal: Database kontak (contacts_db.json) tidak ditemukan di folder data. Silakan parse CSV Anda dulu."
             

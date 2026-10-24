@@ -125,7 +125,7 @@ class MikuCLI:
             if self.voice_converter.is_available:
                 print(f"      ✓ RVC ready: {self.voice_converter.status_text}")
             else:
-                print("      ⚠ RVC unavailable, using Edge-TTS only")
+                print("      ⚠ RVC unavailable, using MeloTTS voice only")
         else:
             print("      ⚠ RVC not used for this character")
 
