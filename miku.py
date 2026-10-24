@@ -55,6 +55,7 @@ from core.memory import MemoryManager
 from core.system_control import SystemControl
 from core.macro_tools import MacroTools
 from core.avatar_window import initialize_avatar_window, cleanup_avatar_window, get_avatar_window
+from core.confirmation import is_affirmative
 from config import DATA_DIR, CHARACTERS, DEFAULT_CHARACTER
 
 
@@ -146,8 +147,47 @@ class MikuCLI:
         print("\n✓ All systems ready!\n")
         return True
 
+    def _confirm_text(self, summary: str) -> bool:
+        """Konfirmasi aksi berisiko lewat keyboard (mode teks)."""
+        try:
+            answer = input(f"[Konfirmasi] {summary}\nLanjutkan? (y/n): ")
+        except (EOFError, KeyboardInterrupt):
+            return False
+        return is_affirmative(answer)
+
+    def _confirm_voice(self, summary: str) -> bool:
+        """Konfirmasi aksi berisiko lewat suara (mode voice). Diam/ambigu = batal."""
+        print(f"\n[Konfirmasi] {summary}")
+        print("🎤 Jawab 'ya/はい' untuk lanjut, 'tidak/いいえ' untuk batal...")
+        if self.avatar_window:
+            self.avatar_window.set_emotion("confused")
+        self.voice_output.speak("この操作を実行してもいい？はいか、いいえで答えてね。", blocking=True)
+        time.sleep(0.3)
+
+        if self.avatar_window:
+            self.avatar_window.set_emotion("listening")
+        audio = self.voice_input.listen_until_silence(
+            max_duration=6.0,
+            silence_duration=1.5,
+            min_duration=0.3,
+            quiet=True,
+        )
+        if len(audio) == 0:
+            print("[Konfirmasi] Tidak ada jawaban -> dibatalkan")
+            return False
+
+        answer = self._transcribe_best_effort(
+            audio,
+            language_order=[self.character.lang, "id"],
+            wake_mode=False,
+        )
+        approved = is_affirmative(answer)
+        print(f"[Konfirmasi] Jawaban: '{answer}' -> {'disetujui' if approved else 'dibatalkan'}")
+        return approved
+
     def chat_text_mode(self):
         """Interactive text chat mode"""
+        self.system_control.confirm_callback = self._confirm_text
         greeting, emotion = self.ai_brain.get_greeting()
         print(f"\n{self.character.display_name} [{emotion}]: {greeting}\n")
         self.voice_output.speak(greeting, blocking=False)
@@ -206,6 +246,7 @@ class MikuCLI:
     def chat_voice_mode(self):
         """Interactive drag-to-wake voice mode"""
         self._quit_event = False
+        self.system_control.confirm_callback = self._confirm_voice
         from pathlib import Path
         sprite_sheet = Path(__file__).parent / "assets" / "avatar" / "miku_smart_sheet.png"
         if sprite_sheet.exists():

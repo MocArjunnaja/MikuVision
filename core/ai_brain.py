@@ -10,7 +10,7 @@ import ollama
 from ollama import Client
 
 from config import (
-    OLLAMA_MODEL, OLLAMA_BASE_URL, 
+    OLLAMA_MODEL, OLLAMA_BASE_URL, OLLAMA_NUM_CTX, OLLAMA_THINK,
     Character, CHARACTERS, DEFAULT_CHARACTER
 )
 from core.memory import MemoryManager
@@ -177,12 +177,9 @@ class AIBrain:
     def _parse_function_calls(self, response_message: Dict[str, Any]) -> Tuple[List[Dict], str]:
         """Ekstrak tool calls dari response message Ollama"""
         function_calls = []
+        # Field 'thinking' sengaja diabaikan: isinya penalaran internal model,
+        # bukan jawaban untuk diucapkan ke user.
         clean_response = response_message.get('content', '') or ''
-        
-        # Kadang Qwen me-return isi pikirannya di field thinking, bukan content.
-        thinking_text = response_message.get('thinking', '') or ''
-        if not clean_response and thinking_text:
-            clean_response = thinking_text
 
         # Mencegah NoneType object is not iterable (Ollama kadang mereturn None bukan [])
         tool_calls = response_message.get('tool_calls') or []
@@ -234,9 +231,24 @@ class AIBrain:
                         continue
         
         clean_response = re.sub(r'\n\s*\n', '\n', clean_response).strip()
-        
+
         return function_calls, clean_response
-    
+
+    def _chat(self, messages: List[Dict[str, str]]):
+        """Kirim percakapan ke Ollama beserta skema tool."""
+        return self.client.chat(
+            model=self.model,
+            messages=messages,
+            tools=registry.get_all_tools_schema(),
+            think=OLLAMA_THINK,
+            options={
+                "temperature": 0.7,
+                "top_p": 0.9,
+                # Default context Ollama terlalu kecil untuk persona + skema tool + history
+                "num_ctx": OLLAMA_NUM_CTX,
+            }
+        )
+
     def think(self, user_input: str) -> Tuple[str, List[Dict], str]:
         """
         Process user input dan generate response.
@@ -252,19 +264,8 @@ class AIBrain:
         
         try:
             messages = self._build_messages(user_input)
-            schemas = registry.get_all_tools_schema()
-            
-            # Call Ollama dengan tool metadata
-            response = self.client.chat(
-                model=self.model,
-                messages=messages,
-                tools=schemas,
-                options={
-                    "temperature": 0.7,
-                    "top_p": 0.9,
-                }
-            )
-            
+            response = self._chat(messages)
+
             print(f"\n[DEBUG AIBrain] RAW Ollama output:\n{response}\n")
 
             response_msg = response.get('message', {})
@@ -278,6 +279,7 @@ class AIBrain:
 
             # Update memory
             if self.memory:
+                self.memory.add_message("user", user_input)
                 self.memory.add_message("assistant", response_text, emotion.name)
             else:
                 # Fallback history
@@ -312,19 +314,8 @@ class AIBrain:
             observation_msg = f"System Observation:\n{observation_text}\nSilakan beritahu pengguna mengenai hasil ini."
             
             messages = self._build_messages(observation_msg)
-            
-            # Call Ollama
-            schemas = registry.get_all_tools_schema()
-            response = self.client.chat(
-                model=self.model,
-                messages=messages,
-                tools=schemas,
-                options={
-                    "temperature": 0.7,
-                    "top_p": 0.9,
-                }
-            )
-            
+            response = self._chat(messages)
+
             print(f"\n[DEBUG AIBrain Observation] RAW Ollama output:\n{response}\n")
 
             response_msg = response.get('message', {})

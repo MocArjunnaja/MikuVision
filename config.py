@@ -56,13 +56,18 @@ Tolong, bisa, coba, atur, buka, tutup, jalankan, matikan.
 # Default prompt (fallback)
 WHISPER_INITIAL_PROMPT = WHISPER_PROMPTS.get("id", "")
 
-import torch
-WHISPER_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+try:
+    import torch
+    WHISPER_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+except ImportError:
+    WHISPER_DEVICE = "cpu"
 print(f"[Config] Whisper will use: {WHISPER_DEVICE}")
 
 # ============ Ollama/LLM Config ============
-OLLAMA_MODEL = "qwen3:4b" # Naik kelas ke 7B untuk kecerdasan Agentic bilingual
+OLLAMA_MODEL = "qwen3:4b"
 OLLAMA_BASE_URL = "http://localhost:11434"
+OLLAMA_NUM_CTX = 8192   # Persona + skema tool + 20 pesan history butuh > default Ollama
+OLLAMA_THINK = False    # Matikan mode thinking Qwen3: lebih cepat, tidak ada penalaran yang terucap
 
 # ============ TTS Config ============
 TTS_VOICE = "id-ID-GadisNeural"

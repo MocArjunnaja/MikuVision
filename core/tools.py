@@ -6,7 +6,6 @@ Follows the Agentic Harness pattern for clean tool isolation.
 
 from typing import Dict, Any, Callable, List
 import inspect
-from pydantic import BaseModel, create_model
 from typing import get_type_hints
 
 class ToolParam:
@@ -56,11 +55,14 @@ class Tool:
             if param.param_type == int: type_str = "integer"
             elif param.param_type == float: type_str = "number"
             elif param.param_type == bool: type_str = "boolean"
-            
+            elif param.param_type == list: type_str = "array"
+
             properties[param.name] = {
                 "type": type_str,
                 "description": param.description
             }
+            if type_str == "array":
+                properties[param.name]["items"] = {"type": "string"}
             if param.required:
                 required.append(param.name)
                 
