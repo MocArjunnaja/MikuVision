@@ -88,6 +88,12 @@ def _fake_proc(name):
     return proc
 
 
+@pytest.fixture(autouse=True)
+def _no_real_wait(monkeypatch):
+    # Proses palsu dianggap langsung tertutup setelah terminate
+    monkeypatch.setattr(sc_module.psutil, "wait_procs", lambda procs, timeout: (procs, []))
+
+
 def test_close_application_uses_exact_name(system_control, monkeypatch):
     notepad, notepadpp = _fake_proc("notepad.exe"), _fake_proc("notepad++.exe")
     monkeypatch.setattr(sc_module.psutil, "process_iter", lambda attrs: [notepad, notepadpp])

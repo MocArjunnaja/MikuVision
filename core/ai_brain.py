@@ -49,6 +49,61 @@ FUNCTION_CALL_PROMPT_JA = f"""
 FUNCTION_CALL_PROMPT = FUNCTION_CALL_PROMPT_ID
 
 
+def _find_json_objects(text: str) -> List[Tuple[int, int]]:
+    """
+    Cari span (start, end) objek {...} top-level dengan kurung seimbang.
+
+    Objek bersarang tidak dikembalikan terpisah (params {"name": ...} bukan tool call),
+    dan kurung di dalam string JSON diabaikan.
+    """
+    spans = []
+    depth = 0
+    start = 0
+    in_string = False
+    escaped = False
+
+    for i, ch in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"' and depth > 0:
+            in_string = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}" and depth > 0:
+            depth -= 1
+            if depth == 0:
+                spans.append((start, i + 1))
+
+    return spans
+
+
+def _to_function_call(parsed: Any) -> Optional[Dict[str, Any]]:
+    """Normalisasi {"action", "params"} / {"name", "arguments"} ke format internal."""
+    if not isinstance(parsed, dict):
+        return None
+
+    if "action" in parsed:
+        action, params = parsed["action"], parsed.get("params") or {}
+    elif "name" in parsed and "arguments" in parsed:
+        # Wajib ada "arguments": objek biasa yang kebetulan punya key "name" bukan tool call
+        action, params = parsed["name"], parsed["arguments"] or {}
+    else:
+        return None
+
+    if not isinstance(action, str) or not action or not isinstance(params, dict):
+        return None
+    return {"action": action, "params": params}
+
+
 class AIBrain:
     """
     Otak AI v2 dengan Character System.
@@ -201,35 +256,26 @@ class AIBrain:
                     "params": args
                 })
         
-        # Fallback regex manual jika AI bandel menulis JSON di content
+        # Fallback jika AI menulis JSON di content: {"action", "params"} atau
+        # format Qwen <tool_call>{"name", "arguments"}</tool_call>, termasuk params bersarang
         if not function_calls and clean_response:
-            patterns = [
-                r'(\{\s*"action"\s*:\s*"[^"]+"\s*,\s*"params"\s*:\s*\{[^}]*\}\s*\})',
-                # Fallback untuk model Qwen yang senang generate format <tool_call> {"name": "action", "arguments": {...}} </tool_call>
-                r'<tool_call>\s*(\{\s*"name"\s*:\s*"[^"]+"\s*,\s*"arguments"\s*:\s*\{[^}]*\}\s*\})\s*</tool_call>',
-            ]
-            for pattern in patterns:
-                matches = re.findall(pattern, clean_response, re.DOTALL)      
-                for match in matches:
-                    try:
-                        parsed = json.loads(match.strip())
-                        
-                        # Handle pola <tool_call> {"name": "...", "arguments": {...}}
-                        if "name" in parsed and "arguments" in parsed:
-                            transformed = {
-                                "action": parsed["name"],
-                                "params": parsed["arguments"]
-                            }
-                            function_calls.append(transformed)
-                            clean_response = clean_response.replace(match, "").strip()
-                            # Strip the XML tag as well if present
-                            clean_response = re.sub(r'<tool_call>.*?</tool_call>', '', clean_response, flags=re.DOTALL)
-                        elif isinstance(parsed, dict) and "action" in parsed: 
-                            function_calls.append(parsed)
-                            clean_response = clean_response.replace(match, "").strip()
-                    except json.JSONDecodeError:
-                        continue
-        
+            spans_to_remove = []
+            for start, end in _find_json_objects(clean_response):
+                try:
+                    parsed = json.loads(clean_response[start:end])
+                except json.JSONDecodeError:
+                    continue
+                call = _to_function_call(parsed)
+                if call:
+                    function_calls.append(call)
+                    spans_to_remove.append((start, end))
+
+            # Potong dari belakang agar indeks span yang lebih awal tetap valid
+            for start, end in reversed(spans_to_remove):
+                clean_response = clean_response[:start] + clean_response[end:]
+
+        clean_response = re.sub(r'<tool_call>.*?</tool_call>', '', clean_response, flags=re.DOTALL)
+        clean_response = re.sub(r'```json.*?```', '', clean_response, flags=re.DOTALL)
         clean_response = re.sub(r'\n\s*\n', '\n', clean_response).strip()
 
         return function_calls, clean_response
