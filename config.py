@@ -56,6 +56,9 @@ Tolong, bisa, coba, atur, buka, tutup, jalankan, matikan.
 # Default prompt (fallback)
 WHISPER_INITIAL_PROMPT = WHISPER_PROMPTS.get("id", "")
 
+# Simpan rekaman mic mentah & hasil proses ke data/debug_audio/ (privasi: default mati)
+DEBUG_DUMP_AUDIO = False
+
 try:
     import torch
     WHISPER_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"

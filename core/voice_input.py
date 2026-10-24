@@ -16,7 +16,7 @@ logging.getLogger("faster_whisper").setLevel(logging.ERROR)
 
 from config import (
     WHISPER_MODEL, WHISPER_LANGUAGE, WHISPER_DEVICE,
-    WHISPER_INITIAL_PROMPT, WHISPER_PROMPTS
+    WHISPER_INITIAL_PROMPT, WHISPER_PROMPTS, DEBUG_DUMP_AUDIO
 )
 
 
@@ -143,7 +143,6 @@ class VoiceInput:
             # DEBUG: Ekspor audio Murni sebelum ada pengecekan RMS agar tahu kenapa ditolak
             import time
             from scipy.io.wavfile import write
-            DEBUG_DUMP_AUDIO = True
             if DEBUG_DUMP_AUDIO:
                 dump_dir = os.path.join(os.path.dirname(__file__), "..", "data", "debug_audio")
                 os.makedirs(dump_dir, exist_ok=True)

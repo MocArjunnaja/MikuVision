@@ -457,7 +457,7 @@ class MikuGUIv4(ctk.CTk):
             if self.voice_converter.is_available:
                 self._update_rvc_status(f"🟢 {self.voice_converter.status_text}")
             else:
-                self._update_rvc_status("🔴 RVC: unavailable (Edge-TTS only)")
+                self._update_rvc_status("🔴 RVC: unavailable (MeloTTS only)")
         else:
             self.voice_converter = None
             self._update_rvc_status("⚫ RVC: not used")
