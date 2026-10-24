@@ -6,7 +6,9 @@ Integrated with Automation Layer untuk YouTube, Spotify, Browser
 import subprocess
 import webbrowser
 import os
-from typing import Optional, Tuple, Dict, Any
+import re
+import shutil
+from typing import Optional, Tuple, Dict, Any, List
 from ctypes import cast, POINTER
 from comtypes import CLSCTX_ALL
 
@@ -44,6 +46,19 @@ PROCESS_ALIASES = {
     "calculator": "calculatorapp",
 }
 
+# Skema URI minimal 2 karakter, jadi drive letter "C:" tidak dianggap URI
+URI_SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]+:")
+
+# Waktu tunggu proses menutup diri sebelum dipaksa kill
+CLOSE_TIMEOUT_SEC = 5
+
+
+def _process_key(app_name: str) -> str:
+    """Nama aplikasi -> nama proses tanpa .exe (setelah alias)."""
+    key = app_name.lower().strip()
+    key = PROCESS_ALIASES.get(key, key)
+    return key[:-4] if key.endswith(".exe") else key
+
 try:
     from .automation_layer import AutomationManager
     AUTOMATION_AVAILABLE = True
@@ -72,10 +87,15 @@ class SystemControl:
         if AUTOMATION_AVAILABLE:
             self.automation = AutomationManager(
                 spotify_client_id=spotify_client_id,
-                spotify_client_secret=spotify_client_secret
+                spotify_client_secret=spotify_client_secret,
+                system_control=self,
             )
         else:
             self.automation = None
+
+        # Proses yang dibuka lewat open_application: key proses -> [(pid, create_time)].
+        # create_time mencegah salah kill jika PID sudah dipakai ulang proses lain.
+        self._opened_apps: Dict[str, List[Tuple[int, float]]] = {}
     
     def _init_audio(self):
         """Initialize audio interface"""
@@ -166,47 +186,95 @@ class SystemControl:
         if not command:
             return False, f"Aplikasi '{app_name}' tidak dikenali"
         
+        target = command[len("start "):].strip() if command.startswith("start ") else command
+        print(f"[SystemControl] Launching: {target}")
+
+        # Tanpa shell=True. Command berasal dari whitelist ALLOWED_APPS.
         try:
-            print(f"[SystemControl] Running command: {command}")
-            
-            if command.startswith("start "):
-                subprocess.Popen(command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            else:
-                subprocess.Popen(f'start "" "{command}"', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            
+            if URI_SCHEME.match(target):
+                os.startfile(target)
+                return True, f"Membuka {app_name}..."
+
+            resolved = shutil.which(target)
+            if resolved and resolved.lower().endswith(".exe"):
+                proc = subprocess.Popen(
+                    [resolved],
+                    # Aplikasi konsol (cmd, powershell) butuh jendela sendiri
+                    creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
+                )
+                self._track_process(app_name, proc.pid)
+                return True, f"Membuka {app_name} (PID {proc.pid})..."
+
+            # Tidak ada di PATH (chrome, msedge, winword: terdaftar di App Paths)
+            # atau script .cmd (VS Code): ShellExecute, sama seperti perintah `start`
+            os.startfile(resolved or target)
             return True, f"Membuka {app_name}..."
-        except Exception as e:
+        except OSError as e:
             return False, f"Gagal membuka {app_name}: {e}"
-    
+
+    def _track_process(self, app_name: str, pid: int):
+        try:
+            created = psutil.Process(pid).create_time()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            return
+        self._opened_apps.setdefault(_process_key(app_name), []).append((pid, created))
+
+    def _tracked_processes(self, key: str) -> list:
+        """Proses hasil open_application yang masih hidup dan PID-nya belum dipakai ulang."""
+        procs = []
+        for pid, created in self._opened_apps.pop(key, []):
+            try:
+                proc = psutil.Process(pid)
+                if proc.create_time() == created:
+                    procs.append(proc)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return procs
+
+    @staticmethod
+    def _terminate_processes(procs: list) -> int:
+        """Terminate, tunggu CLOSE_TIMEOUT_SEC, lalu kill yang masih hidup."""
+        signaled = []
+        for proc in procs:
+            try:
+                proc.terminate()
+                signaled.append(proc)
+            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                print(f"[SystemControl] Gagal menutup PID {proc.pid}: {e}")
+
+        _, alive = psutil.wait_procs(signaled, timeout=CLOSE_TIMEOUT_SEC)
+        for proc in alive:
+            try:
+                proc.kill()
+            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                print(f"[SystemControl] Gagal kill PID {proc.pid}: {e}")
+        return len(signaled)
+
     @registry.register("Close an application by name")
     def close_application(self, app_name: str) -> Tuple[bool, str]:
         """Close an application by exact process name (no substring match)"""
-        target = app_name.lower().strip()
-        target = PROCESS_ALIASES.get(target, target)
-        if target.endswith(".exe"):
-            target = target[:-4]
+        target = _process_key(app_name)
 
         if not target:
             return False, "Nama aplikasi kosong"
         if target in PROTECTED_PROCESSES:
             return False, f"Proses '{target}' dilindungi dan tidak boleh ditutup"
 
-        closed = 0
+        procs = {proc.pid: proc for proc in self._tracked_processes(target)}
         for proc in psutil.process_iter(['name']):
             proc_name = (proc.info['name'] or "").lower()
             if proc_name.endswith(".exe"):
                 proc_name = proc_name[:-4]
-            if proc_name != target:
-                continue
-            try:
-                proc.terminate()
-                closed += 1
-            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                print(f"[SystemControl] Gagal menutup PID {proc.pid}: {e}")
+            if proc_name == target:
+                procs.setdefault(proc.pid, proc)
 
+        if not procs:
+            return False, f"Tidak menemukan proses {app_name}"
+
+        closed = self._terminate_processes(list(procs.values()))
         if closed:
             return True, f"Menutup {app_name} ({closed} proses)"
-        return False, f"Tidak menemukan proses {app_name}"
+        return False, f"Gagal menutup {app_name}"
             
     @registry.register("Open a specific local folder or directory path in Windows Explorer. E.g. 'Desktop', 'Downloads', atau nama folder spesifik.")
     def open_folder(self, folder_name_or_path: str) -> Tuple[bool, str]:
