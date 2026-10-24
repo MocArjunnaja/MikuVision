@@ -115,6 +115,11 @@ class ToolRegistry:
     def get_all_tools_schema(self) -> List[Dict[str, Any]]:
         """Get schema for all registered tools, ready for LLM"""
         return [tool.to_openai_schema() for tool in self._tools.values()]
+
+    def get_tools_schema(self, names: List[str]) -> List[Dict[str, Any]]:
+        """Skema hanya untuk tool yang diminta (urutan registry, nama tak dikenal diabaikan)"""
+        wanted = set(names)
+        return [tool.to_openai_schema() for name, tool in self._tools.items() if name in wanted]
         
     def execute(self, tool_name: str, instance: Any, kwargs: Dict[str, Any]) -> Any:
         """Execute a tool by name and return result"""

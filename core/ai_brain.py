@@ -11,7 +11,7 @@ import ollama
 from ollama import Client
 
 from config import (
-    OLLAMA_MODEL, OLLAMA_BASE_URL, OLLAMA_NUM_CTX, OLLAMA_THINK, OLLAMA_TIMEOUT_SEC,
+    OLLAMA_MODEL, OLLAMA_BASE_URL, OLLAMA_NUM_CTX, OLLAMA_THINK, OLLAMA_TIMEOUT_SEC, SKILL_ROUTING,
     Character, CHARACTERS, DEFAULT_CHARACTER
 )
 from core.memory import MemoryManager
@@ -20,6 +20,8 @@ from core.emotion import EmotionDetector
 
 from core.tools import registry
 from core import long_term_memory  # mendaftarkan tool remember/recall_memory/forget
+from core import routines  # mendaftarkan tool run_routine/list_routines
+from core.skills import select_skills, tool_names
 
 # Function call prompts per language
 FUNCTION_CALL_PROMPT_ID = f"""
@@ -212,6 +214,9 @@ class AIBrain:
         # Pemakaian token: giliran terakhir dan total sesi (angka asli dari Ollama)
         self.turn_usage = LLMUsage()
         self.session_usage = LLMUsage()
+
+        # Tool yang dikirim pada giliran ini (None = semua tool); dipilih per skill
+        self.turn_tool_names: Optional[List[str]] = None
     
     def set_character(self, character_name: str) -> bool:
         """
@@ -312,7 +317,20 @@ class AIBrain:
 {func_prompt}
 
 {memory_prompt}
+
+{self._routines_prompt()}
 """
+
+    def _routines_prompt(self) -> str:
+        """Daftar routine, hanya bila skill routine dikirim giliran ini (hemat token)."""
+        if self.turn_tool_names is not None and "run_routine" not in self.turn_tool_names:
+            return ""
+        available = routines.load_routines()
+        if not available:
+            return ""
+        lines = "\n".join(f"- {r.name}: {r.description}" for r in available.values())
+        return ("## Saved routines (call run_routine with the exact name; "
+                "e.g. 'テストモード' / 'mode tes' -> 'mode tes')\n" + lines)
     
     def _build_messages(self, user_input: str) -> List[Dict[str, str]]:
         """Build message array untuk Ollama"""
@@ -401,7 +419,8 @@ class AIBrain:
         response = self.client.chat(
             model=self.model,
             messages=messages,
-            tools=registry.get_all_tools_schema(),
+            tools=(registry.get_tools_schema(self.turn_tool_names) if self.turn_tool_names
+                   else registry.get_all_tools_schema()),
             **think_kwargs,
             options={
                 "temperature": temperature,
@@ -428,6 +447,7 @@ class AIBrain:
             return "Error: AI belum diinisialisasi", [], "neutral"
 
         self.turn_usage = LLMUsage()
+        self.turn_tool_names = tool_names(select_skills(user_input)) if SKILL_ROUTING else None
         try:
             messages = self._build_messages(user_input)
             response = self._chat(messages)

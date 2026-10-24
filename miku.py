@@ -59,6 +59,7 @@ from core.system_control import SystemControl
 from core.macro_tools import MacroTools
 from core.avatar_window import initialize_avatar_window, cleanup_avatar_window, get_avatar_window
 from core.confirmation import is_affirmative
+from core.commands import handle_command
 from core.conversation import ToolResult, run_turn
 from core.turn_log import TurnLogger
 from config import DATA_DIR, CHARACTERS, DEFAULT_CHARACTER, TURN_LOG_DIR
@@ -198,7 +199,7 @@ class MikuCLI:
         print(f"\n{self.character.display_name} [{emotion}]: {greeting}\n")
         self.voice_output.speak(greeting, blocking=False)
 
-        print('Type "quit" to exit\n')
+        print('Type "quit" to exit, "/help" for commands\n')
 
         while True:
             try:
@@ -213,6 +214,11 @@ class MikuCLI:
             if user_input.lower() == "quit":
                 print("[Goodbye!]")
                 break
+
+            command_output = handle_command(user_input, self.ai_brain, self.system_control)
+            if command_output is not None:
+                print(f"\n{command_output}\n")
+                continue
 
             # Mode teks tidak meminta laporan hasil tool agar tetap cepat
             turn = run_turn(

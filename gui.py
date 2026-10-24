@@ -29,6 +29,7 @@ from core.voice_converter import VoiceConverter
 from core.ai_brain import AIBrain
 from core.system_control import SystemControl
 from core.memory import MemoryManager
+from core.commands import handle_command
 from core.conversation import ToolResult, run_turn
 from core.turn_log import TurnLogger
 
@@ -798,7 +799,13 @@ class MikuGUIv4(ctk.CTk):
         self.text_input.delete(0, "end")
         self._add_chat_message("You", text, "")
 
-        thread = threading.Thread(target=self._process_input, args=(text,))
+        if text.lower().split(" ")[0] == "/resume":
+            self._resume_last_session()
+            return
+
+        # Slash command di worker thread: /routine bisa membuka dialog konfirmasi
+        target = self._process_command if text.startswith("/") else self._process_input
+        thread = threading.Thread(target=target, args=(text,))
         thread.daemon = True
         thread.start()
 
@@ -888,6 +895,17 @@ class MikuGUIv4(ctk.CTk):
                 self.voice_output.speak(fallback_msg, blocking=False)
 
     # ─────────────────────── AI Processing ───────────────────────
+
+    def _process_command(self, text: str):
+        self.is_processing = True
+        try:
+            output = handle_command(text, self.ai_brain, self.system_control)
+            self._add_chat_message("System", output or "", "⌘")
+        except Exception as e:
+            self._add_chat_message("System", f"❌ Error: {e}", "❌")
+        finally:
+            self.is_processing = False
+            self._update_status("🟢 Ready")
 
     def _show_tool_result(self, result: ToolResult):
         icon = "✅" if result.success else "❌"

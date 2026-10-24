@@ -78,6 +78,24 @@ Contoh perintah: "buka notepad", "kecilkan volume ke 30", "carikan lagu Yorushik
 
 Aksi berisiko (kirim WhatsApp/Telegram, menutup aplikasi) **selalu meminta konfirmasi** dulu: `y/n` di mode teks, jawaban suara "ya/はい" di mode suara, atau dialog Yes/No di GUI.
 
+## Routine & perintah cepat
+
+**Routine** menjalankan beberapa aksi dengan satu perintah. Contoh bawaan ada di `routines.example.yaml` ("mode belajar", "mode istirahat"). Untuk membuat routine sendiri, salin file itu ke `data/routines.yaml` lalu ubah isinya. Jalankan dengan ucapan ("jalankan mode belajar", "勉強モードにして") atau `/routine mode belajar`. Langkah berisiko tetap meminta konfirmasi.
+
+**Slash command** (mode teks dan GUI, tanpa LLM):
+
+| Perintah | Fungsi |
+|---|---|
+| `/help` | Daftar perintah |
+| `/memory`, `/forget <key>` | Lihat / hapus memori jangka panjang |
+| `/routines`, `/routine <nama>` | Daftar / jalankan routine |
+| `/skills` | Kelompok kemampuan Miku |
+| `/sessions`, `/resume [id]` | Sesi tersimpan / lanjutkan sesi |
+| `/usage` | Pemakaian token sesi ini |
+| `/clear` | Hapus riwayat sesi ini |
+
+**Skill on-demand:** 25 tool dikelompokkan menjadi 9 skill (`core/skills.py`). Hanya skill yang cocok dengan permintaan yang dikirim ke LLM, sehingga prompt turun dari ±3.400 ke ±1.550 token tanpa menurunkan akurasi. Matikan dengan `SKILL_ROUTING = False` di `config.py`.
+
 ## Memori & pemakaian token
 
 - **Konteks:** setiap balasan menampilkan pemakaian konteks LLM yang diambil langsung dari Ollama (`prompt_eval_count`), misalnya `konteks 3.2k / 8.2k token`. Di GUI angka ini ada di bawah status.
