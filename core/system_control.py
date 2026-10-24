@@ -52,12 +52,40 @@ URI_SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]+:")
 # Waktu tunggu proses menutup diri sebelum dipaksa kill
 CLOSE_TIMEOUT_SEC = 5
 
+WM_CLOSE = 0x0010
+
 
 def _process_key(app_name: str) -> str:
     """Nama aplikasi -> nama proses tanpa .exe (setelah alias)."""
     key = app_name.lower().strip()
     key = PROCESS_ALIASES.get(key, key)
     return key[:-4] if key.endswith(".exe") else key
+
+
+def _windows_by_pid(pids: set) -> Dict[int, list]:
+    """Jendela top-level yang terlihat milik proses-proses tersebut: {pid: [hwnd]}."""
+    try:
+        import win32gui
+        import win32process
+    except ImportError:
+        return {}
+
+    found: Dict[int, list] = {}
+
+    def collect(hwnd, _):
+        if win32gui.IsWindowVisible(hwnd):
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)
+            if pid in pids:
+                found.setdefault(pid, []).append(hwnd)
+        return True
+
+    win32gui.EnumWindows(collect, None)
+    return found
+
+
+def _post_close(hwnd: int):
+    import win32gui
+    win32gui.PostMessage(hwnd, WM_CLOSE, 0, 0)
 
 try:
     from .automation_layer import AutomationManager
@@ -232,23 +260,40 @@ class SystemControl:
         return procs
 
     @staticmethod
-    def _terminate_processes(procs: list) -> int:
-        """Terminate, tunggu CLOSE_TIMEOUT_SEC, lalu kill yang masih hidup."""
+    def _close_processes(procs: list) -> Tuple[int, int]:
+        """
+        Tutup proses dan kembalikan (jumlah tertutup, jumlah jendela masih terbuka).
+
+        Proses berjendela dikirimi WM_CLOSE, sama seperti user menekan tombol X,
+        sehingga aplikasi sempat menawarkan simpan dan tidak pernah di-kill paksa.
+        Hanya proses tanpa jendela yang di-terminate lalu di-kill setelah timeout.
+        """
+        windows = _windows_by_pid({proc.pid for proc in procs})
         signaled = []
         for proc in procs:
             try:
-                proc.terminate()
+                if proc.pid in windows:
+                    for hwnd in windows[proc.pid]:
+                        _post_close(hwnd)
+                else:
+                    proc.terminate()
                 signaled.append(proc)
             except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
                 print(f"[SystemControl] Gagal menutup PID {proc.pid}: {e}")
 
-        _, alive = psutil.wait_procs(signaled, timeout=CLOSE_TIMEOUT_SEC)
+        gone, alive = psutil.wait_procs(signaled, timeout=CLOSE_TIMEOUT_SEC)
+        still_open = 0
         for proc in alive:
+            if proc.pid in windows:
+                # Kemungkinan menunggu dialog "simpan perubahan?"; biarkan user memutuskan
+                still_open += 1
+                continue
             try:
                 proc.kill()
+                gone.append(proc)
             except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
                 print(f"[SystemControl] Gagal kill PID {proc.pid}: {e}")
-        return len(signaled)
+        return len(gone), still_open
 
     @registry.register("Close an application by name")
     def close_application(self, app_name: str) -> Tuple[bool, str]:
@@ -271,7 +316,12 @@ class SystemControl:
         if not procs:
             return False, f"Tidak menemukan proses {app_name}"
 
-        closed = self._terminate_processes(list(procs.values()))
+        closed, still_open = self._close_processes(list(procs.values()))
+        if still_open:
+            return True, (
+                f"Perintah tutup dikirim ke {app_name}; {still_open} proses masih terbuka "
+                "(mungkin menunggu konfirmasi simpan di aplikasinya)"
+            )
         if closed:
             return True, f"Menutup {app_name} ({closed} proses)"
         return False, f"Gagal menutup {app_name}"

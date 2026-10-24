@@ -35,7 +35,10 @@ def describe_action(action: str, params: Dict[str, Any]) -> str:
     if action == "send_telegram_message":
         return f"Kirim Telegram ke '{params.get('contact_name', '?')}': \"{params.get('message', '')}\""
     if action == "close_application":
-        return f"Tutup aplikasi '{params.get('app_name', '?')}'"
+        return (
+            f"Tutup aplikasi '{params.get('app_name', '?')}' "
+            "(SEMUA jendelanya ikut ditutup, termasuk yang tidak dibuka Miku)"
+        )
     return f"{action} {params}"
 
 

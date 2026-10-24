@@ -36,6 +36,9 @@ if sys.platform == 'win32':
     # Use line_buffering=True so that print() flushes immediately
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+    # Stdin yang di-redirect memakai codepage ANSI; teks Jepang jadi surrogate
+    # dan request ke Ollama gagal di-encode. Konsol asli tidak terpengaruh.
+    sys.stdin.reconfigure(encoding='utf-8', errors='replace')
 
 # Suppress dependency warnings (fairseq, pygame, torch, etc)
 logging.getLogger('fairseq').setLevel(logging.ERROR)
@@ -479,47 +482,10 @@ class MikuCLI:
         best_score, best_lang, best_text = max(candidates, key=lambda x: x[0])
         debug_lang = best_lang if best_lang is not None else "auto"
         # Only log if it's not wake standby spam, or if it passed a minimum threshold
-        if (not wake_mode) or (best_score >= 8 or self._is_wake_phrase(best_text)):
+        if (not wake_mode) or best_score >= 8:
             print(f"[STT] Best candidate lang={debug_lang}, score={best_score}, text='{best_text}'")
             
         return best_text
-
-    def _is_wake_phrase(self, text: str) -> bool:
-        """Check if text contains wake phrase"""
-        normalized = self._normalize_text(text)
-
-        # Direct phrase matching first.
-        if any(phrase in normalized for phrase in self.wake_phrase_variants):
-            return True
-
-        # Fallback: allow partial OCR/STT variations as long as "miku" + wake token exist.
-        has_miku = ("miku" in normalized) or ("ミク" in text) or ("みく" in text)
-        has_ok_token = (
-            ("oke" in normalized)
-            or ("okey" in normalized)
-            or ("okay" in normalized)
-            or ("ok" in normalized)
-            or ("オーケ" in text)
-            or ("オケ" in text)
-        )
-        if has_miku and has_ok_token:
-            return True
-
-        # Fallback when STT clips "miku" but command intent starts after "ok/oke".
-        has_command_token = any(
-            token in normalized
-            for token in [
-                "youtube",
-                "spotify",
-                "chrome",
-                "edge",
-                "volume",
-                "buka",
-                "open",
-            ]
-        )
-        starts_with_ok = normalized.startswith(("ok ", "oke ", "okay ", "okey "))
-        return starts_with_ok and has_command_token
 
     def _process_ai_response(self, user_text: str):
         """Process text input through AI and display response"""
@@ -553,121 +519,6 @@ class MikuCLI:
             if self.avatar_window:
                 self.avatar_window.set_emotion(emotion)
             self.voice_output.speak(clean_response, blocking=True)
-
-    def _enter_wake_phrase_mode(self):
-        """Enter 'Oke Miku' wake phrase listening mode"""
-        print("\n🗣️  Wake Phrase Mode: Listening for 'Oke Miku'...")
-        print("(Say wake phrase to start talking. Say 'stop wake mode' to exit.)\n")
-        print(
-            f"[Wake] Hybrid STT active: trigger_lang={self.wake_trigger_language_hint}, "
-            "conversation_lang=auto"
-        )
-
-        self.wake_word_mode = True
-        self.last_conversation_activity = time.time()
-
-        # Announce ready
-        wake_ready = "Siap dengarkan. Katakan 'Oke Miku' untuk mulai."
-        print(f"{self.character.display_name}: {wake_ready}\n")
-        if self.avatar_window:
-            self.avatar_window.set_emotion("listening")
-        # Block so wake listener does not immediately capture Miku's own voice.
-        self.voice_output.speak(wake_ready, blocking=True)
-        time.sleep(self.post_tts_listen_cooldown_sec)
-
-        in_conversation = False
-
-        try:
-            while self.wake_word_mode:
-                # Check timeout
-                if time.time() - self.last_conversation_activity > self.conversation_timeout_sec:
-                    if in_conversation:
-                        print("[Wake] Idle timeout - kembali ke wake standby\n")
-                        in_conversation = False
-                        if self.avatar_window:
-                            self.avatar_window.set_emotion("listening")
-                        self.last_conversation_activity = time.time()
-                        continue
-
-                    print("[Wake] Timeout - kembali ke mode normal\n")
-                    break
-
-                if in_conversation:
-                    # Keep recording while speech is present; stop only after sustained silence.
-                    audio = self.voice_input.listen_until_silence(
-                        max_duration=self.wake_max_utterance_sec,
-                        silence_duration=self.wake_silence_timeout_sec,
-                        min_duration=1.0,
-                        speech_threshold=0.01,
-                    )
-                    if len(audio) == 0:
-                        heard = ""
-                    else:
-                        heard = self._transcribe_best_effort(
-                            audio,
-                            language_order=[self.character.lang, "id", "en", None],
-                            wake_mode=True,
-                        )
-                else:
-                    audio = self.voice_input.listen_for_duration(self.wake_listen_chunk_sec)
-                    if len(audio) == 0:
-                        heard = ""
-                    else:
-                        heard = self._transcribe_best_effort(
-                            audio,
-                            language_order=[self.wake_trigger_language_hint, "id", "en", None],
-                            wake_mode=True,
-                        )
-                
-                if not heard:
-                    continue
-
-                normalized_heard = self._normalize_text(heard)
-                if normalized_heard in {"exit", "quit", "stop wake mode", "wake off"}:
-                    print(f"You: {heard}")
-                    print("[Wake] Perintah keluar diterima\n")
-                    break
-
-                # In standby, ignore low-confidence garbage transcripts.
-                if not in_conversation:
-                    score = self._score_transcript_intent(heard)
-                    if score < 12 and not self._is_wake_phrase(heard):
-                        continue
-
-                print(f"You: {heard}")
-
-                # Standby -> conversation transition.
-                if not in_conversation and self._is_wake_phrase(heard):
-                    print("[Wake] Deteksi 'Oke Miku'!\n")
-                    self.last_conversation_activity = time.time()
-                    in_conversation = True
-
-                    if self.avatar_window:
-                        self.avatar_window.set_emotion("excited")
-
-                    activation_reply = "Hai! Miku siap. Lanjut bicara ya."
-                    print(f"{self.character.display_name}: {activation_reply}\n")
-                    self.voice_output.speak(activation_reply, blocking=True)
-                    time.sleep(self.post_tts_listen_cooldown_sec)
-                    continue
-
-                # While in conversation, process every utterance without manual Enter.
-                if in_conversation:
-                    self.last_conversation_activity = time.time()
-                    if self.avatar_window:
-                        self.avatar_window.set_emotion("thinking")
-                    self._process_ai_response(heard)
-                    if self.avatar_window:
-                        self.avatar_window.set_emotion("excited")
-                    time.sleep(self.post_tts_listen_cooldown_sec)
-
-        except KeyboardInterrupt:
-            print("\n[Wake mode interrupted]")
-        finally:
-            self.wake_word_mode = False
-            print("[Wake mode exited]\n")
-            if self.avatar_window:
-                self.avatar_window.set_emotion("neutral")
 
     def cleanup(self):
         """Cleanup resources"""

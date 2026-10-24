@@ -28,3 +28,14 @@ for _name in [
     "keyboard",
 ]:
     sys.modules.setdefault(_name, MagicMock())
+
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_real_windows(monkeypatch):
+    """Test tidak boleh menemukan atau menutup jendela sungguhan di desktop."""
+    from core import system_control
+    monkeypatch.setattr(system_control, "_windows_by_pid", lambda pids: {})
+    monkeypatch.setattr(system_control, "_post_close", lambda hwnd: None)

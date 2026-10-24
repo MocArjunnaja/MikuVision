@@ -172,8 +172,30 @@ def test_chat_disables_thinking_and_sets_context(tmp_path):
     brain.think("halo")
 
     kwargs = brain.client.chat.call_args.kwargs
-    assert kwargs["think"] is config.OLLAMA_THINK is False
+    # Default None: parameter think tidak dikirim sehingga Ollama memisahkan
+    # penalaran ke field `thinking` alih-alih menaruhnya di content
+    assert config.OLLAMA_THINK is None
+    assert "think" not in kwargs
     assert kwargs["options"]["num_ctx"] == config.OLLAMA_NUM_CTX
+
+
+def test_explicit_think_setting_is_forwarded(tmp_path, monkeypatch):
+    from core import ai_brain as ai_brain_module
+    monkeypatch.setattr(ai_brain_module, "OLLAMA_THINK", False)
+    brain, _ = _brain_with_reply(tmp_path, {"content": "[EMOTION:happy] OK"})
+
+    brain.think("halo")
+
+    assert brain.client.chat.call_args.kwargs["think"] is False
+
+
+def test_duplicate_tool_calls_in_one_response_run_once(tmp_path):
+    call = {"function": {"name": "open_application", "arguments": {"app_name": "Notepad"}}}
+    brain, _ = _brain_with_reply(tmp_path, {"content": "", "tool_calls": [call] * 6})
+
+    _, calls, _ = brain.think("メモ帳を開いて")
+
+    assert calls == [{"action": "open_application", "params": {"app_name": "Notepad"}}]
 
 
 def test_thinking_text_is_never_spoken(tmp_path):
@@ -182,3 +204,46 @@ def test_thinking_text_is_never_spoken(tmp_path):
     response, _, _ = brain.think("halo")
 
     assert "User wants" not in response
+
+
+# ── qwen3 Thinking-2507: penalaran di content diakhiri </think> ──
+
+QWEN_THINKING_REPLY = (
+    "Okay, the user wants Notepad. Maybe I should answer "
+    '{"action": "close_application", "params": {"app_name": "notepad"}} hmm no.\n'
+    "</think>\n\n[EMOTION:happy] メモ帳を開くね！"
+)
+
+
+def test_reasoning_before_think_close_tag_is_dropped(tmp_path):
+    brain, memory = _brain_with_reply(tmp_path, {"content": QWEN_THINKING_REPLY})
+
+    response, calls, emotion = brain.think("メモ帳を開いて")
+
+    assert response == "メモ帳を開くね！"
+    assert emotion == "happy"
+    # JSON draf di dalam penalaran tidak boleh dieksekusi
+    assert calls == []
+    # Memori menyimpan jawaban saja, bukan penalaran panjang
+    stored = memory.get_context_for_prompt()[-1]["content"]
+    assert "Okay, the user" not in stored
+
+
+def test_fallback_reply_follows_character_language(tmp_path):
+    call = {"function": {"name": "get_volume", "arguments": {}}}
+    brain, _ = _brain_with_reply(tmp_path, {"content": "", "tool_calls": [call]})
+
+    response, _, _ = brain.think("今の音量は？")
+
+    assert brain.current_character.lang == "ja"
+    assert response == "オッケー、やってみるね！"
+
+
+def test_blank_reply_is_confused_in_character_language(tmp_path):
+    brain, _ = _brain_with_reply(tmp_path, {"content": ""})
+
+    response, calls, emotion = brain.think("……")
+
+    assert calls == []
+    assert emotion == "confused"
+    assert "ごめんね" in response

@@ -57,6 +57,7 @@ WHISPER_LANGUAGE = None  # Auto-detect, will be overridden per character
 WHISPER_PROMPTS = {
     "ja": """
 開く、閉じる、ボリューム、ミュート、スクリーンショット。
+初音ミク、ミク、メモ帳。
 Google Chrome、Microsoft Edge、Firefox、Notepad、YouTube。
 音量を上げて、音量を下げて、アプリを開いて、検索して。
 """,
@@ -84,7 +85,11 @@ print(f"[Config] Whisper will use: {WHISPER_DEVICE}")
 OLLAMA_MODEL = "qwen3:4b"
 OLLAMA_BASE_URL = "http://localhost:11434"
 OLLAMA_NUM_CTX = 8192   # Persona + skema tool + 20 pesan history butuh > default Ollama
-OLLAMA_THINK = False    # Matikan mode thinking Qwen3: lebih cepat, tidak ada penalaran yang terucap
+# None = parameter think tidak dikirim: Ollama memisahkan penalaran model ke field
+# `thinking` (diabaikan app). qwen3:4b (Thinking-2507) dengan think=False justru
+# menaruh penalaran di content dan mengulang tool call. Isi True/False hanya untuk
+# model hybrid yang memang mendukung saklar thinking.
+OLLAMA_THINK: Optional[bool] = None
 
 # ============ TTS Config ============
 TTS_VOICE = "id-ID-GadisNeural"
@@ -177,28 +182,6 @@ MIKU_CHARACTER = Character(
 - "[EMOTION:thinking] うーん、ちょっと考えてみるね..."
 - "[EMOTION:excited] わぁ、それすごいね！"
 
-## システム操作:
-ユーザーのPCを操作できます。システムアクションはJSONで返してください：
-{"action": "関数名", "params": {"param1": value1}}
-
-利用可能な関数:
-- set_volume: {"level": 0-100} - 音量を設定
-- get_volume: {} - 現在の音量を取得
-- mute: {} - ミュート
-- unmute: {} - ミュート解除
-- open_app: {"name": "アプリ名"} - アプリを開く (chrome, edge, notepad, spotify, discord, whatsapp等)
-- close_app: {"name": "アプリ名"} - アプリを閉じる
-- open_website: {"url": "URL"} - ウェブサイトを開く (google, youtube, twitter等)
-- google_search: {"query": "検索語"} - Google検索
-- type_text: {"text": "テキスト"} - テキストを入力
-- hotkey: {"keys": ["ctrl", "c"]} - ショートカットキー
-- get_system_info: {} - システム情報を取得
-- create_word_document: {"filename": "nama_file", "content": "isi teks"} - Word Documentを作成
-- create_powerpoint: {"filename": "nama_file", "title": "judul", "content": "isi"} - PPTを作成
-- send_whatsapp_message: {"contact_name": "name", "message": "text"} - WhatsAppを送信
-- send_telegram_message: {"contact_name": "name", "message": "text"} - Telegramを送信
-
-JSONの後に、感情に合った短い確認メッセージを必ず添えてください。
 """,
     lang="ja",
     voice_config={
@@ -260,28 +243,6 @@ KURISU_CHARACTER = Character(
 - "[EMOTION:thinking] 理論的には可能ですが..."
 - "[EMOTION:embarrassed] べ、別に気にしてないんだから！"
 
-## システム操作:
-ユーザーのPCを操作できます。システムアクションはJSONで返してください：
-{"action": "関数名", "params": {"param1": value1}}
-
-利用可能な関数:
-- set_volume: {"level": 0-100} - 音量を設定
-- get_volume: {} - 現在の音量を取得
-- mute: {} - ミュート
-- unmute: {} - ミュート解除
-- open_app: {"name": "アプリ名"} - アプリを開く (chrome, edge, notepad, spotify, discord, whatsapp等)
-- close_app: {"name": "アプリ名"} - アプリを閉じる
-- open_website: {"url": "URL"} - ウェブサイトを開く (google, youtube, twitter等)
-- google_search: {"query": "検索語"} - Google検索
-- type_text: {"text": "テキスト"} - テキストを入力
-- hotkey: {"keys": ["ctrl", "c"]} - ショートカットキー
-- get_system_info: {} - システム情報を取得
-- create_word_document: {"filename": "nama_file", "content": "isi teks"} - Word Documentを作成
-- create_powerpoint: {"filename": "nama_file", "title": "judul", "content": "isi"} - PPTを作成
-- send_whatsapp_message: {"contact_name": "name", "message": "text"} - WhatsAppを送信
-- send_telegram_message: {"contact_name": "name", "message": "text"} - Telegramを送信
-
-JSONの後に、感情に合った短い確認メッセージを必ず添えてください。
 """,
     lang="ja",
     voice_config={
@@ -332,24 +293,6 @@ Contoh respons:
 - "[EMOTION:thinking] Baik, saya akan coba carikan..."
 - "[EMOTION:neutral] Tentu, saya bisa melakukan itu."
 
-## Kemampuan Sistem:
-Kamu bisa mengontrol komputer user. Untuk aksi sistem, respond dengan JSON:
-{"action": "nama_fungsi", "params": {"param1": value1}}
-
-Fungsi yang tersedia:
-- set_volume: {"level": 0-100} - Atur volume
-- get_volume: {} - Cek volume saat ini
-- mute: {} - Mute audio
-- unmute: {} - Unmute audio
-- open_app: {"name": "nama_app"} - Buka aplikasi (chrome, edge, notepad, spotify, discord, whatsapp, dll)
-- close_app: {"name": "nama_app"} - Tutup aplikasi
-- open_website: {"url": "URL"} - Buka website (google, youtube, twitter, dll)
-- google_search: {"query": "kata_kunci"} - Cari di Google
-- type_text: {"text": "teks"} - Ketik teks
-- hotkey: {"keys": ["ctrl", "c"]} - Shortcut keyboard
-- get_system_info: {} - Info sistem
-
-Setelah JSON, berikan konfirmasi singkat.
 """,
     lang="id",
     voice_config={
