@@ -16,9 +16,23 @@ AUDIO_DIR = BASE_DIR / "temp_audio"
 
 # Sprite-sheet UI assets for v4 GUI
 MIKU_SPRITE_SHEET = AVATAR_DIR / "miku_smart_sheet.png"
+# Sheet 3540x1491 = 20 kolom x 7 baris. Baris 1-5 hanya terisi sebagian,
+# sel sisanya transparan kosong (lihat tests/test_sprite_frames.py).
 MIKU_FRAME_W = 177
-MIKU_FRAME_H = 265
+MIKU_FRAME_H = 213
 MIKU_SHEET_COLS = 20
+
+# Frame per emosi, dipakai GUI dan avatar window. Semua indeks berisi gambar.
+MIKU_EMOTION_FRAMES: Dict[str, List[int]] = {
+    "neutral": [0, 1, 2, 3, 4],
+    "happy": [123, 124, 125, 126],
+    "excited": [131, 132, 133, 134, 135],
+    "thinking": [63],
+    "confused": [41, 42, 43],
+    "sad": [128, 129],
+    "embarrassed": [127],
+    "annoyed": [100],
+}
 
 # RVC model directory (shared across versions)
 RVC_MODELS_DIR = BASE_DIR / "models" / "miku_default_rvc"

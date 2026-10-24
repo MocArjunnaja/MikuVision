@@ -16,6 +16,8 @@ from ctypes import wintypes
 from pathlib import Path
 from typing import Optional, Dict, List
 
+from config import MIKU_EMOTION_FRAMES, MIKU_FRAME_H, MIKU_FRAME_W
+
 try:
     import win32api
     import win32con
@@ -28,8 +30,8 @@ except ImportError:
 # ══════════════════════════════════════
 #  CONFIG
 # ══════════════════════════════════════
-FRAME_W = 177
-FRAME_H = 213
+FRAME_W = MIKU_FRAME_W
+FRAME_H = MIKU_FRAME_H
 WIN_W = 220
 WIN_H = 250
 FPS_ANIM = 8
@@ -37,7 +39,9 @@ WALK_SPEED = 2
 FUCHSIA = (255, 0, 128)
 ALPHA_THR = 80
 
-# Animation sequences (frame indices from sprite sheet)
+# Animation sequences (frame indices from sprite sheet).
+# Hanya frame yang berisi gambar; sel 31-39, 52-59, 72-79, 92-99, 106-119
+# kosong sehingga avatar akan menghilang jika dirujuk.
 ANIMATIONS: Dict[str, List[int]] = {
     "idle_front": [0, 1, 2, 3, 4],
     "idle_side_r": [5, 6, 7, 8],
@@ -45,39 +49,28 @@ ANIMATIONS: Dict[str, List[int]] = {
     "idle_side_l": [12, 13, 14],
     "idle_extra": [15, 16, 17, 18, 19],
     "walk_right": [20, 21, 22, 23, 24, 25],
-    "walk_left": [26, 27, 28, 29, 30, 31],
-    "run_right": [32, 33, 34, 35],
-    "run_left": [36, 37, 38, 39],
+    "walk_left": [26, 27, 28, 29, 30],
     "jump_rise": [40, 41, 42],
     "jump_apex": [43, 44],
     "jump_fall": [45, 46, 47],
     "float": [48, 49, 50, 51],
-    "fly": [52, 53, 54, 55],
+    "fly": [64, 65, 66, 67, 68, 69],
     "attack_punch": [60, 61, 62],
     "attack_kick": [63, 64, 65],
     "attack_magic": [66, 67, 68, 69],
-    "action_misc": [70, 71, 72, 73, 74],
+    "action_misc": [70, 71],
     "hurt": [100, 101, 102],
     "knockback": [103, 104, 105],
-    "ko": [106, 107],
-    "crouch": [108, 109],
-    "sit": [110, 111],
     "sing": [120, 121, 122, 123],
     "celebrate": [124, 125, 126, 127],
     "dance": [128, 129, 130, 131],
     "perform": [132, 133, 134, 135],
+    **{f"emotion_{name}": frames for name, frames in MIKU_EMOTION_FRAMES.items()},
 }
 
 # State → animation mapping for emotion display
 EMOTION_ANIMATIONS: Dict[str, str] = {
-    "neutral": "idle_front",
-    "happy": "celebrate",
-    "excited": "dance",
-    "thinking": "crouch",
-    "confused": "sit",
-    "sad": "hurt",
-    "embarrassed": "idle_extra",
-    "annoyed": "action_misc",
+    **{name: f"emotion_{name}" for name in MIKU_EMOTION_FRAMES},
     "listening": "idle_side_r",
     "speaking": "sing",
 }
