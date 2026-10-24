@@ -854,21 +854,20 @@ class MikuGUIv4(ctk.CTk):
             self.message_queue.put(("avatar", emotion))
 
             if function_calls and self.system_control:
-                all_observations = []
+                results = []
                 for call in function_calls:
                     action = call.get("action", "")
                     params = call.get("params", {})
                     success, msg = self.system_control.execute_action(action, params)
                     icon = "✅" if success else "❌"
                     self._add_chat_message("System", f"{icon} {msg}", icon)
-                    all_observations.append(f"Action '{action}' result: {'SUKSES' if success else 'GAGAL'} - {msg}")
-                
-                # AGENTIC LOOP: Jika ada observasi, beri tahu AI untuk meresponnya
-                if all_observations:
-                    self._update_status("⏳ Checking observation...")
-                    combined_obs = "\n".join(all_observations)
-                    response, emotion = self.ai_brain.think_observation(combined_obs)
-                    self.message_queue.put(("avatar", emotion))
+                    results.append((action, f"{'SUKSES' if success else 'GAGAL'} - {msg}"))
+
+                # AGENTIC LOOP: hasil tool dicatat sebagai pesan role "tool", lalu AI melaporkannya
+                self.ai_brain.record_tool_results(results)
+                self._update_status("⏳ Checking observation...")
+                response, emotion = self.ai_brain.think_observation()
+                self.message_queue.put(("avatar", emotion))
 
             if response:
                 char = self.current_character

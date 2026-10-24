@@ -82,7 +82,9 @@ except ImportError:
 print(f"[Config] Whisper will use: {WHISPER_DEVICE}")
 
 # ============ Ollama/LLM Config ============
-OLLAMA_MODEL = "qwen3:4b"
+# qwen3:4b-instruct: 50/50 tool call tepat, median 0,9 s per balasan.
+# qwen3:4b (Thinking-2507) 30/30 tapi median 11,5 s. Lihat README "Pilihan model".
+OLLAMA_MODEL = "qwen3:4b-instruct"
 OLLAMA_BASE_URL = "http://localhost:11434"
 OLLAMA_NUM_CTX = 8192   # Persona + skema tool + 20 pesan history butuh > default Ollama
 # None = parameter think tidak dikirim: Ollama memisahkan penalaran model ke field

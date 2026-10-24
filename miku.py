@@ -216,12 +216,15 @@ class MikuCLI:
 
             # Execute function calls (system actions)
             if function_calls and self.system_control:
+                results = []
                 for call in function_calls:
                     action = call.get("action")
                     params = call.get("params", {})
                     success, msg = self.system_control.execute_action(action, params)
                     icon = "✅" if success else "❌"
                     print(f"[System] {icon} {msg}")
+                    results.append((action, f"{'SUKSES' if success else 'GAGAL'} - {msg}"))
+                self.ai_brain.record_tool_results(results)
 
             # Clean response for display
             clean_response = re.sub(r"\{[^}]*\}", "", response)
@@ -493,21 +496,19 @@ class MikuCLI:
 
         # Execute function calls (system actions)
         if function_calls and self.system_control:
-            all_observations = []
-            
+            results = []
             for call in function_calls:
                 action = call.get("action")
                 params = call.get("params", {})
                 success, msg = self.system_control.execute_action(action, params)
                 icon = "✅" if success else "❌"
                 print(f"[System] {icon} {msg}")
-                all_observations.append(f"Action '{action}' result: {'SUKSES' if success else 'GAGAL'} - {msg}")
-                
-            # AGENTIC LOOP: Jika ada observasi, beri tahu AI untuk meresponnya
-            if all_observations:
-                print("⏳ Agent is thinking about the observation...")
-                combined_obs = "\n".join(all_observations)
-                response, emotion = self.ai_brain.think_observation(combined_obs)
+                results.append((action, f"{'SUKSES' if success else 'GAGAL'} - {msg}"))
+
+            # AGENTIC LOOP: hasil tool dicatat sebagai pesan role "tool", lalu AI melaporkannya
+            self.ai_brain.record_tool_results(results)
+            print("⏳ Agent is thinking about the observation...")
+            response, emotion = self.ai_brain.think_observation()
 
         # Clean and display response
         clean_response = re.sub(r"\{[^}]*\}", "", response)

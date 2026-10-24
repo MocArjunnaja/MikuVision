@@ -65,23 +65,31 @@ class MemoryManager:
         )
         print(f"[Memory] Session started: {self.session_id}")
     
-    def add_message(self, role: str, content: str, emotion: Optional[str] = None):
+    def add_message(
+        self,
+        role: str,
+        content: str,
+        emotion: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
         """
         Tambah pesan ke memori.
-        
+
         Args:
-            role: "user" atau "assistant"
+            role: "user", "assistant", atau "tool"
             content: Isi pesan
             emotion: Emosi yang terdeteksi (untuk assistant)
+            metadata: {"tool_calls": [...]} untuk assistant, {"tool_name": ...} untuk tool
         """
         if not self.current_context:
             self.start_session("unknown")
-        
+
         message = Message(
             role=role,
             content=content,
             timestamp=datetime.now().isoformat(),
-            emotion=emotion
+            emotion=emotion,
+            metadata=metadata,
         )
         
         self.current_context.messages.append(message)
@@ -106,15 +114,27 @@ class MemoryManager:
         Get messages dalam format yang siap untuk prompt LLM.
         
         Returns:
-            List of {"role": str, "content": str}
+            List of {"role", "content"} plus "tool_calls" / "tool_name" bila ada.
+            Giliran tool call harus tetap berformat tool_calls: kalau hanya disimpan
+            sebagai content kosong, model kecil berhenti memanggil tool di giliran berikutnya.
         """
         if not self.current_context:
             return []
-        
-        return [
-            {"role": msg.role, "content": msg.content}
-            for msg in self.current_context.messages
-        ]
+
+        context = []
+        for msg in self.current_context.messages:
+            entry = {"role": msg.role, "content": msg.content}
+            meta = msg.metadata or {}
+            if meta.get("tool_calls"):
+                entry["tool_calls"] = meta["tool_calls"]
+            if msg.role == "tool":
+                entry["tool_name"] = meta.get("tool_name", "")
+            context.append(entry)
+
+        # Trim bisa menyisakan hasil tool tanpa giliran assistant pemanggilnya
+        while context and context[0]["role"] == "tool":
+            context.pop(0)
+        return context
     
     def get_recent_messages(self, count: int = 5) -> List[Message]:
         """Get N pesan terakhir"""

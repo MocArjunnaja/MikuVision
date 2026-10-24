@@ -26,11 +26,11 @@ Kamu adalah AI UI-Agent Otonom yang mengendalikan sistem komputer.
 【ATURAN SANGAT PENTING - AGENTIC LOOP & KOMUNIKASI】
 1. Jika user meminta sebuah perintah (buka youtube, mute volume, dll), PANGGIL fungsi tool yang sesuai.
 2. JANGAN menebak URL specifik Youtube!! Gunakan tool `youtube_search` saja.
-3. KETIKA kamu menerima observasi sistem (System Observation), beritahu pengguna hasilnya.
+3. Setelah menerima hasil tool (pesan role tool), beritahu pengguna hasilnya.
 4. SELALU mulai kalimat respons akhirmu dengan tag emosi. Emosi: neutral, happy, excited, thinking, confused, sad, embarrassed, annoyed.
 5. [TOLERANSI TYPO]: Pengguna menggunakan Voice-to-Text (A.I. Transcription). Maklumi jika ada kata-kata yang typo, terdengar salah, atau fonetiknya mirip (misal: "buka kron" -> maksudnya "buka chrome", "krim we a" -> "kirim WA"). Tarik kesimpulan logis dari maksud aslinya!
 6. [FEEDBACK LOOP]: Jika perintah pengguna kurang jelas, terlalu ambigu, atau kekurangan parameter (misal: "tolong kirim pesan ini" tanpa menyebut nama / "tolong cari video" tanpa memberi judul), JANGAN MENEBAK ASAL. Bertanyalah kepada pengguna dengan ramah untuk memperjelas konteks sebelum mengeksekusi tool. Buat percakapan mengalir (Two-way communication).
-7. [JANGAN KLAIM PALSU]: Jangan pernah bilang aksi "sudah dibuka/ditutup/diatur" tanpa memanggil tool. Laporkan hasil hanya setelah menerima System Observation. Jika tidak ada tool yang cocok, katakan jujur bahwa kamu belum bisa melakukannya.
+7. [JANGAN KLAIM PALSU]: Jika user meminta aksi, panggil tool-nya SAAT ITU JUGA, jangan menunggu apa pun. Jangan pernah bilang aksi "akan/sudah dibuka/ditutup/diatur" tanpa memanggil tool. Jika tidak ada tool yang cocok, katakan jujur bahwa kamu belum bisa melakukannya.
 8. Hanya pakai tool yang ada di definisi tools, dengan nama fungsi dan nama parameter persis seperti definisinya.
 """
 
@@ -40,17 +40,52 @@ FUNCTION_CALL_PROMPT_JA = f"""
 【非常に重要なルール - AGENTIC LOOP & COMMUNICATION】
 1. ユーザーからシステム操作の依頼（Microsoft Edgeを開く、フォルダを開く、WhatsAppを送る、Wordを作るなど）があった場合、絶対に会話だけで終わらせず、必ず備え付けの「tool機能(関数)」を呼び出して実行してください。
 2. 動画URLなどを推測することは禁止です。「youtube_search」等のtoolを使ってください。
-3. システムから「System Observation (システムからの観察結果)」を受け取った時は、その結果をユーザーに報告してください。
+3. ツールの実行結果（tool メッセージ）を受け取った時は、その結果をユーザーに報告してください。
 4. 常に返答の最初に感情タグを付けてください。(例: [EMOTION:happy] わかりました！実行します！)
 5. 【絶対厳守】: あなたのセリフ（返答）は必ず自然な「日本語」のみで行い、インドネシア語や中国語でのテキスト生成は絶対に避けてください。
 6. [音声入力の許容]: ユーザーは音声認識(Voice-to-Text)を使用しています。誤字脱字や発音が似た単語の間違い(例: "chrome" が "kron" になる等)がある場合、元の意図を文脈から推測してください。
 7. [フィードバックループ]: ユーザーの指示が曖昧だったり、必要な情報が不足している場合（例: 名前を指定せずに「メッセージを送って」と言うなど）、ツールを無理に実行せずにユーザーに優しく質問を返して詳細を確認してください。一方通行ではなく、自然な会話のキャッチボールを心がけてください。
-8. 【嘘の完了報告の禁止】: ツールを呼び出さずに「開きました」「閉じました」「設定しました」など、操作が完了したと言ってはいけません。System Observation で結果を受け取ってから報告してください。対応するツールがない操作は、正直に「それはまだできないよ」と伝えてください。
+8. 【嘘の完了報告の禁止】: 操作を頼まれたら、何も待たずにその場で必ずツールを呼び出してください。ツールを呼び出さずに「開くね」「閉じました」「設定します」などと言ってはいけません。対応するツールがない操作は、正直に「それはまだできないよ」と伝えてください。
 9. 使えるツールは関数定義(tools)に書かれているものだけです。関数名と引数名は定義どおりに使ってください。
 """
 
 # Default (for backward compatibility)
 FUNCTION_CALL_PROMPT = FUNCTION_CALL_PROMPT_ID
+
+
+# Janji/klaim aksi tanpa tool call: "メモ帳を開きますね！", "Aku akan membuka Notepad"
+_ACTION_CLAIM_JA = re.compile(
+    r"(開|閉|設定|検索|再生|停止|変更|作成|送信|下げ|上げ|起動|終了|調整|ミュート)[^。！!？?\n]{0,6}(ます|ました)"
+    r"|を[^。！!？?\n]{0,10}に(します|しました)"  # 音量を30にします
+)
+_ACTION_CLAIM_ID = re.compile(
+    r"\b(akan|sudah|telah|berhasil)\b[^.!?\n]{0,25}\b(mem|men|meng|meny|me)\w+", re.IGNORECASE
+)
+MISSED_TOOL_RETRY = (
+    "You described a computer action but did not call a tool. If the user's last message "
+    "asks for an action, call the matching tool now. Otherwise answer normally."
+)
+MISSED_TOOL_NUDGE = (
+    "If the next user message asks for a computer action, you MUST respond with the matching "
+    "tool call right away. Do not just say you will do it or that it is done."
+)
+
+
+# Permintaan aksi dari user: "電卓を閉じて", "音量を30にして", "buka notepad", "open chrome"
+_ACTION_REQUEST = re.compile(
+    r"(開いて|開けて|閉じて|消して|止めて|下げて|上げて|検索して|探して|再生して|起動して|にして|ミュート)"
+    r"|\b(buka|tutup|kecilkan|besarkan|naikkan|turunkan|cari|carikan|putar|matikan|nyalakan|mute|unmute"
+    r"|open|close|search|play|pause|mute)\b",
+    re.IGNORECASE,
+)
+
+
+def _claims_action(text: str) -> bool:
+    return bool(_ACTION_CLAIM_JA.search(text) or _ACTION_CLAIM_ID.search(text))
+
+
+def _requests_action(text: str) -> bool:
+    return bool(_ACTION_REQUEST.search(text))
 
 
 def _strip_thinking(text: str) -> str:
@@ -192,8 +227,9 @@ class AIBrain:
             elif isinstance(models, dict) and 'models' in models:
                 model_list = [m.get('name', '') for m in models.get('models', [])]
             
-            model_base = self.model.split(':')[0]
-            model_found = any(model_base in name for name in model_list)
+            # Cocokkan tag persis: "qwen3:4b" terpasang tidak berarti "qwen3:4b-instruct" ada
+            wanted = {self.model, f"{self.model}:latest"}
+            model_found = any(name in wanted for name in model_list)
             
             if not model_found:
                 return False, f"Model '{self.model}' tidak ditemukan. Jalankan: ollama pull {self.model}"
@@ -306,7 +342,7 @@ class AIBrain:
 
         return unique_calls, clean_response
 
-    def _chat(self, messages: List[Dict[str, str]]):
+    def _chat(self, messages: List[Dict[str, str]], temperature: float = 0.7):
         """Kirim percakapan ke Ollama beserta skema tool."""
         think_kwargs = {} if OLLAMA_THINK is None else {"think": OLLAMA_THINK}
         return self.client.chat(
@@ -315,7 +351,7 @@ class AIBrain:
             tools=registry.get_all_tools_schema(),
             **think_kwargs,
             options={
-                "temperature": 0.7,
+                "temperature": temperature,
                 "top_p": 0.9,
                 # Default context Ollama terlalu kecil untuk persona + skema tool + history
                 "num_ctx": OLLAMA_NUM_CTX,
@@ -347,13 +383,39 @@ class AIBrain:
             # Parse function calls dari tools metadata
             function_calls, clean_response = self._parse_function_calls(response_msg)
 
+            # Model kecil kadang hanya berjanji ("メモ帳を開きますね！", "閉じたよ！") tanpa
+            # memanggil tool. Coba sekali lagi bila user meminta aksi atau model mengklaimnya.
+            if not function_calls and (_requests_action(user_input) or _claims_action(clean_response)):
+                # Dua strategi, berhenti di yang pertama berhasil. Hasil benchmark: (1) unggul
+                # di perintah tunggal, (2) unggul di tengah percakapan yang sudah memuat tool call.
+                retry_attempts = (
+                    # (1) Tunjukkan balasan yang gagal, lalu ingatkan
+                    (messages + [{"role": "assistant", "content": response_text},
+                                 {"role": "system", "content": MISSED_TOOL_RETRY}], 0.7),
+                    # (2) Ulang dari awal: pengingat tepat sebelum permintaan user, lebih deterministik
+                    (messages[:-1] + [{"role": "system", "content": MISSED_TOOL_NUDGE}, messages[-1]], 0.2),
+                )
+                for retry_messages, retry_temperature in retry_attempts:
+                    retry_msg = self._chat(retry_messages, temperature=retry_temperature).get('message', {})
+                    retry_calls, retry_clean = self._parse_function_calls(retry_msg)
+                    if retry_calls:
+                        response_msg, function_calls, clean_response = retry_msg, retry_calls, retry_clean
+                        response_text = _strip_thinking(retry_msg.get('content', '') or '')
+                        break
+
             # Detect emotion
             emotion, clean_response = self.emotion_detector.detect_emotion(clean_response)
 
             # Update memory
             if self.memory:
                 self.memory.add_message("user", user_input)
-                self.memory.add_message("assistant", response_text, emotion.name)
+                tool_meta = None
+                if function_calls:
+                    tool_meta = {"tool_calls": [
+                        {"function": {"name": c["action"], "arguments": c.get("params") or {}}}
+                        for c in function_calls
+                    ]}
+                self.memory.add_message("assistant", response_text, emotion.name, metadata=tool_meta)
             else:
                 # Fallback history
                 self.conversation_history.append({"role": "user", "content": user_input})
@@ -381,18 +443,32 @@ class AIBrain:
 
         except Exception as e:
             return f"Error: {e}", [], "confused"
-    def think_observation(self, observation_text: str) -> Tuple[str, str]:
+    def record_tool_results(self, results: List[Tuple[str, str]]):
+        """Simpan hasil eksekusi tool [(action, pesan_hasil)] sebagai pesan role 'tool'."""
+        for action, text in results:
+            if self.memory:
+                self.memory.add_message("tool", text, metadata={"tool_name": action})
+            else:
+                self.conversation_history.append({"role": "tool", "content": text, "tool_name": action})
+
+    def think_observation(self, observation_text: Optional[str] = None) -> Tuple[str, str]:
         """
-        Agentic Loop: Memberikan hasil observasi terminal/action ke LLM agar bisa direspon
+        Agentic Loop: minta LLM melaporkan hasil tool ke user.
+
+        Tanpa argumen, hasil tool diambil dari pesan role 'tool' yang dicatat lewat
+        record_tool_results(). Dengan argumen, observasi dikirim sebagai pesan user (cara lama).
         """
         if not self.client:
             return "Error: AI belum diinisialisasi", "neutral"
-            
+
         try:
-            # Observasi dari sistem bertindak sebagai pesan user
-            observation_msg = f"System Observation:\n{observation_text}\nSilakan beritahu pengguna mengenai hasil ini."
-            
-            messages = self._build_messages(observation_msg)
+            observation_msg = None
+            if observation_text is None:
+                context = self.memory.get_context_for_prompt() if self.memory else self.conversation_history
+                messages = [{"role": "system", "content": self._build_system_prompt()}] + context
+            else:
+                observation_msg = f"System Observation:\n{observation_text}\nSilakan beritahu pengguna mengenai hasil ini."
+                messages = self._build_messages(observation_msg)
             response = self._chat(messages)
 
             print(f"\n[DEBUG AIBrain Observation] RAW Ollama output:\n{response}\n")
@@ -408,10 +484,12 @@ class AIBrain:
 
             # Update memory
             if self.memory:
-                self.memory.add_message("user", observation_msg)
+                if observation_msg:
+                    self.memory.add_message("user", observation_msg)
                 self.memory.add_message("assistant", response_text, emotion.name)
             else:
-                self.conversation_history.append({"role": "user", "content": observation_msg})
+                if observation_msg:
+                    self.conversation_history.append({"role": "user", "content": observation_msg})
                 self.conversation_history.append({"role": "assistant", "content": response_text})
                 
                 if len(self.conversation_history) > self.max_history * 2:
