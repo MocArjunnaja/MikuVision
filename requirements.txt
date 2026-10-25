@@ -1,4 +1,4 @@
-# MikuWin v11 Requirements (Python 3.10+, Windows)
+# MikuVision requirements (Python 3.10+, Windows)
 
 # ── Core AI ──
 ollama>=0.5.0            # >=0.5 dibutuhkan untuk parameter think=

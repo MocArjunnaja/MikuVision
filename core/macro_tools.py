@@ -6,7 +6,6 @@ from config import DATA_DIR
 from core.tools import registry
 import pyautogui
 import time
-import subprocess
 
 try:
     from docx import Document
@@ -25,7 +24,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 CONTACTS_DB_PATH = DATA_DIR / "contacts_db.json"
 
 class MacroTools:
-    """Kumpulan Makro (High-Level Actions) untuk MikuWin v10"""
+    """Kumpulan Makro (High-Level Actions) untuk MikuVision"""
 
     def __init__(self):
         pass
@@ -171,7 +170,7 @@ class MacroTools:
             # Load Database Kontak (JSON)
             contacts_db_path = CONTACTS_DB_PATH
             if not contacts_db_path.exists():
-                return f"Gagal: Database kontak (contacts_db.json) tidak ditemukan di folder data. Silakan parse CSV Anda dulu."
+                return "Gagal: Database kontak (contacts_db.json) tidak ditemukan di folder data. Silakan parse CSV Anda dulu."
             
             with open(contacts_db_path, "r", encoding="utf-8") as f:
                 contacts = json.load(f)

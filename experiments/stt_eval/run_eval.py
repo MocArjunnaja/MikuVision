@@ -1,4 +1,4 @@
-"""Ukur pipeline STT MikuWin pada set uji. Jalankan dari root repo: python run_eval.py <dir_set> <label>."""
+"""Ukur pipeline STT MikuVision pada set uji. Jalankan dari root repo: python run_eval.py <dir_set> <label>."""
 import json, re, statistics, sys, time, types, unicodedata
 from pathlib import Path
 sys.path.insert(0, ".")

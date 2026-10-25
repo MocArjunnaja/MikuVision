@@ -7,7 +7,6 @@ import json
 import re
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, List, Tuple
-import ollama
 from ollama import Client
 
 from config import (
@@ -24,7 +23,7 @@ from core import routines  # mendaftarkan tool run_routine/list_routines
 from core.skills import select_skills, tool_names
 
 # Function call prompts per language
-FUNCTION_CALL_PROMPT_ID = f"""
+FUNCTION_CALL_PROMPT_ID = """
 Kamu adalah AI UI-Agent Otonom yang mengendalikan sistem komputer.
 
 【ATURAN SANGAT PENTING - AGENTIC LOOP & KOMUNIKASI】
@@ -38,7 +37,7 @@ Kamu adalah AI UI-Agent Otonom yang mengendalikan sistem komputer.
 8. Hanya pakai tool yang ada di definisi tools, dengan nama fungsi dan nama parameter persis seperti definisinya.
 """
 
-FUNCTION_CALL_PROMPT_JA = f"""
+FUNCTION_CALL_PROMPT_JA = """
 あなたはシステムを制御するAIアシスタント(Autonomous UI-Agent)です。
 
 【非常に重要なルール - AGENTIC LOOP & COMMUNICATION】
@@ -686,7 +685,7 @@ if __name__ == "__main__":
         print(f"Error: {msg}")
         exit(1)
     
-    print(f"\n=== AI Brain v2 Test ===")
+    print("\n=== AI Brain Test ===")
     print(f"Character: {brain.get_character().display_name}")
     
     greeting, emotion = brain.get_greeting()

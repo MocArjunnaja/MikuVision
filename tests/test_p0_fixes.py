@@ -1,6 +1,5 @@
 """Regression tests untuk perbaikan P0."""
 
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -272,7 +271,6 @@ def test_action_claim_without_tool_is_retried_once(tmp_path):
 
     assert calls == [{"action": "open_application", "params": {"app_name": "notepad"}}]
     assert brain.client.chat.call_count == 2
-    nudge = brain.client.chat.call_args.kwargs["messages"][-1]
     sent = brain.client.chat.call_args.kwargs["messages"]
     assert sent[-1]["role"] == "system" and "did not call a tool" in sent[-1]["content"]
 

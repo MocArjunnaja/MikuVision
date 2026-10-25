@@ -1,5 +1,5 @@
 """
-MikuWin v4 GUI - Hatsune Miku Edition
+MikuVision GUI - Hatsune Miku Edition
 """
 
 import customtkinter as ctk
@@ -188,14 +188,14 @@ class MikuSpriteAnimator:
 
 class MikuGUIv4(ctk.CTk):
     """
-    Main GUI Window untuk MikuWin v4 (Miku-only).
-    Backend sama dengan v3, tetapi UI avatar memakai sprite Hatsune Miku.
+    Main GUI Window untuk MikuVision (Miku-only).
+    UI avatar memakai sprite Hatsune Miku.
     """
 
     def __init__(self):
         super().__init__()
 
-        self.title("MikuWin v4 - Hatsune Miku")
+        self.title("MikuVision - Hatsune Miku")
         self.geometry("900x680")
         self.minsize(700, 520)
 
@@ -302,7 +302,7 @@ class MikuGUIv4(ctk.CTk):
         )
         self.emotion_label.pack(pady=(0, 10))
 
-        # RVC status — NEW in v3
+        # RVC status
         self.rvc_status_label = ctk.CTkLabel(
             self.avatar_frame,
             text="🔵 RVC: initializing...",
@@ -454,7 +454,7 @@ class MikuGUIv4(ctk.CTk):
         return result["approved"]
 
     # ─────────────────────── Character mode ───────────────────────
-    # v4 intentionally keeps a single character: Hatsune Miku.
+    # MikuVision intentionally keeps a single character: Hatsune Miku.
 
     # ─────────────────────── Initialization ───────────────────────
 

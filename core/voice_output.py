@@ -1,13 +1,12 @@
 """
-Voice Output Module v4 - Text-to-Speech Lokal (MeloTTS) dengan RVC Voice Conversion
+Voice Output Module - Text-to-Speech Lokal (MeloTTS) dengan RVC Voice Conversion
 Pipeline: Text -> MeloTTS (100% Offline) -> [RVC Conversion] -> Playback
 """
 
 import os
 import uuid
 import threading
-from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional
 
 try:
     from melo.api import TTS
@@ -15,7 +14,7 @@ except ImportError:
     print("[VoiceOutput] Warning: MeloTTS module not found. Did you install it?")
     TTS = None
 
-from config import TTS_VOICE, TTS_RATE, TTS_PITCH, AUDIO_DIR, Character
+from config import AUDIO_DIR, Character
 from core.voice_converter import VoiceConverter
 
 
@@ -23,7 +22,7 @@ class VoiceOutput:
     """
     Text-to-Speech with optional RVC voice conversion.
 
-    v4 pipeline (Offline Lokal):
+    Pipeline (offline, lokal):
     1. MeloTTS generates base audio (WAV) via CPU
     2. If RVC converter is available, convert to character voice (WAV)
     3. Play the result
@@ -89,7 +88,7 @@ class VoiceOutput:
             cleaned_text = re.sub(r'[™®©\[\]{}<>\-_~@#$%^&*+=|\\/]', '', cleaned_text)
 
             if not cleaned_text.strip():
-                print(f"[VoiceOutput] Text kosong setelah distrip karakter asing. Skip TTS.")
+                print("[VoiceOutput] Text kosong setelah distrip karakter asing. Skip TTS.")
                 return False
 
             print(f"[VoiceOutput] Safe Text: {cleaned_text[:50]}...")

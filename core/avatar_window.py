@@ -1,12 +1,11 @@
 #!/usr/bin/env python
 """
-MikuWin v4 — Avatar Window (Sprite Display)
+MikuVision — Avatar Window (Sprite Display)
 Pygame-based animated sprite mascot window, based on My_Miku_v3 concept.
 Runs in background thread, safe for CLI voice mode.
 """
 
 import pygame
-import sys
 import os
 import time
 import random
@@ -409,10 +408,6 @@ class AvatarWindow:
             print("[avatar_window] Left-click = drag  |  Right-click = menu  |  ESC = exit")
 
             while self.running:
-                # Check emotion update
-                with self._emotion_lock:
-                    current_emotion = self.emotion
-
                 # Global mouse tracking for "Drag Anywhere" in bounding box
                 # Because LWA_COLORKEY drops clicks on transparent pixels, this catches them
                 if WINDOWS_API_AVAILABLE:

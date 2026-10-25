@@ -1,6 +1,6 @@
-# Contoh routine MikuWin.
+# Contoh routine MikuVision.
 # Salin ke data/routines.yaml lalu ubah sesuai kebiasaan Anda (file itu tidak ikut git).
-# Setiap langkah adalah satu tool MikuWin; aksi berisiko tetap meminta konfirmasi.
+# Setiap langkah adalah satu tool MikuVision; aksi berisiko tetap meminta konfirmasi.
 # Jalankan dengan ucapan "jalankan mode belajar" / "勉強モードにして" atau `/routine mode belajar`.
 
 routines:

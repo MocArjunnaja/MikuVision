@@ -4,8 +4,7 @@ Inspired by Amadeus project emotional system
 """
 
 import re
-from typing import Optional, Tuple
-from dataclasses import dataclass
+from typing import Tuple
 from config import EMOTIONS, Emotion
 
 

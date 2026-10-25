@@ -9,11 +9,9 @@ import os
 import re
 import shutil
 from typing import Optional, Tuple, Dict, Any, List
-from ctypes import cast, POINTER
-from comtypes import CLSCTX_ALL
 
 try:
-    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume  # noqa: F401  (cek ketersediaan)
     import pyautogui
     import pygetwindow as gw
     import psutil
@@ -331,7 +329,6 @@ class SystemControl:
     def open_folder(self, folder_name_or_path: str) -> Tuple[bool, str]:
         """Open a directory/folder using Windows Explorer"""
         import os
-        from pathlib import Path
         
         path = folder_name_or_path.strip()
         
@@ -530,7 +527,7 @@ class SystemControl:
             action_type = action_type.lower()
             if action_type in ["play", "pause", "play_pause", "playpause", "toggle"]:
                 pyautogui.press("playpause")
-                return True, f"Play/Pause status media saat ini ditekan."
+                return True, "Play/Pause status media saat ini ditekan."
             elif action_type in ["next", "berikutnya", "skip"]:
                 pyautogui.press("nexttrack")
                 return True, "Memutar lagu/video selanjutnya."
@@ -562,7 +559,7 @@ class SystemControl:
             if windows:
                 windows[0].activate()
                 return True, f"Fokus ke window: {windows[0].title}"
-            return False, f"Window tidak ditemukan"
+            return False, "Window tidak ditemukan"
         except Exception as e:
             return False, f"Error: {e}"
     

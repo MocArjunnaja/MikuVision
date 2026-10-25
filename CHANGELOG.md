@@ -6,7 +6,22 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
-## [Belum dirilis] Dokumen Word dibuat beserta isinya
+## v1.2.0 (2026-10-25): nama MikuVision di aplikasi, kode dibersihkan
+
+### Diubah
+- Judul jendela GUI "MikuWin v4 - Hatsune Miku" → "MikuVision - Hatsune Miku". Label versi lama (v3, v4, v5, v10, v11) di log, docstring, `--help`, dan `requirements.txt` diganti nama MikuVision; versi aplikasi cukup dicatat di tag rilis dan CHANGELOG.
+- Screenshot GUI di README diperbarui.
+- README: fitur STT/dokumen Word, contoh perintah dokumen, folder benchmark `experiments/`, troubleshooting salah dengar.
+
+### Dihapus
+- File sisa eksperimen di root repo: `inject.py` (menambal `config.py` di path `E:/` lama), `test_regex.py`, `test_yt.py`, `youtube_res.html` (halaman YouTube 1,1 MB), dan `setup.bat` (petunjuk lama: torch cu118, edge-tts; digantikan `install.bat`).
+- Konfigurasi edge-tts yang tak terpakai (`TTS_VOICE`, `TTS_RATE`, `TTS_PITCH`).
+- 25 import tak terpakai, 7 f-string tanpa placeholder, dan 3 variabel tak terpakai (temuan `ruff --select F`). Import untuk cek ketersediaan modul diberi `# noqa: F401`.
+
+### Pengujian
+- `ruff check --select F,E9`: bersih. 172 unit test lulus, `miku.py --test` lulus, judul jendela GUI dicek.
+
+## v1.2.0 (2026-10-25): dokumen Word dibuat beserta isinya
 
 Detail: `experiments/word_tool/RESULTS.md`. Pemicunya sesi GUI 25 Okt: "buatkan dokumen Word … Hukum Newton" hanya dijawab obrolan, lalu ulangan singkatnya hanya membuka Word kosong.
 
@@ -28,7 +43,7 @@ Detail: `experiments/word_tool/RESULTS.md`. Pemicunya sesi GUI 25 Okt: "buatkan 
 
 - 172 unit test lulus (12 baru di `tests/test_word_document_tool.py`).
 
-## [Belum dirilis] Akurasi STT: deteksi bahasa sekali, pembersihan teks Whisper
+## v1.2.0 (2026-10-25): akurasi STT, deteksi bahasa sekali dan pembersihan teks Whisper
 
 Detail, skrip uji, dan semua angka: `experiments/stt_eval/RESULTS.md`.
 
@@ -63,7 +78,7 @@ Detail, skrip uji, dan semua angka: `experiments/stt_eval/RESULTS.md`.
 
 **Keterbatasan:** suara uji sintetis lebih jernih dari suara asli. Untuk mengumpulkan kasus gagal nyata, nyalakan `DEBUG_DUMP_AUDIO` sementara.
 
-## 2026-10-25: installer satu langkah, RVC jalan di instalasi baru
+## v1.1.0 (2026-10-25): installer satu langkah, RVC jalan di instalasi baru
 
 ### Ditambahkan
 - `install.ps1` + `install.bat` (double-click): instalasi tanpa Anaconda.

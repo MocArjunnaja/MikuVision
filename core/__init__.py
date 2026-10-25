@@ -1,5 +1,5 @@
 """
-Core modules for MikuWin v3
+Core modules for MikuVision
 """
 
 from .ai_brain import AIBrain

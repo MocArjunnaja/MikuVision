@@ -4,7 +4,7 @@ Slash commands - perintah langsung tanpa melewati LLM (cepat dan pasti).
 Dipakai mode teks (miku.py --text) dan kolom input GUI.
 """
 
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional
 
 from core import long_term_memory
 from core.ai_brain import AIBrain
