@@ -1,4 +1,4 @@
-"""Set uji STT: frasa perintah MikuWin via edge-tts, versi bersih dan versi mic laptop (derau + volume kecil)."""
+"""Set uji STT: frasa perintah MikuVision via edge-tts, versi bersih dan versi mic laptop (derau + volume kecil)."""
 import asyncio, io, json, sys
 from pathlib import Path
 import edge_tts, numpy as np, soundfile as sf

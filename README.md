@@ -28,8 +28,8 @@ Mendengar suara Anda, berpikir dengan LLM lokal, menjalankan aksi di komputer, l
 
 | | |
 |---|---|
-| **Suara dua arah** | Faster-Whisper `large-v3-turbo` untuk mendengar, MeloTTS Jepang + RVC untuk timbre khas Miku |
-| **Aksi di komputer** | Volume, buka aplikasi/folder/situs, YouTube, Word/PowerPoint, WhatsApp/Telegram, keyboard shortcut |
+| **Suara dua arah** | Faster-Whisper `large-v3-turbo` mendengar bahasa Jepang dan Indonesia (bahasa dideteksi otomatis, halusinasi Whisper dibuang), MeloTTS Jepang + RVC untuk timbre khas Miku |
+| **Aksi di komputer** | Volume, buka aplikasi/folder/situs, YouTube, dokumen Word/PowerPoint lengkap dengan isinya, WhatsApp/Telegram, keyboard shortcut |
 | **LLM lokal** | `qwen3:4b-instruct` lewat Ollama dengan tool calling: 50/50 tool call tepat, median 0,9 s di RTX 4050 |
 | **Aman** | Aksi berisiko (kirim pesan, menutup aplikasi) selalu minta konfirmasi; aplikasi ditutup lewat `WM_CLOSE`, bukan kill paksa |
 | **Ingatan** | Memori jangka panjang (`"ingat ya, ..."`), lanjutkan sesi lama, penghitung token dari Ollama |
@@ -41,8 +41,8 @@ Mendengar suara Anda, berpikir dengan LLM lokal, menjalankan aksi di komputer, l
 
 ```mermaid
 flowchart LR
-    A[Mikrofon] --> B[WebRTC VAD<br>+ noise reduction]
-    B --> C[Faster-Whisper<br>STT]
+    A[Mikrofon] --> B[WebRTC VAD]
+    B --> C[Faster-Whisper STT<br>deteksi bahasa ja/id]
     C --> D[Ollama LLM<br>+ tool calling]
     D -->|aksi| E[Tool Windows<br>konfirmasi bila berisiko]
     E --> D
@@ -172,7 +172,9 @@ Bila drive C sempit, buat variabel environment user `HF_HOME` (misalnya `D:\hf_h
 
 Dengan installer, ganti `python` dengan `.venv\Scripts\python.exe`.
 
-**Contoh perintah:** "buka notepad", "kecilkan volume ke 30", "carikan lagu Yorushika di YouTube", "buka folder Downloads", "ingat ya, aku kuliah di ITS".
+**Contoh perintah:** "buka notepad", "kecilkan volume ke 30", "carikan lagu Yorushika di YouTube", "buka folder Downloads", "buatkan dokumen Word tentang Hukum Newton beserta rumusnya", "ingat ya, aku kuliah di ITS".
+
+Miku membalas dalam bahasa Jepang, tapi isi dokumen yang dibuatnya mengikuti bahasa permintaan Anda.
 
 > [!IMPORTANT]
 > Aksi berisiko (kirim WhatsApp/Telegram, menutup aplikasi) **selalu meminta konfirmasi**: `y/n` di mode teks, jawaban "ya/はい" di mode suara, atau dialog Yes/No di GUI.
@@ -238,7 +240,7 @@ Catatan teknis:
 - Memori jangka panjang di `data/long_term_memory.json`. Isi lewat ucapan seperti "ingat ya, aku kuliah di ITS" atau "誕生日を覚えておいて", hapus dengan "lupakan …" / "…を忘れて".
 - Dokumen buatan Miku tersimpan di `Desktop/Miku_Documents/` milik user yang sedang login.
 - Fitur WhatsApp memakai `data/contacts_db.json` berformat `{"nama": "62812xxxx"}` (buat sendiri).
-- Rekaman mic tidak disimpan. Untuk debugging audio, set `DEBUG_DUMP_AUDIO = True` di `config.py`.
+- Rekaman mic tidak disimpan. Untuk debugging audio, set `DEBUG_DUMP_AUDIO = True` di `config.py`; rekaman lalu tersimpan di `data/debug_audio/`.
 - Seluruh `data/` diabaikan git dan tidak pernah ikut di-commit.
 
 ## Pengembangan
@@ -252,6 +254,14 @@ pytest
 
 Test tidak membutuhkan mikrofon, GPU, maupun Ollama. Catatan perubahan, angka pengujian, dan keputusan teknis ada di [CHANGELOG.md](CHANGELOG.md).
 
+Benchmark yang butuh GPU/Ollama ada di `experiments/` beserta hasilnya (`RESULTS.md`):
+
+| Folder | Mengukur |
+|---|---|
+| `experiments/stt_eval/` | Akurasi STT Jepang/Indonesia, suara bersih dan mic laptop berderau |
+| `experiments/word_tool/` | Permintaan dokumen Word → `create_word_document` dengan isi |
+| `experiments/vision_phase0/` | Rencana agent visi: UI Automation, OCR, pemilihan elemen oleh model visi |
+
 ## Troubleshooting
 
 | Gejala | Solusi |
@@ -264,6 +274,8 @@ Test tidak membutuhkan mikrofon, GPU, maupun Ollama. Catatan perubahan, angka pe
 | `RVC unavailable` | Model RVC belum diletakkan, atau `rvc-python` gagal dipasang. Lihat [Suara Miku (RVC)](#suara-miku-rvc) |
 | `webrtcvad` gagal di-install | Pastikan memakai paket `webrtcvad-wheels` dari `requirements.txt` |
 | Whisper sangat lambat | Tanpa GPU, ganti `WHISPER_MODEL` di `config.py` ke `small` |
+| Ucapan sering salah dengar | Set `DEBUG_DUMP_AUDIO = True`, ulangi ucapannya, lalu cek rekaman di `data/debug_audio/` dan baris `[VoiceInput] Bahasa: …` di log |
+| Ucapan bahasa Inggris sering salah | Deteksi bawaan hanya `ja` dan `id`. Tambahkan `"en"` ke `WHISPER_LANGUAGES` di `config.py` |
 
 ## Lisensi & kredit
 

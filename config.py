@@ -1,10 +1,10 @@
 """
-MikuWin v4 Configuration
+MikuVision configuration
 Miku-only edition with RVC voice and sprite-based UI.
 """
 
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 # ============ Paths ============
@@ -24,7 +24,7 @@ ROUTINES_FILE = DATA_DIR / "routines.yaml"
 # Kirim hanya skema tool dari skill yang relevan (lihat core/skills.py)
 SKILL_ROUTING = True
 
-# Sprite-sheet UI assets for v4 GUI
+# Sprite-sheet UI assets for the GUI
 MIKU_SPRITE_SHEET = AVATAR_DIR / "miku_smart_sheet.png"
 # Sheet 3540x1491 = 20 kolom x 7 baris. Baris 1-5 hanya terisi sebagian,
 # sel sisanya transparan kosong (lihat tests/test_sprite_frames.py).
@@ -108,11 +108,6 @@ OLLAMA_NUM_CTX = 8192   # Persona + skema tool + 20 pesan history butuh > defaul
 # menaruh penalaran di content dan mengulang tool call. Isi True/False hanya untuk
 # model hybrid yang memang mendukung saklar thinking.
 OLLAMA_THINK: Optional[bool] = None
-
-# ============ TTS Config ============
-TTS_VOICE = "id-ID-GadisNeural"
-TTS_RATE = "+10%"
-TTS_PITCH = "+5Hz"
 
 # ============ Hotkey Config ============
 WAKE_HOTKEY = "ctrl+shift+m"
@@ -335,7 +330,7 @@ Contoh respons:
 
 
 # ============ Available Characters ============
-# v4 is intentionally focused on Hatsune Miku only.
+# MikuVision is intentionally focused on Hatsune Miku only.
 CHARACTERS: Dict[str, Character] = {
     "miku": MIKU_CHARACTER,
 }

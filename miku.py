@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-MikuWin v11 - CLI Mode with Sprite Avatar and Smart Automation
+MikuVision - CLI Mode with Sprite Avatar and Smart Automation
 Push-to-talk voice chat with animated Miku sprite mascot.
-Integrates YouTube, Spotify, and Browser automation for smart taskss.
+Integrates YouTube, Spotify, and Browser automation for smart tasks.
 
 Usage:
     python miku.py              # Voice mode (default, with sprite avatar & automation)
@@ -57,7 +57,7 @@ from core.ai_brain import AIBrain
 from core.memory import MemoryManager
 from core.system_control import SystemControl
 from core.macro_tools import MacroTools
-from core.avatar_window import initialize_avatar_window, cleanup_avatar_window, get_avatar_window
+from core.avatar_window import initialize_avatar_window, cleanup_avatar_window
 from core.confirmation import is_affirmative
 from core.commands import handle_command
 from core.conversation import ToolResult, run_turn
@@ -66,7 +66,7 @@ from config import DATA_DIR, CHARACTERS, DEFAULT_CHARACTER, TURN_LOG_DIR
 
 
 class MikuCLI:
-    """CLI interface for MikuWin v4"""
+    """CLI interface for MikuVision"""
 
     def __init__(self, character: str = DEFAULT_CHARACTER):
         self.character_name = character
@@ -95,12 +95,12 @@ class MikuCLI:
         self._wake_stop_event = threading.Event()
         self._wake_thread: Optional[threading.Thread] = None
 
-        print(f"[MikuWin v11] Selected character: {self.character.display_name}")
-        print(f"[MikuWin v11] Language: {self.character.lang}")
+        print(f"[MikuVision] Selected character: {self.character.display_name}")
+        print(f"[MikuVision] Language: {self.character.lang}")
 
     def initialize(self) -> bool:
         """Initialize all components"""
-        print("\n=== Initializing MikuWin v11 ===\n")
+        print("\n=== Initializing MikuVision ===\n")
 
         # Memory
         print("[1/5] Initializing memory...")
@@ -222,7 +222,7 @@ class MikuCLI:
                 source="text", report_results=False,
                 on_tool_result=self._print_tool_result, logger=self.turn_logger,
             )
-            response, emotion, function_calls = turn.reply, turn.emotion, turn.tool_results
+            response, emotion = turn.reply, turn.emotion
 
             # Clean response for display
             clean_response = re.sub(r"\{[^}]*\}", "", response)
@@ -277,7 +277,6 @@ class MikuCLI:
         print("💡 HOW TO USE: Drag the Miku mascot on your screen to talk!")
         print("="*50 + "\n")
 
-        import keyboard
         # Register a hotkey just in case they want a manual way to exit
         # or we just rely on Ctrl+C.
         print("Press Ctrl+C to exit.\n")
@@ -423,7 +422,7 @@ class MikuCLI:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="MikuWin v4 - AI Desktop Assistant (Miku Edition)",
+        description="MikuVision - AI Desktop Assistant (Miku Edition)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

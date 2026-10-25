@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-MikuWin v5 — Automation Layer
+MikuVision — Automation Layer
 Lightweight automation for YouTube, Spotify, Browser, and UI control.
 No computer vision — uses APIs, web automation, and keyboard control.
 """
@@ -8,14 +8,9 @@ No computer vision — uses APIs, web automation, and keyboard control.
 # Anotasi lazy: tanpa ini, type hint Browser/Page memicu NameError saat playwright tidak terinstall
 from __future__ import annotations
 
-import subprocess
-import sys
 import time
 import webbrowser
-from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
-import json
-import shutil
 
 try:
     import pyautogui
@@ -24,7 +19,7 @@ except ImportError:
     PYAUTOGUI_AVAILABLE = False
 
 try:
-    import keyboard
+    import keyboard  # noqa: F401  (cek ketersediaan)
     KEYBOARD_AVAILABLE = True
 except ImportError:
     KEYBOARD_AVAILABLE = False
@@ -36,7 +31,7 @@ except ImportError:
     PLAYWRIGHT_AVAILABLE = False
 
 try:
-    import yt_dlp
+    import yt_dlp  # noqa: F401  (cek ketersediaan)
     YT_DLP_AVAILABLE = True
 except ImportError:
     YT_DLP_AVAILABLE = False
