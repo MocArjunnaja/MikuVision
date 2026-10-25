@@ -2,7 +2,7 @@
 
 **Tujuan:** Miku bisa melihat layar (screenshot), memahami isinya (teks, tombol, pesan error, pemicu tertentu), lalu menggerakkan mouse dan keyboard untuk mencapai sebuah tujuan. Kalau langkah pertama belum berhasil, Miku mengamati lagi, merevisi rencana, dan mencoba lagi sampai berhasil atau meminta bantuan.
 
-**Status:** rencana, belum diimplementasikan. Disusun 25 Okt 2026, setelah Paket A (token meter, log per giliran, sesi, memori jangka panjang).
+**Status:** Fase 0 selesai (25 Okt 2026); hasil di [`experiments/vision_phase0/RESULTS.md`](../experiments/vision_phase0/RESULTS.md). Fase 1 belum dimulai.
 
 ---
 
@@ -69,7 +69,9 @@ Modul baru (rencana):
 | C. qwen3:4b-instruct + `granite3.2-vision:2b` | 2,4 GB | Model IBM, cocok untuk cerita capstone | Kemampuan memahami UI belum teruji |
 | D. OmniParser v2 / UI-TARS | ±1,5 / 7B | Khusus UI, grounding kuat | Butuh torch terpisah; UI-TARS 7B tidak muat |
 
-Rekomendasi awal: **coba A dulu**. Kalau tool calling-nya turun, pakai B.
+Rekomendasi awal: coba A dulu. Kalau tool calling-nya turun, pakai B.
+
+**Hasil Fase 0: opsi B, dengan `qwen3-vl:4b-instruct` sebagai model visi.** Tool calling qwen3-vl:4b turun ke 42/50 (multi-turn 4/8), jadi A ditolak. Untuk memilih elemen, qwen3-vl:4b justru terbaik (44/45 dari daftar UIA), sedangkan 2b terlalu lemah (maks 31/45). Model ditukar sekali saat masuk sesi visi (±7 s) dan sekali saat keluar (±4 s), bukan per langkah.
 
 ## 5. Tahapan
 
