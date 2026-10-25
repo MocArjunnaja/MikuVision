@@ -24,10 +24,10 @@ Mic → WebRTC VAD + noise reduction → Faster-Whisper (STT)
 
 1. **Clone repo**
    ```bash
-   git clone https://github.com/MocArjunnaja/MikuWin_V11_Stable.git
+   git clone https://github.com/MocArjunnaja/MikuVision.git
    ```
    ```bash
-   cd MikuWin_V11_Stable
+   cd MikuVision
    ```
 
 2. **Buat environment Python 3.10** (contoh dengan Miniconda)

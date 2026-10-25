@@ -8,7 +8,12 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ## 2026-10-25 (#8, #9, #10 sudah di-merge)
 
-### Paket B: skill on-demand, routine, slash command ([#10](https://github.com/MocArjunnaja/MikuWin_V11_Stable/pull/10))
+### Repo diganti nama: MikuWin_V11_Stable → MikuVision
+- URL baru: https://github.com/MocArjunnaja/MikuVision. URL lama dialihkan otomatis oleh GitHub.
+- Clone lama cukup menjalankan `git remote set-url origin https://github.com/MocArjunnaja/MikuVision.git`.
+- Link PR di CHANGELOG dan perintah clone di README diperbarui. Nama aplikasi di kode tetap MikuWin.
+
+### Paket B: skill on-demand, routine, slash command ([#10](https://github.com/MocArjunnaja/MikuVision/pull/10))
 **Ditambahkan**
 - `core/skills.py`: 25 tool dikelompokkan menjadi 9 skill (Audio, Aplikasi, Web, Keyboard, Office, Pesan, Memori, Info sistem, Routine). Hanya skill yang cocok dengan permintaan user yang dikirim ke LLM; obrolan tanpa pemicu tetap mengirim semua tool. Bisa dimatikan dengan `SKILL_ROUTING = False`.
 - `core/routines.py` + `routines.example.yaml`: routine = rangkaian tool dengan satu perintah ("jalankan mode belajar"). Routine milik user di `data/routines.yaml` menimpa contoh. Setiap langkah tetap lewat gerbang konfirmasi; routine tidak boleh memanggil routine lain.
@@ -27,7 +32,7 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 - Routine lewat bahasa alami ("テストモードを実行して", "jalankan mode tes"): 3/3. Semua slash command diuji end-to-end di `miku.py --text`.
 
-### Paket A: token meter, log, sesi, memori jangka panjang ([#9](https://github.com/MocArjunnaja/MikuWin_V11_Stable/pull/9))
+### Paket A: token meter, log, sesi, memori jangka panjang ([#9](https://github.com/MocArjunnaja/MikuVision/pull/9))
 **Ditambahkan**
 - **Penghitung token:** angka asli dari Ollama (`prompt_eval_count` / `eval_count`). Ditampilkan setelah tiap balasan di CLI dan di bawah status GUI.
 - `core/conversation.py`: `run_turn()`, satu alur think → tool → catat hasil → laporan → log untuk mode teks, suara, dan GUI (sebelumnya tiga salinan kode).
@@ -47,7 +52,7 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 **Keterbatasan diketahui**
 - Setelah `--resume`, model kadang meniru balasan lamanya sendiri (misalnya "belum ada di ingatan") walaupun riwayat sudah ada di konteks.
 
-### Model default qwen3:4b-instruct + agent loop yang benar ([#8](https://github.com/MocArjunnaja/MikuWin_V11_Stable/pull/8))
+### Model default qwen3:4b-instruct + agent loop yang benar ([#8](https://github.com/MocArjunnaja/MikuVision/pull/8))
 **Diubah**
 - `OLLAMA_MODEL = "qwen3:4b-instruct"`.
 - Giliran tool call disimpan dalam format resmi Ollama (`tool_calls` + pesan `role: tool`).
@@ -70,7 +75,7 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ## 2026-10-24
 
-### Bug dari pengujian end-to-end ([#7](https://github.com/MocArjunnaja/MikuWin_V11_Stable/pull/7))
+### Bug dari pengujian end-to-end ([#7](https://github.com/MocArjunnaja/MikuVision/pull/7))
 **Diperbaiki**
 - **Segfault** saat dua balasan diputar bersamaan (`sounddevice.play()` dari dua thread). Pemutaran audio sekarang antre.
 - **Access violation saat keluar**: audio yang masih antre diputar ketika PortAudio sedang ditutup.
@@ -86,22 +91,22 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 - Pipeline MeloTTS → Whisper → MeloTTS → RVC diuji: RVC aktif, konversi ±1,6 s, pitch +6 semitone.
 - GUI dicek lewat screenshot `PrintWindow`.
 
-### Supaya bisa dijalankan di laptop lain ([#6](https://github.com/MocArjunnaja/MikuWin_V11_Stable/pull/6))
+### Supaya bisa dijalankan di laptop lain ([#6](https://github.com/MocArjunnaja/MikuVision/pull/6))
 - Folder output yang ditulis langsung sebagai `C:/Users/Arjun/...` (crash di akun lain) diganti `Path.home()`.
 - `DEBUG_DUMP_AUDIO` default `False` (sebelumnya setiap rekaman mic disimpan).
 - `pytest.ini`, README baru dengan langkah instalasi yang sudah teruji.
 - **Pengujian:** clone baru dari GitHub → `pytest` + `python miku.py --test` lulus.
 
-### Avatar memakai frame sprite kosong ([#5](https://github.com/MocArjunnaja/MikuWin_V11_Stable/pull/5))
+### Avatar memakai frame sprite kosong ([#5](https://github.com/MocArjunnaja/MikuVision/pull/5))
 - `thinking`/`confused` menunjuk ke frame transparan, sehingga avatar menghilang. `MIKU_FRAME_H` salah (265, seharusnya 213).
 - Ditambah peta emosi bersama `MIKU_EMOTION_FRAMES` dan test yang memverifikasi setiap frame terhadap gambar sprite.
 
-### Integrasi PR #2 dengan perbaikan bug ([#4](https://github.com/MocArjunnaja/MikuWin_V11_Stable/pull/4))
+### Integrasi PR #2 dengan perbaikan bug ([#4](https://github.com/MocArjunnaja/MikuVision/pull/4))
 - Parser JSON untuk tool bersarang, tanpa `shell=True`, pelacakan PID, `set_volume` lewat pycaw. Kredit: @nashirabbash.
 - Diperbaiki: tool call palsu dari objek bersarang, teks balasan terpotong, `Popen(["chrome"])` gagal (App Paths), pencocokan nama proses sebagian.
 - PR #2 ditutup dengan komentar penjelasan.
 
-### Perbaikan P0 ([#3](https://github.com/MocArjunnaja/MikuWin_V11_Stable/pull/3))
+### Perbaikan P0 ([#3](https://github.com/MocArjunnaja/MikuVision/pull/3))
 - Pesan user tidak pernah disimpan ke memori.
 - Gerbang konfirmasi untuk WhatsApp, Telegram, dan menutup aplikasi.
 - Skema `hotkey` (list → array), `num_ctx` 8192, `requirements.txt` disesuaikan dengan import.
