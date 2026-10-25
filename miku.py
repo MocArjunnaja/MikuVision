@@ -25,7 +25,7 @@ import sys
 import time
 import threading
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import Optional
 import re
 import logging
 import os
@@ -183,11 +183,7 @@ class MikuCLI:
             print("[Konfirmasi] Tidak ada jawaban -> dibatalkan")
             return False
 
-        answer = self._transcribe_best_effort(
-            audio,
-            language_order=[self.character.lang, "id"],
-            wake_mode=False,
-        )
+        answer = self.voice_input.transcribe(audio, languages=[self.character.lang, "id"])
         approved = is_affirmative(answer)
         print(f"[Konfirmasi] Jawaban: '{answer}' -> {'disetujui' if approved else 'dibatalkan'}")
         return approved
@@ -341,24 +337,13 @@ class MikuCLI:
                 if self.avatar_window:
                     self.avatar_window.set_emotion("thinking")
                     
-                # We prioritize Japanese first, then Indonesian. 
-                # Dropping 'None' and 'en' to avoid Whisper parsing Japanese as English romaji
-                text = self._transcribe_best_effort(
-                    audio,
-                    language_order=[self.character.lang, "id"],
-                    wake_mode=False,
-                )
-                
+                # Bahasa dideteksi di antara bahasa karakter dan Indonesia; frasa halusinasi
+                # Whisper ("ご視聴ありがとうございました" dll.) sudah dibuang di VoiceInput
+                text = self.voice_input.transcribe(audio, languages=[self.character.lang, "id"])
+
                 if text:
-                    # Filter out purely hallucinated empty tags like "[Silence]" or "ご視聴ありがとうございました"
-                    hallucinations = ["ご視聴", "字幕", "silence", "terima kasih", "thank you for"]
-                    is_hallucination = any(h in text.lower() for h in hallucinations) and len(text) < 30
-                    
-                    if is_hallucination:
-                        print(f"[Ignored likely hallucination: {text}]")
-                    else:
-                        print(f"You: {text}\n")
-                        self._process_ai_response(text)
+                    print(f"You: {text}\n")
+                    self._process_ai_response(text)
                 else:
                     print("[Pesan Anda kosong, terlalu kecil, atau gagal dikenali (Could not transcribe)]\n")
                     
@@ -391,105 +376,6 @@ class MikuCLI:
             except KeyboardInterrupt:
                 print("\n[Goodbye!]")
                 break
-
-    @staticmethod
-    def _normalize_text(text: str) -> str:
-        """Normalize text for wake phrase matching"""
-        cleaned = re.sub(r"[^a-zA-Z0-9\s]", " ", text.lower())
-        cleaned = re.sub(r"\s+", " ", cleaned).strip()
-        return cleaned
-
-    def _score_transcript_intent(self, text: str) -> int:
-        """Score transcript by command-likelihood to select best STT candidate."""
-        if not text:
-            return -999
-
-        normalized = self._normalize_text(text)
-        score = min(len(normalized), 80) // 8
-
-        command_tokens = [
-            "open", "buka", "play", "pause", "next", "search", "volume",
-            "youtube", "spotify", "chrome", "edge", "firefox", "notepad",
-            "whatsapp", "discord", "music", "app", "website", "google",
-        ]
-        for token in command_tokens:
-            if token in normalized:
-                score += 8
-
-        japanese_tokens = ["開いて", "再生", "停止", "検索", "音量", "ミュート", "アプリ", "ブラウザ"]
-        for token in japanese_tokens:
-            if token in text:
-                score += 8
-
-        hallucination_phrases = ["ご視聴ありがとうございました", "はい ご覧ください", "ご覧ください"]
-        for phrase in hallucination_phrases:
-            if phrase in text:
-                score -= 20
-
-        return score
-
-    def _transcribe_best_effort(
-        self,
-        audio,
-        language_order: List[Optional[str]],
-        wake_mode: bool = False,
-    ) -> str:
-        """Run multi-pass STT and pick the highest-scoring candidate."""
-        candidates: List[Tuple[int, Optional[str], str]] = []
-        seen_langs = set()
-        seen_texts = set()
-
-        for lang in language_order:
-            if lang in seen_langs:
-                continue
-            seen_langs.add(lang)
-
-            try:
-                # Add beam_size to improve consistency, condition on previous text to avoid looping hallucination
-                text = self.voice_input.transcribe(
-                    audio,
-                    lang=lang,
-                    use_initial_prompt=False if wake_mode else (lang is not None),
-                    no_speech_threshold=0.78 if wake_mode else 0.65,
-                    vad_min_silence_ms=260 if wake_mode else 500,
-                    vad_speech_pad_ms=160 if wake_mode else 300,
-                    condition_on_previous_text=False, # Disable to prevent hallucination looping
-                    beam_size=5, # Higher beam size for better accuracy
-                    verbose_logging=True,
-                )
-            except Exception:
-                text = ""
-
-            # Filter hallucination repetition within the same output
-            # "リアリカスは、食べる前に" is a common whisper Japanese hallucination on noise
-            hallucinations = ["ご視聴", "字幕", "リアリカス", "食べる前に"]
-            if any(h in text for h in hallucinations):
-                text = ""
-
-            # Check if we already transcribed the exact same text
-            # if so, don't duplicate it.
-            if not text or text.lower() in seen_texts:
-                continue
-
-            seen_texts.add(text.lower())
-            
-            # Boost score if the language matches our explicit hint (Japanese)
-            score = self._score_transcript_intent(text)
-            if lang == self.character.lang:
-                score += 5
-                
-            candidates.append((score, lang, text))
-
-        if not candidates:
-            return ""
-
-        best_score, best_lang, best_text = max(candidates, key=lambda x: x[0])
-        debug_lang = best_lang if best_lang is not None else "auto"
-        # Only log if it's not wake standby spam, or if it passed a minimum threshold
-        if (not wake_mode) or best_score >= 8:
-            print(f"[STT] Best candidate lang={debug_lang}, score={best_score}, text='{best_text}'")
-            
-        return best_text
 
     @staticmethod
     def _print_tool_result(result: ToolResult):
