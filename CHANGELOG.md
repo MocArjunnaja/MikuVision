@@ -6,7 +6,7 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
-## [Belum dirilis] (PR terbuka)
+## 2026-10-25 (#8, #9, #10 sudah di-merge)
 
 ### Paket B: skill on-demand, routine, slash command ([#10](https://github.com/MocArjunnaja/MikuWin_V11_Stable/pull/10))
 **Ditambahkan**
@@ -115,6 +115,22 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ## Evaluasi tanpa perubahan kode
 
+### Agent visi Fase 0: spike & keputusan model (2026-10-25)
+Detail dan skrip: `experiments/vision_phase0/RESULTS.md`.
+
+| | qwen3:4b-instruct | qwen3-vl:4b-instruct | qwen3-vl:2b-instruct |
+|---|---|---|---|
+| Tool calling MikuWin (routing ON) | 50/50 | 42/50 | - |
+| Multi-turn `close_application` | 8/8 | 4/8 | - |
+| Pilih elemen, daftar UIA (15 × 3) | 39/45 | **44/45** | 21/45 |
+| Pilih elemen, gambar + daftar | - | 43/45 | 31/45 |
+| VRAM (`num_ctx` 8192) | 3,9 GB | 3,7 GB | 2,5 GB |
+| Cold load | 3,6–4,3 s | 6,5–7,3 s | 4,3–4,6 s |
+
+- UI Automation: 36/36, 34/35, dan 156/163 elemen bernama (Kalkulator, Settings, Explorer), dibaca dalam ≤ 0,34 s.
+- Windows OCR: 0,03–0,06 s; hanya bahasa Inggris terpasang, OCR Jepang perlu paket bahasa Windows.
+- **Keputusan:** opsi B. Chat dan tool tetap `qwen3:4b-instruct`; `qwen3-vl:4b-instruct` dimuat hanya saat sesi agent visi. Opsi A ditolak karena qwen3-vl:4b sering mengklaim aksi tanpa memanggil tool.
+
 ### ASR: Whisper large-v3-turbo vs Qwen3-ASR-0.6B (2026-10-25)
 | | Whisper turbo | Qwen3-ASR-0.6B |
 |---|---|---|
@@ -136,3 +152,4 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
   - Dipindah ke Recycle Bin: Whisper large-v3 lama (2,9 GB), cache torch (1,9 GB), env `Mikuve`, `OllamaSetup.exe`, `A Miku Research.rar`.
   - Ruang kosong C: 2,1 GB → 26,1 GB (±31 GB setelah Recycle Bin dikosongkan).
   - Belum dihapus (perlu dihapus manual): `D:\conda_envs\qwenasr` dan `D:\hf_cache` dari uji ASR.
+- Agent visi Fase 0: `qwen3-vl:4b-instruct` (3,3 GB) dan `qwen3-vl:2b-instruct` (1,9 GB) di `D:\ollama_models`; paket `uiautomation`, `mss`, `winrt-Windows.*` (OCR) di env `miku`.
