@@ -29,6 +29,11 @@ for _name in [
 ]:
     sys.modules.setdefault(_name, MagicMock())
 
+# scipy >= 1.17 memanggil issubclass(x, torch.Tensor) bila torch ada di sys.modules;
+# atribut MagicMock bukan class sehingga import librosa/MeloTTS gagal.
+if isinstance(sys.modules["torch"], MagicMock):
+    sys.modules["torch"].Tensor = type("Tensor", (), {})
+
 
 import pytest  # noqa: E402
 

@@ -23,6 +23,15 @@ if sys.platform == "win32":
         if _stream is not None:
             _stream.reconfigure(encoding="utf-8", errors="replace")
 
+# Lewat pythonw.exe (shortcut desktop) stdout/stderr bernilai None; transformers
+# memanggil sys.stderr.flush saat import dan crash. Tulis ke file log sebagai gantinya.
+if sys.stdout is None or sys.stderr is None:
+    _log_dir = Path(__file__).parent / "data" / "logs"
+    _log_dir.mkdir(parents=True, exist_ok=True)
+    _gui_log = open(_log_dir / "gui.log", "a", encoding="utf-8", errors="replace", buffering=1)
+    sys.stdout = sys.stdout or _gui_log
+    sys.stderr = sys.stderr or _gui_log
+
 from core.voice_input import VoiceInput
 from core.voice_output import VoiceOutput
 from core.voice_converter import VoiceConverter

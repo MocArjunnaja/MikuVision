@@ -17,6 +17,20 @@ from dataclasses import dataclass
 from config import RVCConfig
 
 
+def _allow_hubert_checkpoint(torch) -> None:
+    """torch >= 2.6 memuat checkpoint dengan weights_only=True, sehingga hubert_base.pt
+    (berisi objek fairseq Dictionary) ditolak saat konversi pertama. Izinkan hanya class
+    itu, bukan mematikan weights_only untuk semua checkpoint."""
+    add_safe_globals = getattr(torch.serialization, "add_safe_globals", None)
+    if add_safe_globals is None:
+        return
+    try:
+        from fairseq.data.dictionary import Dictionary
+    except ImportError:
+        return
+    add_safe_globals([Dictionary])
+
+
 class VoiceConverter:
     """
     RVC Voice Conversion wrapper.
@@ -54,6 +68,7 @@ class VoiceConverter:
                 import torch
                 if not torch.cuda.is_available():
                     device = "cpu:0"
+                _allow_hubert_checkpoint(torch)
             except ImportError:
                 device = "cpu:0"
 
