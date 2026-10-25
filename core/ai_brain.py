@@ -5,12 +5,13 @@ Menggunakan Ollama dengan support multiple characters
 
 import json
 import re
+from dataclasses import dataclass
 from typing import Optional, Dict, Any, List, Tuple
 import ollama
 from ollama import Client
 
 from config import (
-    OLLAMA_MODEL, OLLAMA_BASE_URL, OLLAMA_NUM_CTX, OLLAMA_THINK,
+    OLLAMA_MODEL, OLLAMA_BASE_URL, OLLAMA_NUM_CTX, OLLAMA_THINK, OLLAMA_TIMEOUT_SEC,
     Character, CHARACTERS, DEFAULT_CHARACTER
 )
 from core.memory import MemoryManager
@@ -18,6 +19,7 @@ from core.emotion import EmotionDetector
 
 
 from core.tools import registry
+from core import long_term_memory  # mendaftarkan tool remember/recall_memory/forget
 
 # Function call prompts per language
 FUNCTION_CALL_PROMPT_ID = f"""
@@ -53,6 +55,30 @@ FUNCTION_CALL_PROMPT_JA = f"""
 FUNCTION_CALL_PROMPT = FUNCTION_CALL_PROMPT_ID
 
 
+
+@dataclass
+class LLMUsage:
+    """Akumulasi pemakaian token dari respons Ollama (prompt_eval_count / eval_count)."""
+    calls: int = 0
+    prompt_tokens: int = 0       # prompt panggilan terakhir = ukuran konteks saat ini
+    completion_tokens: int = 0
+    total_seconds: float = 0.0
+
+    def add(self, response: Any):
+        get = response.get if hasattr(response, "get") else (lambda k, d=None: getattr(response, k, d))
+        self.calls += 1
+        self.prompt_tokens = get("prompt_eval_count", 0) or 0
+        self.completion_tokens += get("eval_count", 0) or 0
+        self.total_seconds += (get("total_duration", 0) or 0) / 1e9
+
+    def context_text(self) -> str:
+        return f"{self.prompt_tokens / 1000:.1f}k / {OLLAMA_NUM_CTX / 1000:.1f}k token"
+
+    def as_dict(self) -> Dict[str, Any]:
+        return {"calls": self.calls, "prompt_tokens": self.prompt_tokens,
+                "completion_tokens": self.completion_tokens,
+                "llm_seconds": round(self.total_seconds, 2)}
+
 # Janji/klaim aksi tanpa tool call: "メモ帳を開きますね！", "Aku akan membuka Notepad"
 _ACTION_CLAIM_JA = re.compile(
     r"(開|閉|設定|検索|再生|停止|変更|作成|送信|下げ|上げ|起動|終了|調整|ミュート)[^。！!？?\n]{0,6}(ます|ました)"
@@ -73,9 +99,10 @@ MISSED_TOOL_NUDGE = (
 
 # Permintaan aksi dari user: "電卓を閉じて", "音量を30にして", "buka notepad", "open chrome"
 _ACTION_REQUEST = re.compile(
-    r"(開いて|開けて|閉じて|消して|止めて|下げて|上げて|検索して|探して|再生して|起動して|にして|ミュート)"
+    r"(開いて|開けて|閉じて|消して|止めて|下げて|上げて|検索して|探して|再生して|起動して|にして|ミュート"
+    r"|覚えて|覚えと|忘れて)"
     r"|\b(buka|tutup|kecilkan|besarkan|naikkan|turunkan|cari|carikan|putar|matikan|nyalakan|mute|unmute"
-    r"|open|close|search|play|pause|mute)\b",
+    r"|ingat|ingatkan|lupakan|open|close|search|play|pause|mute|remember|forget)\b",
     re.IGNORECASE,
 )
 
@@ -181,6 +208,10 @@ class AIBrain:
         # Fallback history jika tidak ada memory manager
         self.conversation_history: List[Dict[str, str]] = []
         self.max_history = 10
+
+        # Pemakaian token: giliran terakhir dan total sesi (angka asli dari Ollama)
+        self.turn_usage = LLMUsage()
+        self.session_usage = LLMUsage()
     
     def set_character(self, character_name: str) -> bool:
         """
@@ -209,6 +240,24 @@ class AIBrain:
         print(f"[AIBrain] Switched to character: {self.current_character.display_name}")
         return True
     
+    def resume_session(self, session_id: Optional[str] = None) -> Tuple[bool, str]:
+        """
+        Lanjutkan sesi tersimpan (default: sesi terakhir karakter ini).
+        Sesi baru yang masih kosong ditinggalkan tanpa disimpan.
+        """
+        if not self.memory:
+            return False, "Memori tidak aktif"
+        if session_id is None:
+            previous = [s for s in self.memory.list_sessions(self.current_character.name)
+                        if s["session_id"] != self.memory.session_id]
+            if not previous:
+                return False, "Belum ada sesi sebelumnya"
+            session_id = previous[0]["session_id"]
+        if not self.memory.load_session(session_id):
+            return False, f"Sesi {session_id} tidak ditemukan"
+        count = len(self.memory.current_context.messages)
+        return True, f"Melanjutkan sesi {session_id} ({count} pesan)"
+
     def get_character(self) -> Character:
         """Get current character"""
         return self.current_character
@@ -216,7 +265,8 @@ class AIBrain:
     def initialize(self) -> Tuple[bool, str]:
         """Initialize connection ke Ollama"""
         try:
-            self.client = Client(host=OLLAMA_BASE_URL)
+            # Tanpa timeout, Ollama yang tersendat membuat app menunggu selamanya
+            self.client = Client(host=OLLAMA_BASE_URL, timeout=OLLAMA_TIMEOUT_SEC)
             
             # Check if model exists
             models = self.client.list()
@@ -255,10 +305,13 @@ class AIBrain:
         else:
             func_prompt = FUNCTION_CALL_PROMPT_ID
         
+        memory_prompt = long_term_memory.store.as_prompt()
         return f"""
 {self.current_character.personality_prompt}
 
 {func_prompt}
+
+{memory_prompt}
 """
     
     def _build_messages(self, user_input: str) -> List[Dict[str, str]]:
@@ -343,9 +396,9 @@ class AIBrain:
         return unique_calls, clean_response
 
     def _chat(self, messages: List[Dict[str, str]], temperature: float = 0.7):
-        """Kirim percakapan ke Ollama beserta skema tool."""
+        """Kirim percakapan ke Ollama beserta skema tool, lalu catat pemakaian token."""
         think_kwargs = {} if OLLAMA_THINK is None else {"think": OLLAMA_THINK}
-        return self.client.chat(
+        response = self.client.chat(
             model=self.model,
             messages=messages,
             tools=registry.get_all_tools_schema(),
@@ -357,6 +410,9 @@ class AIBrain:
                 "num_ctx": OLLAMA_NUM_CTX,
             }
         )
+        for usage in (self.turn_usage, self.session_usage):
+            usage.add(response)
+        return response
 
     def think(self, user_input: str) -> Tuple[str, List[Dict], str]:
         """
@@ -370,7 +426,8 @@ class AIBrain:
         """
         if not self.client:
             return "Error: AI belum diinisialisasi", [], "neutral"
-        
+
+        self.turn_usage = LLMUsage()
         try:
             messages = self._build_messages(user_input)
             response = self._chat(messages)

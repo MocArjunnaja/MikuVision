@@ -307,13 +307,16 @@ def test_initialize_requires_exact_model_tag(monkeypatch, tmp_path, installed, o
     from core import ai_brain as ai_brain_module
     fake_client = MagicMock()
     fake_client.list.return_value = {"models": [{"name": n} for n in installed]}
-    monkeypatch.setattr(ai_brain_module, "Client", lambda host: fake_client)
+    created = {}
+    monkeypatch.setattr(ai_brain_module, "Client", lambda **kw: created.update(kw) or fake_client)
     brain = AIBrain(MemoryManager(tmp_path))
     brain.model = "qwen3:4b-instruct"
 
     success, msg = brain.initialize()
 
     assert success is ok
+    # Request ke Ollama selalu dibatasi waktu agar app tidak menunggu selamanya
+    assert created["timeout"] == config.OLLAMA_TIMEOUT_SEC
     if not ok:
         assert "ollama pull qwen3:4b-instruct" in msg
 
@@ -361,7 +364,8 @@ def test_trimmed_context_does_not_start_with_orphan_tool_message(tmp_path):
     assert memory.get_context_for_prompt()[0]["role"] == "user"
 
 
-@pytest.mark.parametrize("text", ["電卓を閉じて", "音量を30にして", "Buka notepad", "tolong kecilkan volume", "open chrome"])
+@pytest.mark.parametrize("text", ["電卓を閉じて", "音量を30にして", "Buka notepad", "tolong kecilkan volume", "open chrome",
+                                  "誕生日を覚えておいてね", "tolong ingat ulang tahunku", "それは忘れて"])
 def test_action_requests_are_detected(text):
     from core.ai_brain import _requests_action
     assert _requests_action(text)

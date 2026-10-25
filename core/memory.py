@@ -143,8 +143,8 @@ class MemoryManager:
         return self.current_context.messages[-count:]
     
     def save_session(self):
-        """Simpan session ke file"""
-        if not self.current_context or not self.session_id:
+        """Simpan session ke file (sesi tanpa pesan tidak disimpan)"""
+        if not self.current_context or not self.session_id or not self.current_context.messages:
             return
         
         filepath = self.conversations_dir / f"session_{self.session_id}.json"
@@ -200,6 +200,29 @@ class MemoryManager:
             print(f"[Memory] Failed to load session: {e}")
             return False
     
+    def list_sessions(self, character_name: Optional[str] = None, limit: int = 10) -> List[Dict[str, Any]]:
+        """Sesi tersimpan terbaru dulu: id, karakter, waktu mulai, jumlah pesan, judul."""
+        sessions = []
+        for path in sorted(self.conversations_dir.glob("session_*.json"), reverse=True):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            messages = data.get("messages", [])
+            if not messages or (character_name and data.get("character") != character_name):
+                continue
+            first_user = next((m["content"] for m in messages if m.get("role") == "user"), "")
+            sessions.append({
+                "session_id": data["session_id"],
+                "character": data.get("character"),
+                "start_time": data.get("start_time"),
+                "message_count": len(messages),
+                "title": first_user[:50] or "(tanpa judul)",
+            })
+            if len(sessions) >= limit:
+                break
+        return sessions
+
     def get_session_summary(self) -> str:
         """Generate ringkasan session"""
         if not self.current_context:
