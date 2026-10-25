@@ -4,7 +4,7 @@ Defines and registers capable tools that Miku's AI Brain can invoke.
 Follows the Agentic Harness pattern for clean tool isolation.
 """
 
-from typing import Dict, Any, Callable, List
+from typing import Dict, Any, Callable, List, Optional
 import inspect
 from typing import get_type_hints
 
@@ -16,11 +16,13 @@ class ToolParam:
         self.required = required
 
 class Tool:
-    def __init__(self, name: str, description: str, func: Callable):
+    def __init__(self, name: str, description: str, func: Callable,
+                 param_descriptions: Optional[Dict[str, str]] = None):
         self.name = name
         self.description = description
         self.func = func
         self.params: List[ToolParam] = []
+        self._param_descriptions = param_descriptions or {}
         
         # Parse signature
         sig = inspect.signature(func)
@@ -35,7 +37,7 @@ class Tool:
             
             # Simple description extraction from docstring could be added here, 
             # for now we'll just use the param name
-            param_desc = f"Parameter: {param_name}"
+            param_desc = self._param_descriptions.get(param_name, f"Parameter: {param_name}")
             
             self.params.append(ToolParam(
                 name=param_name, 
@@ -92,14 +94,15 @@ class ToolRegistry:
     def __init__(self):
         self._tools: Dict[str, Tool] = {}
         
-    def register(self, description: str = None, name: str = None):
-        """Decorator to register a method as a tool"""
+    def register(self, description: str = None, name: str = None,
+                 params: Optional[Dict[str, str]] = None):
+        """Decorator to register a method as a tool. ``params``: deskripsi per parameter untuk LLM."""
         def decorator(func):
             tool_name = name or func.__name__
             desc = description or func.__doc__ or f"Tool: {tool_name}"
             desc = desc.strip()
             
-            tool = Tool(name=tool_name, description=desc, func=func)
+            tool = Tool(name=tool_name, description=desc, func=func, param_descriptions=params)
             self._tools[tool_name] = tool
             return func
         return decorator

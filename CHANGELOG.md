@@ -6,6 +6,28 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## [Belum dirilis] Dokumen Word dibuat beserta isinya
+
+Detail: `experiments/word_tool/RESULTS.md`. Pemicunya sesi GUI 25 Okt: "buatkan dokumen Word … Hukum Newton" hanya dijawab obrolan, lalu ulangan singkatnya hanya membuka Word kosong.
+
+### Diubah
+- `create_word_document` diberi deskripsi yang tegas: langsung tulis isinya sendiri, jangan bertanya dulu, jangan `open_application`. Parameter `filename` dan `content` sekarang punya deskripsi; sebelumnya semua parameter tool hanya berlabel "Parameter: <nama>".
+- `ToolRegistry.register(..., params={...})` untuk deskripsi per parameter.
+- `open_application` merujuk ke `create_word_document` untuk dokumen berisi.
+- Regex retry tool mengenali permintaan dokumen (作って, 書いて, buat/buatkan, bikin, tulis, create, write) dan janji 「作ります」.
+- Bila permintaan tidak berbahasa Jepang tapi isi dokumen ditulis dalam bahasa Jepang (≥ 30% huruf), isinya diterjemahkan ke bahasa Indonesia dengan satu panggilan tanpa tool. Petunjuk bahasa di prompt tidak cukup untuk model 4B.
+- Koreksi STT "hegum" → "hukum", dengan huruf kapital asli dipertahankan.
+
+### Pengujian
+| | Sebelum | Sesudah |
+|---|---|---|
+| Permintaan dokumen (6 × 3, isi ≥ 150 karakter sesuai topik) | 7/18 | **17/18** |
+| Kontrol "Buka Word" / 「ワードを開いて」 | 6/6 | 6/6 |
+| Tool umum / multi-turn | 50/50 / 8/8 | 50/50 / 8/8 |
+| Latensi median permintaan dokumen | 2,2 s | 9,2 s (model kini menulis 500–2.100 karakter) |
+
+- 172 unit test lulus (12 baru di `tests/test_word_document_tool.py`).
+
 ## [Belum dirilis] Akurasi STT: deteksi bahasa sekali, pembersihan teks Whisper
 
 Detail, skrip uji, dan semua angka: `experiments/stt_eval/RESULTS.md`.

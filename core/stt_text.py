@@ -44,6 +44,7 @@ CORRECTIONS = {
     "spotifai": "Spotify",
     "wasap": "WhatsApp",
     "watsap": "WhatsApp",
+    "hegum": "hukum",  # "Hukum Newton" terdengar "Hegum Newton" (sesi GUI 25 Okt)
 }
 
 _CORRECTION_PATTERNS = [
@@ -89,8 +90,12 @@ def _collapse_repeats(text: str) -> str:
 
 
 def apply_corrections(text: str) -> str:
+    def keep_capital(match: "re.Match[str]", right: str) -> str:
+        # "Hegum" -> "Hukum", "hegum" -> "hukum"; nama produk ("Chrome") tetap apa adanya
+        return right[0].upper() + right[1:] if match.group(0)[0].isupper() else right
+
     for pattern, right in _CORRECTION_PATTERNS:
-        text = pattern.sub(right, text)
+        text = pattern.sub(lambda m, r=right: keep_capital(m, r), text)
     return text
 
 

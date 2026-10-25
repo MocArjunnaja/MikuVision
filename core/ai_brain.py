@@ -83,7 +83,7 @@ class LLMUsage:
 
 # Janji/klaim aksi tanpa tool call: "メモ帳を開きますね！", "Aku akan membuka Notepad"
 _ACTION_CLAIM_JA = re.compile(
-    r"(開|閉|設定|検索|再生|停止|変更|作成|送信|下げ|上げ|起動|終了|調整|ミュート)[^。！!？?\n]{0,6}(ます|ました)"
+    r"(開|閉|設定|検索|再生|停止|変更|作成|作り|作っ|書き|送信|下げ|上げ|起動|終了|調整|ミュート)[^。！!？?\n]{0,6}(ます|ました)"
     r"|を[^。！!？?\n]{0,10}に(します|しました)"  # 音量を30にします
 )
 _ACTION_CLAIM_ID = re.compile(
@@ -102,11 +102,28 @@ MISSED_TOOL_NUDGE = (
 # Permintaan aksi dari user: "電卓を閉じて", "音量を30にして", "buka notepad", "open chrome"
 _ACTION_REQUEST = re.compile(
     r"(開いて|開けて|閉じて|消して|止めて|下げて|上げて|検索して|探して|再生して|起動して|にして|ミュート"
-    r"|覚えて|覚えと|忘れて)"
+    r"|覚えて|覚えと|忘れて|作って|作成して|書いて)"
     r"|\b(buka|tutup|kecilkan|besarkan|naikkan|turunkan|cari|carikan|putar|matikan|nyalakan|mute|unmute"
-    r"|ingat|ingatkan|lupakan|open|close|search|play|pause|mute|remember|forget)\b",
+    r"|ingat|ingatkan|lupakan|buat|buatkan|bikin|bikinkan|tulis|tuliskan"
+    r"|open|close|search|play|pause|mute|remember|forget|create|write)\b",
     re.IGNORECASE,
 )
+
+
+_JAPANESE_TEXT = re.compile(r"[぀-ヿ一-鿿]")
+DOCUMENT_TOOLS = ("create_word_document", "create_powerpoint")
+DOCUMENT_TRANSLATE_PROMPT = (
+    "Translate the following document into Indonesian. Keep the title, structure, numbering, "
+    "formulas and line breaks. Output only the translated document, nothing else."
+)
+
+
+def _japanese_ratio(text: str) -> float:
+    """Porsi huruf Jepang di antara semua huruf (0..1)."""
+    letters = [c for c in text if c.isalpha()]
+    if not letters:
+        return 0.0
+    return sum(bool(_JAPANESE_TEXT.match(c)) for c in letters) / len(letters)
 
 
 def _claims_action(text: str) -> bool:
@@ -321,6 +338,35 @@ class AIBrain:
 {self._routines_prompt()}
 """
 
+    def _match_document_language(self, function_calls: List[Dict], user_input: str):
+        """Isi dokumen mengikuti bahasa permintaan user.
+
+        qwen3:4b sering menulis isi dokumen dalam bahasa Jepang (bahasa persona) walau user
+        meminta dalam bahasa Indonesia; petunjuk di prompt tidak cukup. Isinya diterjemahkan sekali.
+        """
+        if _JAPANESE_TEXT.search(user_input):
+            return
+        for call in function_calls:
+            params = call.get("params") or {}
+            content = params.get("content")
+            if call.get("action") not in DOCUMENT_TOOLS or not isinstance(content, str):
+                continue
+            if _japanese_ratio(content) < 0.3:
+                continue
+            messages = [
+                {"role": "system", "content": DOCUMENT_TRANSLATE_PROMPT},
+                {"role": "user", "content": content},
+            ]
+            try:
+                translated = _strip_thinking(
+                    self._chat(messages, temperature=0.2, with_tools=False).get("message", {}).get("content", "") or "")
+            except Exception as e:  # dokumen tetap dibuat dengan isi asli
+                print(f"[AIBrain] Terjemahan isi dokumen gagal: {e}")
+                continue
+            if translated.strip() and _japanese_ratio(translated) < 0.3:
+                params["content"] = translated.strip()
+                call["params"] = params
+
     def _routines_prompt(self) -> str:
         """Daftar routine, hanya bila skill routine dikirim giliran ini (hemat token)."""
         if self.turn_tool_names is not None and "run_routine" not in self.turn_tool_names:
@@ -413,14 +459,17 @@ class AIBrain:
 
         return unique_calls, clean_response
 
-    def _chat(self, messages: List[Dict[str, str]], temperature: float = 0.7):
+    def _chat(self, messages: List[Dict[str, str]], temperature: float = 0.7, with_tools: bool = True):
         """Kirim percakapan ke Ollama beserta skema tool, lalu catat pemakaian token."""
         think_kwargs = {} if OLLAMA_THINK is None else {"think": OLLAMA_THINK}
+        tools = None
+        if with_tools:
+            tools = (registry.get_tools_schema(self.turn_tool_names) if self.turn_tool_names
+                     else registry.get_all_tools_schema())
         response = self.client.chat(
             model=self.model,
             messages=messages,
-            tools=(registry.get_tools_schema(self.turn_tool_names) if self.turn_tool_names
-                   else registry.get_all_tools_schema()),
+            tools=tools,
             **think_kwargs,
             options={
                 "temperature": temperature,
@@ -479,6 +528,8 @@ class AIBrain:
                         response_msg, function_calls, clean_response = retry_msg, retry_calls, retry_clean
                         response_text = _strip_thinking(retry_msg.get('content', '') or '')
                         break
+
+            self._match_document_language(function_calls, user_input)
 
             # Detect emotion
             emotion, clean_response = self.emotion_detector.detect_emotion(clean_response)
