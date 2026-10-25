@@ -1,0 +1,23 @@
+# Contoh routine MikuWin.
+# Salin ke data/routines.yaml lalu ubah sesuai kebiasaan Anda (file itu tidak ikut git).
+# Setiap langkah adalah satu tool MikuWin; aksi berisiko tetap meminta konfirmasi.
+# Jalankan dengan ucapan "jalankan mode belajar" / "勉強モードにして" atau `/routine mode belajar`.
+
+routines:
+  - name: mode belajar
+    description: Fokus belajar - buka VS Code, putar lofi di YouTube, volume 30
+    steps:
+      - action: open_application
+        params: {app_name: vscode}
+      - action: youtube_search
+        params: {query: lofi hip hop study music}
+      - action: set_volume
+        params: {level: 30}
+
+  - name: mode istirahat
+    description: Jeda sebentar - jeda media, volume 50
+    steps:
+      - action: media_control
+        params: {action_type: pause}
+      - action: set_volume
+        params: {level: 50}

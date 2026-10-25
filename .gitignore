@@ -1,8 +1,36 @@
+# ── Python ──
 __pycache__/
-temp_audio/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# ── Data pribadi & runtime (JANGAN di-commit) ──
+# Riwayat chat, log per giliran, memori jangka panjang, routine milik user,
+# kontak WhatsApp, rekaman mic debug
 data/
-data/debug_audio/
-*.pth
-*.log
-*.index
 contacts_db.json
+temp_audio/
+*.wav
+*.log
+
+# ── Model lokal berukuran besar ──
+# RVC (.pth/.index) dipasang manual, lihat README "Suara Miku (RVC)"
+*.pth
+*.index
+*.onnx
+*.safetensors
+*.gguf
+
+# ── Rahasia ──
+.env
+*.pem
+*.key
+
+# ── Editor / OS ──
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store

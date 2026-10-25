@@ -18,6 +18,11 @@ TURN_LOG_DIR = DATA_DIR / "logs"
 LONG_TERM_MEMORY_FILE = DATA_DIR / "long_term_memory.json"
 # Jumlah fakta yang selalu disisipkan ke system prompt (dibatasi demi konteks 8k)
 MEMORY_PROMPT_MAX_FACTS = 15
+# Routine: contoh bawaan (ikut repo) + milik user (tidak ikut git, menimpa contoh)
+ROUTINES_EXAMPLE_FILE = BASE_DIR / "routines.example.yaml"
+ROUTINES_FILE = DATA_DIR / "routines.yaml"
+# Kirim hanya skema tool dari skill yang relevan (lihat core/skills.py)
+SKILL_ROUTING = True
 
 # Sprite-sheet UI assets for v4 GUI
 MIKU_SPRITE_SHEET = AVATAR_DIR / "miku_smart_sheet.png"
