@@ -6,6 +6,41 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## [Belum dirilis] Akurasi STT: deteksi bahasa sekali, pembersihan teks Whisper
+
+Detail, skrip uji, dan semua angka: `experiments/stt_eval/RESULTS.md`.
+
+### Diubah
+- `VoiceInput.transcribe()` mendeteksi bahasa sekali, dibatasi ke `WHISPER_LANGUAGES = ("ja", "id")` (Melayu/Jawa/Sunda dihitung sebagai Indonesia), lalu melakukan satu kali decoding. Sebelumnya setiap ucapan didecode paksa sebagai Jepang lalu Indonesia, dan pemenangnya dipilih dengan skor kata kunci.
+- Dua bahasa hanya didecode bila deteksi ragu (< 0,8); yang dipilih adalah hasil dengan log-probability lebih baik.
+- Segmen yang berulang (`compression_ratio > 2,4`) atau tanpa ucapan dibuang; suhu decoding naik (0 → 0,2 → 0,4) hanya bila hasil suhu 0 ragu.
+- Level mic dinaikkan secara linear. `noisereduce` + soft-clip `tanh` dimatikan (`STT_DENOISE = False`).
+- `_transcribe_best_effort` / `_score_transcript_intent` yang terduplikasi di `miku.py` dan `gui.py` dihapus; keduanya memanggil `voice_input.transcribe(audio, languages=[...])`.
+
+### Ditambahkan
+- `core/stt_text.py`, diadopsi dari alat transkrip TA (`pdf_transkrip.bersihkan`): buang frasa halusinasi ("ご視聴ありがとうございました", "Terima kasih telah menonton", …), pengulangan beruntun, dan huruf di luar aksara bahasa target.
+
+### Diperbaiki
+- Ucapan Indonesia seperti "Kecilkan volumenya" / "Matikan suaranya" menjadi 「音量を下げて、音量を下げて、…」 (isi prompt Jepang bocor).
+- Koreksi salah dengar mengganti substring: "volume" → "volume**e**", "sejak" → "sEdgeak". Sekarang dicocokkan per kata utuh.
+- Koreksi "tolong buka" → "buka" membuang kata dari ucapan user.
+- Filter halusinasi lama membuang kalimat sah: semua kalimat pendek berisi "terima kasih", dan apa pun yang memuat 「字幕」 atau 「食べる前に」.
+
+### Pengujian
+- 54 klip edge-tts (Indonesia/Jepang, bersih + mic laptop berderau, derau tanpa ucapan):
+
+  | | Lama | Baru |
+  |---|---|---|
+  | Indonesia bersih / mic laptop | 10/14 / 8/14 | **14/14 / 14/14** |
+  | Jepang bersih / mic laptop | 9/10 / 8/10 | 9/10 / **9/10** |
+  | Derau → teks palsu | 0/6 | 0/6 |
+  | Latensi median | 0,68 s | **0,54 s** |
+
+- 6 rekaman mic asli: hasil sama dengan pipeline lama.
+- 160 unit test lulus (31 baru: `tests/test_stt_text.py`, `tests/test_voice_input.py`); `miku.py --test` lulus.
+
+**Keterbatasan:** suara uji sintetis lebih jernih dari suara asli. Untuk mengumpulkan kasus gagal nyata, nyalakan `DEBUG_DUMP_AUDIO` sementara.
+
 ## 2026-10-25: installer satu langkah, RVC jalan di instalasi baru
 
 ### Ditambahkan

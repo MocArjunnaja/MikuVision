@@ -62,6 +62,11 @@ AUDIO_DIR.mkdir(exist_ok=True)
 # "large-v3" paling akurat untuk intonasi orang Indonesia - sudah di-optimize int8 1.5GB
 WHISPER_MODEL = "large-v3-turbo"
 WHISPER_LANGUAGE = None  # Auto-detect, will be overridden per character
+# Bahasa yang mungkin diucapkan user. Deteksi bahasa Whisper dibatasi ke daftar ini,
+# sehingga ucapan Indonesia tidak terbaca sebagai Melayu/Jawa dan tidak ada pass paksa bahasa lain.
+WHISPER_LANGUAGES = ("ja", "id")
+# Noise reduction spektral sebelum Whisper. Mati: pada uji, noise gating merusak konsonan.
+STT_DENOISE = False
 
 # Initial prompts per language untuk vocabulary hint
 WHISPER_PROMPTS = {
