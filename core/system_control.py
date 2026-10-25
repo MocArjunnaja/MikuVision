@@ -198,7 +198,8 @@ class SystemControl:
         except:
             return False
     
-    @registry.register("Open a Windows application like Notepad, Calculator, WhatsApp.")
+    @registry.register("Open a Windows application like Notepad, Calculator, WhatsApp. "
+                       "To create a Word document with content, use create_word_document instead.")
     def open_application(self, app_name: str) -> Tuple[bool, str]:
         """Open an application by name"""
         app_lower = app_name.lower().strip()

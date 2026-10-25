@@ -30,7 +30,24 @@ class MacroTools:
     def __init__(self):
         pass
 
-    @registry.register(name="create_word_document", description="Membantu user membuat file dokumen Microsoft Word (.docx) secara kilat tanpa harus buka aplikasinya.")
+    @registry.register(
+        name="create_word_document",
+        description=(
+            "Create a Microsoft Word (.docx) document WITH CONTENT and open it. Use this whenever the user "
+            "asks to make/write a Word document, file, letter, or notes about something (e.g. 'buatkan "
+            "dokumen Word berisi ...', 'Wordで...の文書を作って'). Write the complete content yourself "
+            "right away; do not ask the user what to write and do not call open_application first."
+        ),
+        params={
+            "filename": "Short file name without extension, e.g. 'Hukum_Newton'.",
+            "content": (
+                "The full document text that you write yourself: a title line, then several paragraphs or "
+                "points separated by newlines. Write it in the language of the user's request (Indonesian "
+                "request -> Indonesian document), even if you chat in Japanese. Include formulas and "
+                "explanations when asked. Never leave it empty or as a placeholder."
+            ),
+        },
+    )
     def create_word_document(self, filename: str, content: str) -> str:
         try:
             if not filename.endswith('.docx'):
