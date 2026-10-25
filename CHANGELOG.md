@@ -1,8 +1,63 @@
 # Changelog
 
-Catatan perubahan, pengujian, dan keputusan teknis MikuWin V11.
+Catatan perubahan, pengujian, dan keputusan teknis MikuVision (dulu MikuWin V11).
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/id/1.1.0/). Entri terbaru di atas.
 Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, Ollama 0.40.10.
+
+---
+
+## 2026-10-25: installer satu langkah, RVC jalan di instalasi baru
+
+### Ditambahkan
+- `install.ps1` + `install.bat` (double-click): instalasi tanpa Anaconda.
+  - [uv](https://docs.astral.sh/uv/) 0.11.2 diunduh ke `.tools\uv` dan checksum SHA-256-nya dicek.
+  - Python 3.10 terisolasi di `.tools\python` (tanpa PATH/registry), env `.venv` dibuat dengan `python -m venv`, cache unduhan di `.tools\uv-cache`. Semua di folder aplikasi, tidak di profil C:.
+  - PyTorch 2.11.0: build cu128 bila `nvidia-smi` melaporkan CUDA ≥ 12.8, cu126 untuk driver lama, CPU (dengan peringatan) tanpa GPU NVIDIA. Dipasang dalam satu resolusi bersama `requirements.txt` lewat `--torch-backend`, lalu dicek `torch.cuda.is_available()`.
+  - `rvc-python==0.1.5` ikut resolusi yang sama bila model RVC ada di `models\miku_default_rvc` (atau `-WithRvc`). `overrides-rvc.txt` menimpa pin `numpy<=1.23.5` milik rvc-python yang bentrok dengan `requirements.txt`. Bila build `fairseq` gagal, instalasi lanjut tanpa RVC dengan petunjuk Build Tools.
+  - Kamus `unidic`, cek import modul, Ollama (`winget install Ollama.Ollama` setelah konfirmasi), `ollama pull` model dari `OLLAMA_MODEL` di `config.py`.
+  - Shortcut desktop **MikuVision** (`pythonw gui.py`, tanpa konsol) dengan ikon dari sprite.
+  - Verifikasi akhir `miku.py --test`, termasuk peringatan bila rvc-python terpasang tapi RVC gagal dimuat.
+  - Idempoten: langkah yang sudah beres dilewati; venv rusak atau buatan versi lain dibuat ulang. Log di `logs\install-<waktu>.log`; berhenti dengan pesan penyebab bila gagal.
+  - Opsi `-Yes`, `-Cpu`, `-WithRvc`, `-SkipOllama`, `-SkipShortcut`, `-SkipTest`, `-PythonVersion`.
+  - `HF_HOME` dan `OLLAMA_MODELS` dibaca dari variabel user bila proses installer belum melihatnya. Saat uji, proses dengan environment lama mengunduh Whisper + MeloTTS (1,75 GB) ke `C:\Users\<user>\.cache\huggingface` walau `HF_HOME` sudah diarahkan ke `D:\hf_home`.
+- README ditulis ulang untuk GitHub: header + badge, screenshot GUI, tabel fitur, diagram alur (Mermaid), **Instalasi cepat**, bagian lipat untuk detail installer/manual, dan tabel **Lisensi & kredit** (PCL untuk karakter, status sprite, model RVC, lisensi dependency).
+
+### Diubah
+- `run.bat` memakai `.venv` dari installer bila ada.
+- `gui.py`: lewat `pythonw.exe` (shortcut) stdout/stderr bernilai `None`; output sekarang ditulis ke `data/logs/gui.log`.
+- README: URL clone memakai nama repo baru `MikuVision`.
+
+### Diperbaiki
+- **RVC tidak jalan di instalasi baru** (dua bug yang tertutup oleh patch manual di env conda `miku`):
+  - torch ≥ 2.6 memuat checkpoint dengan `weights_only=True`, sehingga `hubert_base.pt` (berisi objek `fairseq Dictionary`) ditolak saat konversi pertama. Env `miku` ternyata memakai `fairseq/checkpoint_utils.py` yang diubah tangan menjadi `weights_only=False`. `core/voice_converter.py` kini mengizinkan hanya class `Dictionary` lewat `torch.serialization.add_safe_globals`, tanpa mematikan `weights_only` untuk checkpoint lain.
+  - Tanpa pin, uv memilih `rvc-python 0.1.0` yang `load_model()`-nya tidak menerima `index_path`.
+- GUI crash diam-diam saat dibuka tanpa konsol: transformers 4.27.4 (dipatok MeloTTS) memanggil `sys.stderr.flush` saat import.
+- `tests/conftest.py`: stub `torch` diberi kelas `Tensor` asli. scipy ≥ 1.17 memanggil `issubclass(x, torch.Tensor)` sehingga `test_voice_output.py` gagal di-collect.
+
+### Keputusan
+- **Python 3.10, bukan 3.11.** Di 3.11, `fairseq 0.12.2` gagal saat import (`mutable default ... use default_factory`), jadi RVC mati. Python 3.10 berakhir masa dukungannya Oktober 2026; pindah versi menunggu pengganti `fairseq` di `rvc-python`.
+- `uv venv` tidak dipakai: launcher `pythonw.exe`-nya identik dengan `python.exe` (uv 0.11.2), sehingga shortcut ikut membuka jendela konsol.
+
+### Pengujian
+Clone baru di `D:\02_Research\MikuVision_installtest`, Windows PowerShell 5.1, RTX 4050 (driver 581.86, CUDA 13.0), Ollama 0.40.10.
+
+| Skenario | Hasil | Waktu |
+|---|---|---|
+| Instalasi pertama, Python 3.11 (unduh uv, Python, torch 2.11.0+cu128 2,6 GB, 180 paket, unidic) | lulus, `miku.py --test` OK | 12 menit |
+| Pindah ke Python 3.10 + model RVC ada (unduh torch cp310, build `fairseq`) | lulus, `RVC model loaded in 0.5s (cuda:0)` | 8 menit |
+| Jalankan ulang (semua sudah terpasang) | semua langkah dilewati, lulus | 55-58 s |
+| Venv rusak (`pyvenv.cfg` hilang) | dibuat ulang dari cache uv, torch tidak diunduh ulang | 105 s |
+
+- `pytest`: 129 lulus di env installer (Python 3.10 dan 3.11) dan env conda `miku`.
+- MeloTTS → Whisper: "こんにちは、初音ミクです。今日はいい天気ですね。" terdengar "今日は初音ミクです。今日はいい天気ですね。".
+- MeloTTS → RVC → Whisper: konversi pertama 19,5 s (unduh `hubert_base.pt`/`rmvpe.pt`), lalu 4,3 s dan 0,98 s; teks tetap terbaca sama.
+- Shortcut desktop: hanya jendela GUI yang muncul (tanpa konsol), status **Ready**, **RVC: ready (0.4s)**, sapaan diputar lewat RVC.
+- Belum teruji: mesin tanpa GPU NVIDIA (jalur CPU), mesin tanpa Git/Ollama (jalur `winget`), mesin tanpa Visual Studio Build Tools (build `fairseq` diperkirakan gagal; installer lanjut tanpa RVC), unduhan Whisper/MeloTTS pertama kali (cache Hugging Face mesin uji sudah terisi).
+
+### Keterbatasan diketahui
+- Model RVC tidak diunduh otomatis; pengguna menyiapkan sendiri (lihat README).
+- Asal sprite maskot belum tercatat.
+- Judul jendela GUI masih "MikuWin v4".
 
 ---
 

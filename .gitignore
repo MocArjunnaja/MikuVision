@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .venv/
+# uv, Python terisolasi dan cache unduhan dari install.ps1
+.tools/
 venv/
 *.egg-info/
 

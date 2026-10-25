@@ -2,11 +2,13 @@
 cd /d "%~dp0"
 
 echo ================================================
-echo   MikuWin v4 - Hatsune Miku Edition
+echo   MikuVision - Hatsune Miku Edition
 echo ================================================
 echo.
 
-REM Assume user's venv is already activated
-REM If not, activate it first
-
-python gui.py
+rem Pakai env dari install.bat bila ada; selain itu python dari env yang sedang aktif
+if exist ".venv\Scripts\python.exe" (
+    ".venv\Scripts\python.exe" gui.py
+) else (
+    python gui.py
+)

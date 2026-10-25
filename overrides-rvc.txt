@@ -1,0 +1,3 @@
+# Override pin rvc-python 0.1.5 (numpy<=1.23.5) yang bentrok dengan requirements.txt (numpy>=1.24).
+# RVC teruji jalan dengan numpy 1.26; tetap di bawah 2 untuk transformers 4.27.4 dan faiss-cpu 1.7.3.
+numpy>=1.24,<2

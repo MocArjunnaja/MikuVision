@@ -1,84 +1,183 @@
-# MikuWin V11
+<div align="center">
 
-Asisten desktop Windows berwujud **Hatsune Miku**. Miku mendengarkan suara Anda, berpikir dengan LLM lokal (Ollama), menjalankan aksi di komputer (volume, membuka aplikasi/folder/situs, YouTube, Word/PowerPoint, WhatsApp/Telegram), lalu menjawab dengan suara dan maskot beranimasi. Semua berjalan lokal di komputer Anda.
+<img src="docs/images/miku.png" alt="Maskot Hatsune Miku" width="150">
 
-## Alur kerja
+# MikuVision
 
+**Asisten desktop Windows berwujud Hatsune Miku, 100% lokal.**<br>
+Mendengar suara Anda, berpikir dengan LLM lokal, menjalankan aksi di komputer, lalu menjawab dengan suara Miku.
+
+[![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white)](#kebutuhan)
+[![Python 3.10](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)](#kebutuhan)
+[![Ollama](https://img.shields.io/badge/LLM-Ollama%20%C2%B7%20qwen3-000000?logo=ollama&logoColor=white)](#pilihan-model)
+[![CUDA](https://img.shields.io/badge/GPU-CUDA%2012.8-76B900?logo=nvidia&logoColor=white)](#instalasi-cepat)
+[![Non-komersial](https://img.shields.io/badge/karakter-non--komersial%20(PCL)-39C5BB)](#lisensi--kredit)
+
+[Instalasi cepat](#instalasi-cepat) ·
+[Fitur](#fitur) ·
+[Menjalankan](#menjalankan) ·
+[Suara Miku (RVC)](#suara-miku-rvc) ·
+[Troubleshooting](#troubleshooting) ·
+[Changelog](CHANGELOG.md)
+
+<img src="docs/images/gui.png" alt="Jendela GUI MikuVision" width="760">
+
+</div>
+
+## Fitur
+
+| | |
+|---|---|
+| **Suara dua arah** | Faster-Whisper `large-v3-turbo` untuk mendengar, MeloTTS Jepang + RVC untuk timbre khas Miku |
+| **Aksi di komputer** | Volume, buka aplikasi/folder/situs, YouTube, Word/PowerPoint, WhatsApp/Telegram, keyboard shortcut |
+| **LLM lokal** | `qwen3:4b-instruct` lewat Ollama dengan tool calling: 50/50 tool call tepat, median 0,9 s di RTX 4050 |
+| **Aman** | Aksi berisiko (kirim pesan, menutup aplikasi) selalu minta konfirmasi; aplikasi ditutup lewat `WM_CLOSE`, bukan kill paksa |
+| **Ingatan** | Memori jangka panjang (`"ingat ya, ..."`), lanjutkan sesi lama, penghitung token dari Ollama |
+| **Routine** | Satu perintah untuk banyak aksi (`"jalankan mode belajar"`), plus slash command tanpa LLM |
+| **Maskot** | Sprite Miku beranimasi sesuai emosi, di GUI maupun sebagai maskot desktop |
+| **Privat** | Semua berjalan di komputer Anda. Riwayat, memori, dan log tersimpan di `data/` dan tidak pernah ikut ke git |
+
+### Cara kerja
+
+```mermaid
+flowchart LR
+    A[Mikrofon] --> B[WebRTC VAD<br>+ noise reduction]
+    B --> C[Faster-Whisper<br>STT]
+    C --> D[Ollama LLM<br>+ tool calling]
+    D -->|aksi| E[Tool Windows<br>konfirmasi bila berisiko]
+    E --> D
+    D --> F[MeloTTS JP]
+    F --> G[RVC suara Miku<br>opsional]
+    G --> H[Speaker + maskot]
 ```
-Mic → WebRTC VAD + noise reduction → Faster-Whisper (STT)
-    → Ollama LLM + tool calling → eksekusi tool (dengan konfirmasi untuk aksi berisiko)
-    → MeloTTS (JP) → [RVC suara Miku, opsional] → speaker + maskot sprite
-```
 
-## Kebutuhan
+## Instalasi cepat
 
-| | Minimum | Teruji |
+> [!TIP]
+> Satu klik: installer memasang Python, PyTorch, dependency, Ollama, dan model, lalu menguji hasilnya. Tidak perlu Anaconda.
+
+1. **Ambil kode** ke folder di drive yang lega, misalnya `D:\MikuVision`:
+   ```bash
+   git clone https://github.com/MocArjunnaja/MikuVision.git D:\MikuVision
+   ```
+   Atau unduh ZIP dari [Releases](https://github.com/MocArjunnaja/MikuVision/releases) lalu ekstrak.
+2. **Double-click `install.bat`** dan tunggu sampai muncul `Instalasi selesai.` (±15 menit pertama kali, tergantung internet).
+3. **Buka shortcut MikuVision** di desktop.
+
+<details>
+<summary><b>Apa saja yang dilakukan installer?</b></summary>
+
+| Langkah | Keterangan |
+|---|---|
+| Git | Dipasang lewat `winget` bila belum ada (ditanya dulu). Dibutuhkan untuk mengunduh MeloTTS |
+| [uv](https://docs.astral.sh/uv/) 0.11.2 | Versi dipatok, checksum SHA-256 dicek, disimpan di `.tools\uv` |
+| Python 3.10 | Python terisolasi di `.tools\python`, env di `.venv`. Tidak mengubah PATH atau registry |
+| PyTorch 2.11 | GPU NVIDIA terdeteksi lewat `nvidia-smi` → build CUDA 12.8 (driver lama: 12.6). Tanpa GPU → build CPU, dengan peringatan |
+| Dependency | `requirements.txt` + kamus `unidic` untuk MeloTTS, lalu cek semua modul bisa di-import |
+| RVC | `rvc-python` ikut dipasang otomatis bila file model RVC sudah ada di `models\` |
+| Ollama | Dipasang lewat `winget` bila belum ada (ditanya dulu), lalu `ollama pull` model dari `OLLAMA_MODEL` di `config.py` |
+| Shortcut | **MikuVision** di desktop, membuka GUI tanpa jendela konsol |
+| Verifikasi | `miku.py --test` harus lulus |
+
+Installer aman dijalankan ulang: langkah yang sudah beres dilewati (±1 menit). Setiap jalan dicatat di `logs\install-<waktu>.log`; bila gagal, pesan `[ERROR]` terakhir menjelaskan penyebab dan langkah perbaikannya.
+
+</details>
+
+<details>
+<summary><b>Opsi installer</b></summary>
+
+Opsi bisa diteruskan lewat `install.bat` atau `install.ps1`, misalnya `install.bat -Yes -Cpu`.
+
+| Opsi | Fungsi |
+|---|---|
+| `-Yes` | Jawab "ya" otomatis (instal Git/Ollama tanpa bertanya) |
+| `-Cpu` | Paksa PyTorch CPU walau ada GPU NVIDIA |
+| `-WithRvc` | Pasang `rvc-python` walau model RVC belum diletakkan |
+| `-SkipOllama`, `-SkipShortcut`, `-SkipTest` | Lewati langkah tersebut |
+| `-PythonVersion 3.x` | Ganti versi Python (default 3.10; RVC tidak jalan di 3.11) |
+
+</details>
+
+<details>
+<summary><b>Ruang disk dan lokasi file</b></summary>
+
+| Isi | Ukuran | Lokasi |
 |---|---|---|
-| OS | Windows 10/11 | Windows 11 |
-| Python | 3.10 | 3.10 (conda) |
-| GPU | Opsional (CPU bisa, tapi lambat) | NVIDIA RTX 4050 6 GB |
-| Disk | ±8 GB (model Whisper, MeloTTS, LLM) | |
-| Lainnya | [Git](https://git-scm.com/download/win), [Ollama](https://ollama.com/download), mikrofon | |
+| Python, PyTorch CUDA, dependency | ±6 GB | Folder aplikasi (`.tools\`, `.venv\`) |
+| Whisper + MeloTTS | ±2 GB | Cache Hugging Face, default `C:\Users\<user>\.cache\huggingface` |
+| Model LLM | ±2,5 GB | Ollama, default `C:\Users\<user>\.ollama\models` |
 
-## Instalasi
+Bila drive C sempit, buat variabel environment user `HF_HOME` (misalnya `D:\hf_home`) dan `OLLAMA_MODELS` (misalnya `D:\ollama_models`) **sebelum** menjalankan installer, lalu restart Ollama.
 
-1. **Clone repo**
+**Menghapus:** tutup MikuVision, hapus folder aplikasi dan shortcut desktop. Ollama di-uninstall terpisah lewat Settings → Apps.
+
+</details>
+
+<details>
+<summary><b>Instalasi manual (conda)</b></summary>
+
+1. Clone repo dan masuk ke foldernya:
    ```bash
    git clone https://github.com/MocArjunnaja/MikuVision.git
    ```
    ```bash
    cd MikuVision
    ```
-
-2. **Buat environment Python 3.10** (contoh dengan Miniconda)
+2. Buat environment Python 3.10:
    ```bash
    conda create -n miku python=3.10 -y
    ```
    ```bash
    conda activate miku
    ```
-
-3. **(Khusus GPU NVIDIA) install PyTorch versi CUDA dulu.** Ambil perintah yang sesuai dari https://pytorch.org/get-started/locally/. Contoh untuk CUDA 12.8:
+3. Khusus GPU NVIDIA, pasang PyTorch CUDA dulu (perintah lain di [pytorch.org](https://pytorch.org/get-started/locally/)):
    ```bash
-   pip install torch --index-url https://download.pytorch.org/whl/cu128
+   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
    ```
-   Tanpa GPU NVIDIA, lewati langkah ini; torch versi CPU akan terpasang di langkah berikutnya.
-
-4. **Install dependency**
+4. Pasang dependency dan kamus Jepang untuk MeloTTS:
    ```bash
    pip install -r requirements.txt
    ```
    ```bash
    python -m unidic download
    ```
-   Perintah kedua mengunduh kamus bahasa Jepang yang dibutuhkan MeloTTS (sekali saja).
-
-5. **Siapkan LLM di Ollama**
+5. Siapkan LLM:
    ```bash
    ollama pull qwen3:4b-instruct
    ```
-   Model lain bisa dipakai dengan mengubah `OLLAMA_MODEL` di `config.py` (lihat [Pilihan model](#pilihan-model)).
-
-6. **Cek instalasi**
+6. Cek instalasi; harus berakhir dengan `[Test mode - Initialization successful!]`:
    ```bash
    python miku.py --test
    ```
-   Harus berakhir dengan `[Test mode - Initialization successful!]`. Jalankan pertama kali butuh internet: Whisper `large-v3-turbo` (±1,6 GB) dan model MeloTTS diunduh otomatis.
+
+</details>
+
+### Kebutuhan
+
+| | Minimum | Teruji |
+|---|---|---|
+| OS | Windows 10/11 64-bit | Windows 11 |
+| GPU | Opsional (CPU bisa, tapi lambat) | NVIDIA RTX 4050 Laptop 6 GB |
+| Disk | ±12 GB | |
+| Lainnya | Mikrofon, internet saat instalasi | |
 
 ## Menjalankan
 
 | Mode | Perintah | Keterangan |
 |---|---|---|
-| Suara + maskot | `python miku.py` | Seret (drag) maskot Miku di layar untuk mulai bicara |
+| GUI | Shortcut **MikuVision**, `run.bat`, atau `python gui.py` | Jendela chat + tombol **Hold to Speak** |
+| Suara + maskot | `python miku.py` | Seret maskot Miku di layar untuk mulai bicara |
 | Teks (terminal) | `python miku.py --text` | Paling mudah untuk mencoba pertama kali |
-| GUI | `python gui.py` | Jendela chat + tombol "Hold to Speak" |
-| Lanjutkan sesi | `python miku.py --text --resume` | Memuat sesi terakhir (atau `--resume <SESSION_ID>`); di GUI: tombol **↺ Sesi lalu** |
+| Lanjutkan sesi | `python miku.py --text --resume` | Sesi terakhir, atau `--resume <SESSION_ID>`; di GUI: tombol **↺ Sesi lalu** |
 
-Contoh perintah: "buka notepad", "kecilkan volume ke 30", "carikan lagu Yorushika di YouTube", "buka folder Downloads".
+Dengan installer, ganti `python` dengan `.venv\Scripts\python.exe`.
 
-Aksi berisiko (kirim WhatsApp/Telegram, menutup aplikasi) **selalu meminta konfirmasi** dulu: `y/n` di mode teks, jawaban suara "ya/はい" di mode suara, atau dialog Yes/No di GUI.
+**Contoh perintah:** "buka notepad", "kecilkan volume ke 30", "carikan lagu Yorushika di YouTube", "buka folder Downloads", "ingat ya, aku kuliah di ITS".
 
-## Routine & perintah cepat
+> [!IMPORTANT]
+> Aksi berisiko (kirim WhatsApp/Telegram, menutup aplikasi) **selalu meminta konfirmasi**: `y/n` di mode teks, jawaban "ya/はい" di mode suara, atau dialog Yes/No di GUI.
+
+### Routine & slash command
 
 **Routine** menjalankan beberapa aksi dengan satu perintah. Contoh bawaan ada di `routines.example.yaml` ("mode belajar", "mode istirahat"). Untuk membuat routine sendiri, salin file itu ke `data/routines.yaml` lalu ubah isinya. Jalankan dengan ucapan ("jalankan mode belajar", "勉強モードにして") atau `/routine mode belajar`. Langkah berisiko tetap meminta konfirmasi.
 
@@ -96,15 +195,15 @@ Aksi berisiko (kirim WhatsApp/Telegram, menutup aplikasi) **selalu meminta konfi
 
 **Skill on-demand:** 25 tool dikelompokkan menjadi 9 skill (`core/skills.py`). Hanya skill yang cocok dengan permintaan yang dikirim ke LLM, sehingga prompt turun dari ±3.400 ke ±1.550 token tanpa menurunkan akurasi. Matikan dengan `SKILL_ROUTING = False` di `config.py`.
 
-## Memori & pemakaian token
+### Memori & pemakaian token
 
-- **Konteks:** setiap balasan menampilkan pemakaian konteks LLM yang diambil langsung dari Ollama (`prompt_eval_count`), misalnya `konteks 3.2k / 8.2k token`. Di GUI angka ini ada di bawah status.
-- **Memori jangka panjang:** fakta yang disimpan dengan tool `remember` disisipkan ke system prompt (maksimal `MEMORY_PROMPT_MAX_FACTS`, default 15). Miku tetap ingat setelah aplikasi ditutup.
+- **Konteks:** setiap balasan menampilkan pemakaian konteks dari Ollama (`prompt_eval_count`), misalnya `konteks 3.2k / 8.2k token`. Di GUI angka ini ada di bawah status.
+- **Memori jangka panjang:** fakta yang disimpan dengan tool `remember` disisipkan ke system prompt (maksimal `MEMORY_PROMPT_MAX_FACTS`, default 15), sehingga Miku tetap ingat setelah aplikasi ditutup.
 - **Agent loop:** tool call dan hasilnya disimpan dalam format resmi Ollama (`tool_calls` + pesan `role: tool`), sehingga Miku tahu apa yang sudah dilakukannya di giliran sebelumnya.
 
 ## Pilihan model
 
-Hasil benchmark di RTX 4050 6 GB: 10 perintah (JP/ID), 3–5 kali ulang, tool tidak dieksekusi.
+Benchmark di RTX 4050 6 GB: 10 perintah (JP/ID), 3–5 kali ulang, tool tidak dieksekusi.
 
 | `OLLAMA_MODEL` | Tool call tepat | Latensi median | Catatan |
 |---|---|---|---|
@@ -112,28 +211,35 @@ Hasil benchmark di RTX 4050 6 GB: 10 perintah (JP/ID), 3–5 kali ulang, tool ti
 | `qwen3:4b` | 30/30 | 11,5 s | Varian Thinking-2507: paling akurat, tapi berpikir dulu sebelum menjawab |
 | `granite4.2:3b` | 25/30 | 4,6 s | IBM Granite; bahasa Indonesia tidak didukung resmi |
 
-Model kecil kadang hanya *berjanji* melakukan aksi tanpa memanggil tool; MikuWin otomatis meminta ulang (maksimal 2 kali) bila user meminta aksi tapi tidak ada tool yang dipanggil. Angka `qwen3:4b-instruct` sudah termasuk mekanisme ini; dua model lain diukur sebelum mekanisme ini ditambahkan.
+Model kecil kadang hanya *berjanji* melakukan aksi tanpa memanggil tool; MikuVision otomatis meminta ulang (maksimal 2 kali). Angka `qwen3:4b-instruct` sudah termasuk mekanisme ini; dua model lain diukur sebelum mekanisme ini ada.
 
 Biarkan `OLLAMA_THINK = None` di `config.py`. Mengirim `think=False` ke `qwen3:4b` justru membuat penalarannya ikut terucap.
 
-## Suara Miku (RVC, opsional)
+## Suara Miku (RVC)
 
-Tanpa RVC, Miku tetap bicara memakai suara dasar MeloTTS Jepang. Untuk timbre khas Miku, siapkan model RVC v2 milik Anda sendiri (tidak disertakan di repo):
+Tanpa RVC, Miku bicara memakai suara dasar MeloTTS Jepang. Untuk timbre khas Miku, siapkan model RVC v2 milik Anda sendiri (tidak disertakan di repo):
 
-1. Simpan file bobot ke `models/miku_default_rvc/weights/miku_default_rvc.pth`
-2. Simpan file index ke `models/miku_default_rvc/logs/miku_default_rvc/added_IVF4457_Flat_nprobe_1_miku_default_rvc_v2.index` (atau ubah `index_path` di `config.py` sesuai nama file Anda)
-3. Install `rvc-python` di environment yang sama (dependency-nya sering bentrok; lihat dokumentasi rvc-python).
+1. Simpan file bobot ke `models/miku_default_rvc/weights/miku_default_rvc.pth`.
+2. Simpan file index ke `models/miku_default_rvc/logs/miku_default_rvc/added_IVF4457_Flat_nprobe_1_miku_default_rvc_v2.index` (atau ubah `index_path` di `config.py` sesuai nama file Anda).
+3. Jalankan ulang `install.bat`. Installer mendeteksi model dan memasang `rvc-python`; GUI lalu menampilkan **RVC: ready**.
 
-File `.pth` adalah file pickle yang bisa menjalankan kode saat dimuat. Hanya pakai model dari sumber yang Anda percayai.
+Catatan teknis:
+- `rvc-python` bergantung pada `fairseq 0.12.2`, yang hanya tersedia sebagai source code dan dikompilasi saat instalasi. Bila gagal, pasang [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) dengan workload **Desktop development with C++**, lalu jalankan installer lagi. Aplikasi tetap jalan tanpa RVC.
+- `fairseq` tidak jalan di Python 3.11, karena itu installer memakai Python 3.10.
+- Konversi pertama mengunduh `hubert_base.pt` dan `rmvpe.pt` (sekali saja). Setelah itu ±1 detik per kalimat di RTX 4050.
+
+> [!WARNING]
+> Installer **tidak** mengunduh model RVC, dan repo ini tidak menunjuk ke model tertentu: hampir semua model RVC Miku yang beredar dilatih dari suara VOCALOID tanpa izin tertulis yang jelas (lihat [Lisensi & kredit](#lisensi--kredit)). File `.pth` juga file pickle yang bisa menjalankan kode saat dimuat. Hanya pakai model dari sumber yang Anda percayai, dan jangan unggah ulang model tersebut ke repo ini.
 
 ## Data & privasi
 
-- Riwayat percakapan tersimpan di `data/conversations/` (tidak ikut ke git).
-- Log per giliran (input, tool + hasil, token, latensi) di `data/logs/turns_YYYYMMDD.jsonl`.
+- Riwayat percakapan di `data/conversations/`; log per giliran (input, tool + hasil, token, latensi) di `data/logs/turns_YYYYMMDD.jsonl`.
+- Output GUI yang dibuka lewat shortcut (tanpa konsol) dicatat di `data/logs/gui.log`.
 - Memori jangka panjang di `data/long_term_memory.json`. Isi lewat ucapan seperti "ingat ya, aku kuliah di ITS" atau "誕生日を覚えておいて", hapus dengan "lupakan …" / "…を忘れて".
 - Dokumen buatan Miku tersimpan di `Desktop/Miku_Documents/` milik user yang sedang login.
-- Fitur WhatsApp memakai `data/contacts_db.json` berformat `{"nama": "62812xxxx"}` (buat sendiri; tidak ikut ke git).
+- Fitur WhatsApp memakai `data/contacts_db.json` berformat `{"nama": "62812xxxx"}` (buat sendiri).
 - Rekaman mic tidak disimpan. Untuk debugging audio, set `DEBUG_DUMP_AUDIO = True` di `config.py`.
+- Seluruh `data/` diabaikan git dan tidak pernah ikut di-commit.
 
 ## Pengembangan
 
@@ -144,19 +250,34 @@ pip install pytest
 pytest
 ```
 
-Test tidak membutuhkan mikrofon, GPU, maupun Ollama.
+Test tidak membutuhkan mikrofon, GPU, maupun Ollama. Catatan perubahan, angka pengujian, dan keputusan teknis ada di [CHANGELOG.md](CHANGELOG.md).
 
 ## Troubleshooting
 
 | Gejala | Solusi |
 |---|---|
+| `install.bat` gagal | Baca pesan `[ERROR]` terakhir dan `logs\install-*.log`, perbaiki, lalu jalankan ulang |
+| Shortcut MikuVision tidak membuka apa-apa | Lihat `data/logs/gui.log`, atau jalankan `run.bat` untuk melihat error di konsol |
 | `Model 'qwen3:4b-instruct' tidak ditemukan` | Jalankan `ollama pull qwen3:4b-instruct`, pastikan aplikasi Ollama sedang berjalan |
 | `Gagal connect ke Ollama` | Buka aplikasi Ollama (ikon di system tray) |
 | Error MeloTTS / `unidic` | Jalankan `python -m unidic download` |
+| `RVC unavailable` | Model RVC belum diletakkan, atau `rvc-python` gagal dipasang. Lihat [Suara Miku (RVC)](#suara-miku-rvc) |
 | `webrtcvad` gagal di-install | Pastikan memakai paket `webrtcvad-wheels` dari `requirements.txt` |
 | Whisper sangat lambat | Tanpa GPU, ganti `WHISPER_MODEL` di `config.py` ke `small` |
-| `RVC unavailable` | Normal jika model RVC tidak dipasang |
 
-## Kredit
+## Lisensi & kredit
 
 Hatsune Miku © Crypton Future Media, INC. www.piapro.net. Proyek non-komersial.
+
+Catatan aset (bukan nasihat hukum; dicek 25 Oktober 2026):
+
+| Aset | Status | Catatan |
+|---|---|---|
+| Karakter Hatsune Miku | [Piapro Character License](https://piapro.net/license) (PCL) atau CC BY-NC 3.0 untuk ilustrasi resmi Crypton | Hanya untuk penggunaan **non-komersial** (tanpa tujuan bisnis dan tanpa menerima bayaran). Penggunaan komersial butuh izin Crypton. Dilarang memakai karakter dalam konteks yang merusak nama baiknya (misalnya terlalu kasar atau seksual) |
+| Sprite maskot `assets/avatar/miku_smart_sheet.png` (juga `docs/images/`) | **Asal belum tercatat** | Masuk sejak commit pertama tanpa keterangan pembuat. Sprite turunan karakter tetap tunduk pada PCL, dan bila dibuat orang lain, hak ciptanya milik pembuatnya. Pembuat dan izinnya perlu dicatat di sini |
+| Model suara RVC | Tidak disertakan; disediakan sendiri oleh pengguna | Suara Miku berasal dari voicebank VOCALOID (sampel suara Saki Fujita) yang diatur EULA software Crypton, bukan PCL. Tidak ditemukan pernyataan resmi Crypton yang mengizinkan pelatihan model konversi suara dari voicebank tersebut. Perlakukan model RVC Miku sebagai untuk pemakaian pribadi saja, ikuti lisensi dari pembuat modelnya, dan jangan distribusikan |
+| `rvc-python` | MIT | Dipasang bila model RVC ada, tidak dibundel |
+| MeloTTS | MIT | Diunduh saat instalasi |
+| faster-whisper, model Whisper | MIT | Model diunduh saat pertama jalan |
+| Qwen3 (`qwen3:4b-instruct`) | Apache 2.0 | Diunduh lewat Ollama |
+| Ollama; uv | MIT; MIT/Apache 2.0 | Dipasang oleh installer bila belum ada |
