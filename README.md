@@ -55,9 +55,9 @@ Mic → WebRTC VAD + noise reduction → Faster-Whisper (STT)
 
 5. **Siapkan LLM di Ollama**
    ```bash
-   ollama pull qwen3:4b
+   ollama pull qwen3:4b-instruct
    ```
-   Model lain bisa dipakai dengan mengubah `OLLAMA_MODEL` di `config.py`, misalnya `granite4.2:3b` (IBM Granite).
+   Model lain bisa dipakai dengan mengubah `OLLAMA_MODEL` di `config.py` (lihat [Pilihan model](#pilihan-model)).
 
 6. **Cek instalasi**
    ```bash
@@ -76,6 +76,20 @@ Mic → WebRTC VAD + noise reduction → Faster-Whisper (STT)
 Contoh perintah: "buka notepad", "kecilkan volume ke 30", "carikan lagu Yorushika di YouTube", "buka folder Downloads".
 
 Aksi berisiko (kirim WhatsApp/Telegram, menutup aplikasi) **selalu meminta konfirmasi** dulu: `y/n` di mode teks, jawaban suara "ya/はい" di mode suara, atau dialog Yes/No di GUI.
+
+## Pilihan model
+
+Hasil benchmark di RTX 4050 6 GB: 10 perintah (JP/ID), 3–5 kali ulang, tool tidak dieksekusi.
+
+| `OLLAMA_MODEL` | Tool call tepat | Latensi median | Catatan |
+|---|---|---|---|
+| `qwen3:4b-instruct` (default) | 50/50 | 0,9 s | Paling responsif untuk asisten suara; di tengah percakapan 8/8 |
+| `qwen3:4b` | 30/30 | 11,5 s | Varian Thinking-2507: paling akurat, tapi berpikir dulu sebelum menjawab |
+| `granite4.2:3b` | 25/30 | 4,6 s | IBM Granite; bahasa Indonesia tidak didukung resmi |
+
+Model kecil kadang hanya *berjanji* melakukan aksi tanpa memanggil tool; MikuWin otomatis meminta ulang (maksimal 2 kali) bila user meminta aksi tapi tidak ada tool yang dipanggil. Angka `qwen3:4b-instruct` sudah termasuk mekanisme ini; dua model lain diukur sebelum mekanisme ini ditambahkan.
+
+Biarkan `OLLAMA_THINK = None` di `config.py`. Mengirim `think=False` ke `qwen3:4b` justru membuat penalarannya ikut terucap.
 
 ## Suara Miku (RVC, opsional)
 
@@ -109,7 +123,7 @@ Test tidak membutuhkan mikrofon, GPU, maupun Ollama.
 
 | Gejala | Solusi |
 |---|---|
-| `Model 'qwen3:4b' tidak ditemukan` | Jalankan `ollama pull qwen3:4b`, pastikan aplikasi Ollama sedang berjalan |
+| `Model 'qwen3:4b-instruct' tidak ditemukan` | Jalankan `ollama pull qwen3:4b-instruct`, pastikan aplikasi Ollama sedang berjalan |
 | `Gagal connect ke Ollama` | Buka aplikasi Ollama (ikon di system tray) |
 | Error MeloTTS / `unidic` | Jalankan `python -m unidic download` |
 | `webrtcvad` gagal di-install | Pastikan memakai paket `webrtcvad-wheels` dari `requirements.txt` |
