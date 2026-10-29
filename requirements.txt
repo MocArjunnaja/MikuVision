@@ -1,4 +1,4 @@
-# MikuVision requirements (Python 3.10+, Windows)
+# MikuVision requirements (Python 3.10+, Windows dan Linux)
 
 # ── Core AI ──
 ollama>=0.5.0            # >=0.5 dibutuhkan untuk parameter think=
@@ -8,7 +8,7 @@ faster-whisper>=1.0.0
 numpy>=1.24.0
 scipy>=1.10.0
 noisereduce>=3.0.0
-webrtcvad-wheels>=2.0.11  # menyediakan modul `webrtcvad` dengan wheel Windows
+webrtcvad-wheels>=2.0.11  # menyediakan modul `webrtcvad` dengan wheel Windows dan Linux
 
 # ── Text-to-Speech (MeloTTS, offline) ──
 # Setelah install, jalankan sekali: python -m unidic download
@@ -24,15 +24,18 @@ customtkinter>=5.2.0
 Pillow>=10.0.0
 pygame>=2.5.0
 
-# ── Windows Automation ──
-pycaw>=20240210
-comtypes>=1.2.0
-pyautogui>=0.9.54
-pygetwindow>=0.0.9
+# ── Desktop Automation ──
+pyautogui>=0.9.54        # Linux: hanya sesi X11
 psutil>=5.9.0
-pywin32>=306
-keyboard>=0.13.5
 websocket-client>=1.6.0  # browser_media_control (Chrome DevTools Protocol)
+
+# Khusus Windows. pywin32 tidak punya paket Linux, pygetwindow melempar
+# NotImplementedError di Linux, dan keyboard di Linux butuh root.
+pycaw>=20240210; sys_platform == "win32"
+comtypes>=1.2.0; sys_platform == "win32"
+pygetwindow>=0.0.9; sys_platform == "win32"
+pywin32>=306; sys_platform == "win32"
+keyboard>=0.13.5; sys_platform == "win32"
 
 # ── Office Macros ──
 python-docx>=1.1.0

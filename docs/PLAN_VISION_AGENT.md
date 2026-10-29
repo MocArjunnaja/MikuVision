@@ -2,7 +2,7 @@
 
 **Tujuan:** Miku bisa melihat layar (screenshot), memahami isinya (teks, tombol, pesan error, pemicu tertentu), lalu menggerakkan mouse dan keyboard untuk mencapai sebuah tujuan. Kalau langkah pertama belum berhasil, Miku mengamati lagi, merevisi rencana, dan mencoba lagi sampai berhasil atau meminta bantuan.
 
-**Status:** Fase 0 selesai (25 Okt 2026); hasil di [`experiments/vision_phase0/RESULTS.md`](../experiments/vision_phase0/RESULTS.md). Fase 1 belum dimulai.
+**Status:** Fase 0 selesai (25 Okt 2026, Windows); hasil di [`experiments/vision_phase0/RESULTS.md`](../experiments/vision_phase0/RESULTS.md). Fase 1 belum dimulai. Fase 1 menunggu port Linux ([`PLAN_LINUX.md`](PLAN_LINUX.md) L0–L4) dan spike Fase 0 versi Linux: AT-SPI2 menggantikan UI Automation, RapidOCR menggantikan Windows OCR.
 
 ---
 
@@ -135,7 +135,8 @@ Semua langkah tercatat di `data/logs/` (aksi, elemen, alasan, thumbnail), memaka
 |---|---|---|
 | `mss` | < 1 MB | Screenshot cepat |
 | `uiautomation` atau `pywinauto` | ±5 MB | Pohon UI Automation |
-| `winrt` OCR atau `rapidocr-onnxruntime` | ±1 / ±100 MB | OCR CPU |
+| `winrt` OCR atau `rapidocr-onnxruntime` | ±1 / ±100 MB | OCR CPU; di Linux hanya RapidOCR |
+| AT-SPI2 (`pyatspi` / PyGObject) | paket sistem | Pohon aksesibilitas di Linux, pengganti UI Automation |
 | `qwen3-vl:4b-instruct` | 3,3 GB | **Simpan di D:** set `OLLAMA_MODELS=D:\ollama_models` sebelum `ollama pull` |
 
 ## 9. Keputusan yang dibutuhkan dari user

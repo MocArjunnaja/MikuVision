@@ -108,6 +108,10 @@ OLLAMA_NUM_CTX = 8192   # Persona + skema tool + 20 pesan history butuh > defaul
 # menaruh penalaran di content dan mengulang tool call. Isi True/False hanya untuk
 # model hybrid yang memang mendukung saklar thinking.
 OLLAMA_THINK: Optional[bool] = None
+# Model dimuat sebelum Whisper/RVC lalu ditahan di VRAM selama aplikasi jalan (-1 = tanpa batas)
+# dan dilepas saat keluar. Default Ollama 5 menit: setelah dilepas, model dimuat ulang di samping
+# Whisper + RVC (±1,7 GB) dan di GPU 6 GB hanya 29/37 layer yang muat (sisanya di CPU, 49 s).
+OLLAMA_KEEP_ALIVE = -1
 
 # ============ Hotkey Config ============
 WAKE_HOTKEY = "ctrl+shift+m"

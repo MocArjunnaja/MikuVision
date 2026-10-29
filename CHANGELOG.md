@@ -6,6 +6,57 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## v1.3.0 (2026-10-29): MikuVision jalan di Linux (Fase L1)
+
+Rencana dan hasil audit: `docs/PLAN_LINUX.md`. Diuji di laptop yang sama (dual-boot), Linux Mint 22.3 Cinnamon X11, driver NVIDIA 595 (CUDA 13.2), Ollama 0.40.13.
+
+### Ditambahkan
+- `install.sh`, setara `install.ps1`: uv 0.11.2 (checksum SHA-256 dicek), Python 3.10, venv, torch 2.11.0 cu128/cu126/cpu sesuai `nvidia-smi`, `requirements.txt` + `rvc-python` bila model RVC ada, kamus unidic, Ollama dari skrip resminya, peluncur di menu aplikasi + Desktop, verifikasi `miku.py --test`. Paket `apt` dan Ollama ditanya dulu sebelum `sudo`. Idempoten, log di `logs/`.
+  - Folder repo di partisi Windows (NTFS/FAT): uv, Python, dan venv disimpan di `~/.local/share/mikuvision/`, karena venv di NTFS lewat FUSE lambat. `MIKU_VENV` untuk lokasi lain.
+  - Berhenti dengan pesan jelas bila driver NVIDIA terpasang tapi belum aktif (belum reboot).
+- `run.sh`, setara `run.bat`; output dicatat ke `data/logs/gui.log` bila dibuka dari menu.
+- `.gitattributes`: teks disimpan LF, `*.sh` LF, `*.bat`/`*.ps1` CRLF, supaya folder yang dipakai Windows dan Linux tidak rusak.
+- README: bagian **Linux (eksperimental)** dan troubleshooting Linux.
+
+### Diubah
+- `requirements.txt`: `pycaw`, `comtypes`, `pygetwindow`, `pywin32`, `keyboard` hanya untuk Windows (`; sys_platform == "win32"`). Sebelumnya instalasi di Linux gagal total karena `pywin32`.
+- `core/system_control.py`: `psutil` dan `pyautogui` di-import terpisah dari pycaw. Di Linux keduanya sebelumnya ikut tidak ter-import, sehingga `get_system_info` kehilangan RAM/CPU/baterai dan `type_text`/`press_key`/`hotkey` selalu menjawab "PyAutoGUI not available".
+- `close_application` menolak dengan pesan jelas bila `WM_CLOSE` tidak tersedia (Linux). Tanpa ini, setelah perbaikan import di atas, aplikasi berjendela di Linux akan di-terminate tanpa sempat menawarkan simpan.
+- `core/macro_tools.py`: import `pyautogui` tidak lagi crash tanpa DISPLAY (SSH, CI).
+- **LLM dimuat lebih dulu** (`miku.py`, `gui.py`): Ollama → Whisper → RVC, bukan Whisper → Ollama → RVC. `AIBrain.preload_model()` memuat model dengan `num_ctx` yang sama dengan chat; setiap request membawa `keep_alive` (`OLLAMA_KEEP_ALIVE = -1` di `config.py`) sehingga model tidak dilepas setelah 5 menit menganggur; `cleanup()` melepasnya (`keep_alive=0`) saat aplikasi ditutup. Start ±1,5–3 s lebih lama. Berlaku juga di Windows.
+
+### Diperbaiki
+- **GUI segfault di Linux** saat selesai memuat: thread inisialisasi mengubah label avatar langsung (`_update_avatar`). Python 3.10 dari uv membawa Tcl/Tk 9.0, yang crash bila widget diubah dari luar main thread. Sekarang lewat antrean pesan GUI, seperti update lainnya.
+- **Balasan pertama 49 s di Linux:** Whisper + RVC (±1,7 GB) sudah ada di VRAM saat Ollama memuat model, dan Ollama menyisakan cadangan 1 GB, sehingga hanya 29/37 layer masuk GPU (27% CPU). Hal yang sama terjadi setiap kali model dilepas setelah 5 menit menganggur.
+
+  | Mode teks, 2 perintah | Sebelum | Sesudah |
+  |---|---|---|
+  | Balasan pertama / kedua | 49,4 s / 1,6 s | **1,3 s / 0,9 s** |
+  | `ollama ps` | 27%/73% CPU/GPU | 100% GPU, `Forever` |
+  | Kecepatan | 14–34 token/s | 59 token/s |
+  | VRAM total | - | 5,5 / 6,1 GB; kembali 15 MB setelah keluar |
+
+### Pengujian
+- `pytest`: 178 lulus di venv Linux dengan paket asli (6 test baru). `miku.py --test` lulus.
+- Instalasi pertama (tanpa Ollama) 7 menit, termasuk build `fairseq`; jalankan ulang 50 s. Ruang: ±11 GB env + cache uv, 1,8 GB cache Hugging Face.
+- GUI terbuka dari `run.sh`: status **Ready**, **RVC: ready (0.3s)**, sapaan diputar lewat RVC (siap ±22 s).
+
+  | Linux (s, setelah pemanasan) | Linux | Windows (CHANGELOG lama) |
+  |---|---|---|
+  | MeloTTS, 1 kalimat (CPU) | 0,90–1,01 | - |
+  | RVC konversi | 0,67–0,77 (pertama 4,8) | ±1 (pertama 19,5 dengan unduhan) |
+  | Whisper, klip 3,3 s | 0,53–0,58 | 0,54–0,59 |
+  | LLM saja di GPU: muat dingin / balasan / kecepatan | 1,8 / 0,3–0,7 / 62–66 token/s | 3,6–4,3 / median 0,9 / - |
+
+- MeloTTS → RVC → Whisper: 「今日は初音ミクです。こうはいい天気ですね」 (Windows: 「今日は初音ミクです。今日はいい天気ですね。」).
+- Mode teks: "berapa persen baterai laptop saya" → `get_system_info` (baterai 79%), "kecilkan volume ke 30" → `set_volume` (gagal seperti diharapkan, menunggu Fase L2).
+
+### Keterbatasan diketahui
+- Bila MikuVision crash (tanpa `cleanup()`), model tetap di VRAM sampai Ollama di-restart (`sudo systemctl restart ollama`) atau dilepas dengan `ollama stop qwen3:4b-instruct`.
+- Volume, buka aplikasi/folder, tutup aplikasi, WhatsApp/Telegram, dan membuka dokumen setelah dibuat masih khusus Windows (Fase L2). Maskot desktop belum transparan (Fase L3).
+- Emoji berwarna di GUI tampil sebagai kotak (Tk di Linux).
+- Belum teruji di Linux: mesin tanpa GPU (jalur `--cpu`), distro selain Mint, sesi Wayland, mode suara dengan mic sungguhan.
+
 ## v1.2.0 (2026-10-25): nama MikuVision di aplikasi, kode dibersihkan
 
 ### Diubah

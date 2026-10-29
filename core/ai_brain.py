@@ -5,12 +5,14 @@ Menggunakan Ollama dengan support multiple characters
 
 import json
 import re
+import time
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, List, Tuple
 from ollama import Client
 
 from config import (
-    OLLAMA_MODEL, OLLAMA_BASE_URL, OLLAMA_NUM_CTX, OLLAMA_THINK, OLLAMA_TIMEOUT_SEC, SKILL_ROUTING,
+    OLLAMA_MODEL, OLLAMA_BASE_URL, OLLAMA_KEEP_ALIVE, OLLAMA_NUM_CTX, OLLAMA_THINK, OLLAMA_TIMEOUT_SEC,
+    SKILL_ROUTING,
     Character, CHARACTERS, DEFAULT_CHARACTER
 )
 from core.memory import MemoryManager
@@ -315,7 +317,34 @@ class AIBrain:
             
         except Exception as e:
             return False, f"Gagal connect ke Ollama: {e}. Pastikan Ollama running."
-    
+
+    def preload_model(self) -> Tuple[bool, str]:
+        """Muat model ke VRAM sekarang, sebelum Whisper/RVC memakai VRAM.
+
+        Ollama menaruh sebagian layer di CPU bila VRAM bebas saat model dimuat tidak cukup.
+        num_ctx harus sama dengan request chat; nilai lain membuat Ollama memuat ulang model.
+        """
+        if not self.client:
+            return False, "Belum terhubung ke Ollama"
+        try:
+            start = time.time()
+            # Pesan kosong hanya memuat model, tanpa membuat jawaban
+            self.client.chat(model=self.model, messages=[], keep_alive=OLLAMA_KEEP_ALIVE,
+                             options={"num_ctx": OLLAMA_NUM_CTX})
+            return True, f"{time.time() - start:.1f}s"
+        except Exception as e:
+            return False, str(e)
+
+    def release_model(self):
+        """Lepas model dari VRAM; keep_alive -1 menahannya sampai Ollama restart."""
+        if not self.client:
+            return
+        try:
+            self.client.chat(model=self.model, messages=[], keep_alive=0,
+                             options={"num_ctx": OLLAMA_NUM_CTX})
+        except Exception as e:
+            print(f"[AIBrain] Gagal melepas model dari VRAM: {e}")
+
     def _build_system_prompt(self) -> str:
         """Build system prompt dengan character personality dan language hint"""
         lang = getattr(self.current_character, 'lang', None)
@@ -470,6 +499,8 @@ class AIBrain:
             messages=messages,
             tools=tools,
             **think_kwargs,
+            # Tiap request mengatur ulang masa tahan; tanpa ini kembali ke default 5 menit
+            keep_alive=OLLAMA_KEEP_ALIVE,
             options={
                 "temperature": temperature,
                 "top_p": 0.9,
@@ -674,6 +705,7 @@ class AIBrain:
         """Cleanup resources"""
         if self.memory:
             self.memory.end_session(save=True)
+        self.release_model()
 
 
 # Quick test
