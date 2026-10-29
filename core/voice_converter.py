@@ -72,6 +72,11 @@ class VoiceConverter:
                 device = "cpu:0"
 
             self._rvc = RVCInference(device=device)
+            if device.startswith("cuda") and config.chunk_sec:
+                # Dibaca pipeline RVC saat load_model, jadi harus diatur sebelumnya
+                rvc_cfg = self._rvc.config
+                rvc_cfg.x_pad, rvc_cfg.x_query = 1, 2
+                rvc_cfg.x_center, rvc_cfg.x_max = config.chunk_sec, config.chunk_sec + 2
             self._rvc.load_model(
                 config.model_path,
                 index_path=config.index_path if os.path.isfile(config.index_path) else "",

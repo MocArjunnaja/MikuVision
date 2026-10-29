@@ -81,6 +81,7 @@ Detail dan angka lengkap ada di CHANGELOG v1.3.0.
 | Temuan | Dampak | Rencana |
 |---|---|---|
 | Aplikasi memuat Whisper + RVC (±1,7 GB) sebelum LLM; Ollama menyisakan cadangan 1 GB dan hanya menaruh 29/37 layer di GPU | Balasan pertama 49 s, berikutnya 1,6 s dengan 34 token/s | **Diperbaiki:** LLM dimuat lebih dulu dan ditahan (`keep_alive`), dilepas saat keluar. Balasan 1,3 s / 0,9 s, 100% GPU, 59 token/s, VRAM 5,5/6,1 GB |
+| Setelah LLM dimuat lebih dulu, sisa VRAM ±300 MB; RVC memproses balasan panjang sekaligus | Balasan 18,7 s: `CUDA out of memory`, suara jatuh ke MeloTTS | **Diperbaiki:** RVC dipotong per 6 s (puncak +207 MiB). Sisa tetap tipis; uji KV cache Ollama `q8_0` (backlog) |
 | Python 3.10 dari uv membawa Tcl/Tk 9.0; mengubah widget dari thread lain langsung segfault | GUI tertutup sendiri saat selesai memuat (sudah diperbaiki) | Audit sisa akses widget dari thread di L2 |
 | Emoji berwarna tampil sebagai kotak di Tk Linux | Kosmetik | L3, bersama maskot |
 
@@ -161,6 +162,7 @@ Detail dan angka lengkap ada di CHANGELOG v1.3.0.
 - Screenshot `mss` dan model `qwen3-vl:4b-instruct` sama dengan rencana Windows.
 
 ### Backlog
+- Ruang VRAM: uji `OLLAMA_FLASH_ATTENTION=1` + `OLLAMA_KV_CACHE_TYPE=q8_0` di service Ollama (KV cache 1152 → ±576 MiB) dan ukur ulang tool calling.
 - Pindah dari Python 3.10 (EOL): cari implementasi RVC tanpa `fairseq`.
 - Dukungan Wayland (screenshot lewat portal, input sintetis).
 - Rilis GitHub dengan petunjuk Linux.

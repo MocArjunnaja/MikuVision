@@ -131,6 +131,10 @@ class RVCConfig:
     filter_radius: int = 3        # median filter radius for f0
     rms_mix_rate: float = 0.25    # volume envelope mixing
     protect: float = 0.33         # voiceless consonant protection
+    # Panjang potongan audio per proses RVC di GPU (detik, dipotong di titik sunyi). Bawaan RVC
+    # 60 s untuk GPU > 4 GB; di samping LLM + Whisper di GPU 6 GB sisa VRAM ±300 MB dan balasan
+    # 19 s kehabisan memori. 6 s: puncak +207 MiB. 0 = bawaan RVC.
+    chunk_sec: int = 6
 
 
 # ============ Emotion Types ============

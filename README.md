@@ -303,6 +303,7 @@ Benchmark yang butuh GPU/Ollama ada di `experiments/` beserta hasilnya (`RESULTS
 | Ucapan sering salah dengar | Set `DEBUG_DUMP_AUDIO = True`, ulangi ucapannya, lalu cek rekaman di `data/debug_audio/` dan baris `[VoiceInput] Bahasa: …` di log |
 | Ucapan bahasa Inggris sering salah | Deteksi bawaan hanya `ja` dan `id`. Tambahkan `"en"` ke `WHISPER_LANGUAGES` di `config.py` |
 | Linux: `install.sh` berhenti di `nvidia-smi gagal` | Driver NVIDIA terpasang tapi belum aktif. Reboot, atau pakai `--cpu` |
+| Suara Miku kadang jadi suara MeloTTS biasa | Cari `CUDA out of memory` di `data/logs/gui.log`: VRAM penuh. Tutup aplikasi lain yang memakai GPU NVIDIA, atau kecilkan `chunk_sec` di `RVCConfig` (`config.py`) |
 | Balasan LLM lambat | Jalankan `ollama ps`: kolom PROCESSOR harus `100% GPU`. Bila ada bagian CPU, aplikasi lain memakai VRAM saat model dimuat; tutup aplikasi itu lalu buka ulang MikuVision |
 | Linux: emoji tampil sebagai kotak di GUI | Tk di Linux belum menampilkan emoji berwarna; hanya kosmetik |
 

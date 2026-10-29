@@ -36,8 +36,16 @@ Rencana dan hasil audit: `docs/PLAN_LINUX.md`. Diuji di laptop yang sama (dual-b
   | Kecepatan | 14–34 token/s | 59 token/s |
   | VRAM total | - | 5,5 / 6,1 GB; kembali 15 MB setelah keluar |
 
+- **RVC kehabisan VRAM pada balasan panjang** (muncul setelah perbaikan di atas): LLM kini memegang VRAM lebih dulu sehingga sisanya ±300 MB, sedangkan RVC memproses audio sampai 65 s sekaligus di GPU > 4 GB. Balasan 18,7 s gagal (`CUDA out of memory`) dan Miku bersuara MeloTTS biasa. RVC sekarang memotong audio per 6 s di titik sunyi (`RVCConfig.chunk_sec`), mekanisme bawaan RVC untuk GPU kecil.
+
+  | Potongan RVC (balasan 18,7 s, LLM + Whisper di VRAM) | Hasil | Puncak VRAM | Sisa |
+  |---|---|---|---|
+  | 65 s (bawaan) / 30 s | gagal | - | - |
+  | 10 s | lulus | +267 MiB | 46 MiB |
+  | **6 s** | lulus, 1,0–1,3 s (pertama 4,6 s) | +207 MiB | 116 MiB |
+
 ### Pengujian
-- `pytest`: 178 lulus di venv Linux dengan paket asli (6 test baru). `miku.py --test` lulus.
+- `pytest`: 181 lulus di venv Linux dengan paket asli (9 test baru). `miku.py --test` lulus.
 - Instalasi pertama (tanpa Ollama) 7 menit, termasuk build `fairseq`; jalankan ulang 50 s. Ruang: ±11 GB env + cache uv, 1,8 GB cache Hugging Face.
 - GUI terbuka dari `run.sh`: status **Ready**, **RVC: ready (0.3s)**, sapaan diputar lewat RVC (siap ±22 s).
 
@@ -52,6 +60,7 @@ Rencana dan hasil audit: `docs/PLAN_LINUX.md`. Diuji di laptop yang sama (dual-b
 - Mode teks: "berapa persen baterai laptop saya" → `get_system_info` (baterai 79%), "kecilkan volume ke 30" → `set_volume` (gagal seperti diharapkan, menunggu Fase L2).
 
 ### Keterbatasan diketahui
+- Sisa VRAM tipis (±100 MB setelah konversi RVC). Aplikasi lain yang memakai GPU NVIDIA bisa membuat RVC gagal; Miku lalu bersuara MeloTTS biasa. Belum diuji: KV cache Ollama `q8_0` (hemat ±0,5 GB).
 - Bila MikuVision crash (tanpa `cleanup()`), model tetap di VRAM sampai Ollama di-restart (`sudo systemctl restart ollama`) atau dilepas dengan `ollama stop qwen3:4b-instruct`.
 - Volume, buka aplikasi/folder, tutup aplikasi, WhatsApp/Telegram, dan membuka dokumen setelah dibuat masih khusus Windows (Fase L2). Maskot desktop belum transparan (Fase L3).
 - Emoji berwarna di GUI tampil sebagai kotak (Tk di Linux).
