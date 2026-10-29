@@ -152,11 +152,35 @@ Bila drive C sempit, buat variabel environment user `HF_HOME` (misalnya `D:\hf_h
 
 </details>
 
+### Linux (eksperimental)
+
+Teruji di Linux Mint 22.3 (Cinnamon, X11) dengan RTX 4050. Suara dua arah, LLM, RVC, GUI, dan dokumen sudah jalan. Sebagian aksi desktop (volume, buka/tutup aplikasi, buka folder, WhatsApp/Telegram) masih khusus Windows; rencananya ada di [docs/PLAN_LINUX.md](docs/PLAN_LINUX.md).
+
+1. Pastikan driver NVIDIA aktif: `nvidia-smi` harus menampilkan GPU. Setelah memasang driver baru, reboot dulu.
+2. Ambil kode, lalu jalankan installer dari folder repo:
+   ```bash
+   ./install.sh
+   ```
+   Installer menanyakan dulu sebelum memakai `sudo`: paket `apt` (git, libportaudio2, xdotool, wmctrl, playerctl, xclip) dan Ollama dari skrip resminya. Opsi sama seperti versi Windows: `--yes`, `--cpu`, `--with-rvc`, `--skip-ollama`, `--skip-shortcut`, `--skip-test`, `--python-version 3.x`.
+3. Buka **MikuVision** dari menu aplikasi atau Desktop, atau jalankan `./run.sh`.
+
+<details>
+<summary><b>Catatan Linux</b></summary>
+
+- **Lokasi env:** bila folder repo ada di partisi Windows (NTFS/FAT, misalnya dual-boot), uv, Python 3.10, dan venv disimpan di `~/.local/share/mikuvision/` karena venv di NTFS lambat. Di partisi Linux biasa: `.tools/` dan `.venv/` di folder repo. Lokasi lain: `MIKU_VENV=/path/venv`.
+- **Sesi X11** dibutuhkan untuk aksi keyboard/mouse; di Wayland installer memberi peringatan.
+- **Ollama** jalan sebagai service systemd; modelnya di `/usr/share/ollama/.ollama/models`.
+- **Cache Hugging Face** (Whisper, MeloTTS): `~/.cache/huggingface`, atau atur `HF_HOME`.
+- **Ruang disk:** ±11 GB env + cache uv, ±2 GB cache Hugging Face, ±2,5 GB model LLM.
+- **Menghapus:** `rm -rf ~/.local/share/mikuvision ~/.local/share/applications/mikuvision.desktop ~/Desktop/MikuVision.desktop`. Ollama dihapus terpisah.
+
+</details>
+
 ### Kebutuhan
 
 | | Minimum | Teruji |
 |---|---|---|
-| OS | Windows 10/11 64-bit | Windows 11 |
+| OS | Windows 10/11 64-bit, atau Linux x86_64 dengan X11 (eksperimental) | Windows 11, Linux Mint 22.3 |
 | GPU | Opsional (CPU bisa, tapi lambat) | NVIDIA RTX 4050 Laptop 6 GB |
 | Disk | ±12 GB | |
 | Lainnya | Mikrofon, internet saat instalasi | |
@@ -170,7 +194,7 @@ Bila drive C sempit, buat variabel environment user `HF_HOME` (misalnya `D:\hf_h
 | Teks (terminal) | `python miku.py --text` | Paling mudah untuk mencoba pertama kali |
 | Lanjutkan sesi | `python miku.py --text --resume` | Sesi terakhir, atau `--resume <SESSION_ID>`; di GUI: tombol **↺ Sesi lalu** |
 
-Dengan installer, ganti `python` dengan `.venv\Scripts\python.exe`.
+Dengan installer, ganti `python` dengan `.venv\Scripts\python.exe`. Di Linux: `~/.local/share/mikuvision/venv/bin/python` (repo di NTFS) atau `.venv/bin/python`, dan `run.sh` menggantikan `run.bat`.
 
 **Contoh perintah:** "buka notepad", "kecilkan volume ke 30", "carikan lagu Yorushika di YouTube", "buka folder Downloads", "buatkan dokumen Word tentang Hukum Newton beserta rumusnya", "ingat ya, aku kuliah di ITS".
 
@@ -216,6 +240,8 @@ Benchmark di RTX 4050 6 GB: 10 perintah (JP/ID), 3–5 kali ulang, tool tidak di
 Model kecil kadang hanya *berjanji* melakukan aksi tanpa memanggil tool; MikuVision otomatis meminta ulang (maksimal 2 kali). Angka `qwen3:4b-instruct` sudah termasuk mekanisme ini; dua model lain diukur sebelum mekanisme ini ada.
 
 Biarkan `OLLAMA_THINK = None` di `config.py`. Mengirim `think=False` ke `qwen3:4b` justru membuat penalarannya ikut terucap.
+
+Model LLM dimuat lebih dulu daripada Whisper dan RVC, lalu ditahan di VRAM selama MikuVision jalan (`OLLAMA_KEEP_ALIVE = -1`) dan dilepas saat ditutup. Di GPU 6 GB, model yang dimuat belakangan tidak muat penuh dan sebagian berjalan di CPU (balasan pertama 49 s, bukan 1,3 s).
 
 ## Suara Miku (RVC)
 
@@ -276,6 +302,10 @@ Benchmark yang butuh GPU/Ollama ada di `experiments/` beserta hasilnya (`RESULTS
 | Whisper sangat lambat | Tanpa GPU, ganti `WHISPER_MODEL` di `config.py` ke `small` |
 | Ucapan sering salah dengar | Set `DEBUG_DUMP_AUDIO = True`, ulangi ucapannya, lalu cek rekaman di `data/debug_audio/` dan baris `[VoiceInput] Bahasa: …` di log |
 | Ucapan bahasa Inggris sering salah | Deteksi bawaan hanya `ja` dan `id`. Tambahkan `"en"` ke `WHISPER_LANGUAGES` di `config.py` |
+| Linux: `install.sh` berhenti di `nvidia-smi gagal` | Driver NVIDIA terpasang tapi belum aktif. Reboot, atau pakai `--cpu` |
+| Suara Miku kadang jadi suara MeloTTS biasa | Cari `CUDA out of memory` di `data/logs/gui.log`: VRAM penuh. Tutup aplikasi lain yang memakai GPU NVIDIA, atau kecilkan `chunk_sec` di `RVCConfig` (`config.py`) |
+| Balasan LLM lambat | Jalankan `ollama ps`: kolom PROCESSOR harus `100% GPU`. Bila ada bagian CPU, aplikasi lain memakai VRAM saat model dimuat; tutup aplikasi itu lalu buka ulang MikuVision |
+| Linux: emoji tampil sebagai kotak di GUI | Tk di Linux belum menampilkan emoji berwarna; hanya kosmetik |
 
 ## Lisensi & kredit
 

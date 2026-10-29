@@ -8,17 +8,35 @@ import webbrowser
 import os
 import re
 import shutil
+import sys
 from typing import Optional, Tuple, Dict, Any, List
+
+import psutil
+
+# Dicek terpisah dari modul Windows: pyautogui juga jalan di Linux (X11).
+# Tanpa DISPLAY, Xlib melempar KeyError, bukan ImportError.
+try:
+    import pyautogui
+    PYAUTOGUI_AVAILABLE = True
+except Exception:
+    PYAUTOGUI_AVAILABLE = False
 
 try:
     from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume  # noqa: F401  (cek ketersediaan)
-    import pyautogui
     import pygetwindow as gw
-    import psutil
     WINDOWS_AVAILABLE = True
-except ImportError:
+except (ImportError, NotImplementedError):  # pygetwindow di Linux: NotImplementedError
     WINDOWS_AVAILABLE = False
-    print("[SystemControl] Warning: Some Windows modules not available")
+    if sys.platform == "win32":
+        print("[SystemControl] Warning: Some Windows modules not available")
+
+# Tanpa EnumWindows + WM_CLOSE (pywin32), close_application akan memperlakukan aplikasi
+# berjendela sebagai proses tanpa jendela dan mematikannya; perubahan yang belum disimpan hilang.
+try:
+    import win32gui  # noqa: F401  (cek ketersediaan)
+    WINDOW_CLOSE_AVAILABLE = True
+except ImportError:
+    WINDOW_CLOSE_AVAILABLE = False
 
 from config import ALLOWED_APPS, COMMON_WEBSITES
 from .tools import registry
@@ -303,6 +321,11 @@ class SystemControl:
             return False, "Nama aplikasi kosong"
         if target in PROTECTED_PROCESSES:
             return False, f"Proses '{target}' dilindungi dan tidak boleh ditutup"
+        if not WINDOW_CLOSE_AVAILABLE:
+            return False, (
+                f"Menutup aplikasi belum didukung di sistem ini; tutup {app_name} "
+                "lewat tombol X di jendelanya"
+            )
 
         procs = {proc.pid: proc for proc in self._tracked_processes(target)}
         for proc in psutil.process_iter(['name']):
@@ -566,7 +589,7 @@ class SystemControl:
     @registry.register("Type text using keyboard automation. Use this to search or type something.")
     def type_text(self, text: str) -> Tuple[bool, str]:
         """Type text menggunakan keyboard automation"""
-        if not WINDOWS_AVAILABLE:
+        if not PYAUTOGUI_AVAILABLE:
             return False, "PyAutoGUI not available"
         
         try:
@@ -579,7 +602,7 @@ class SystemControl:
     @registry.register("Press a keyboard key (like 'enter', 'tab', 'down')")
     def press_key(self, key: str) -> Tuple[bool, str]:
         """Press a keyboard key"""
-        if not WINDOWS_AVAILABLE:
+        if not PYAUTOGUI_AVAILABLE:
             return False, "PyAutoGUI not available"
         
         try:
@@ -591,7 +614,7 @@ class SystemControl:
     @registry.register("Press a combination of hotkeys (e.g., ['ctrl', 'c'] or ['win', 'd'])")
     def hotkey(self, keys: list) -> Tuple[bool, str]:
         """Press hotkey combination"""
-        if not WINDOWS_AVAILABLE:
+        if not PYAUTOGUI_AVAILABLE:
             return False, "PyAutoGUI not available"
         
         # LLM kadang mengirim string "ctrl+c" alih-alih list; tanpa ini

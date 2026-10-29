@@ -108,6 +108,10 @@ OLLAMA_NUM_CTX = 8192   # Persona + skema tool + 20 pesan history butuh > defaul
 # menaruh penalaran di content dan mengulang tool call. Isi True/False hanya untuk
 # model hybrid yang memang mendukung saklar thinking.
 OLLAMA_THINK: Optional[bool] = None
+# Model dimuat sebelum Whisper/RVC lalu ditahan di VRAM selama aplikasi jalan (-1 = tanpa batas)
+# dan dilepas saat keluar. Default Ollama 5 menit: setelah dilepas, model dimuat ulang di samping
+# Whisper + RVC (±1,7 GB) dan di GPU 6 GB hanya 29/37 layer yang muat (sisanya di CPU, 49 s).
+OLLAMA_KEEP_ALIVE = -1
 
 # ============ Hotkey Config ============
 WAKE_HOTKEY = "ctrl+shift+m"
@@ -127,6 +131,10 @@ class RVCConfig:
     filter_radius: int = 3        # median filter radius for f0
     rms_mix_rate: float = 0.25    # volume envelope mixing
     protect: float = 0.33         # voiceless consonant protection
+    # Panjang potongan audio per proses RVC di GPU (detik, dipotong di titik sunyi). Bawaan RVC
+    # 60 s untuk GPU > 4 GB; di samping LLM + Whisper di GPU 6 GB sisa VRAM ±300 MB dan balasan
+    # 19 s kehabisan memori. 6 s: puncak +207 MiB. 0 = bawaan RVC.
+    chunk_sec: int = 6
 
 
 # ============ Emotion Types ============

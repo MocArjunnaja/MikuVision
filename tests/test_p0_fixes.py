@@ -124,6 +124,32 @@ def test_close_application_refuses_protected_process(system_control, monkeypatch
     proc.terminate.assert_not_called()
 
 
+def test_close_application_refuses_without_window_close(system_control, monkeypatch):
+    # Linux: tanpa WM_CLOSE aplikasi berjendela akan di-terminate tanpa sempat menawarkan simpan
+    monkeypatch.setattr(sc_module, "WINDOW_CLOSE_AVAILABLE", False)
+    proc = _fake_proc("xed")
+    monkeypatch.setattr(sc_module.psutil, "process_iter", lambda attrs: [proc])
+
+    success, msg = system_control.close_application("xed")
+
+    assert not success
+    assert "belum didukung" in msg
+    proc.terminate.assert_not_called()
+    proc.kill.assert_not_called()
+
+
+def test_keyboard_tools_do_not_need_windows_modules(system_control, monkeypatch):
+    # Linux: pycaw/pygetwindow tidak ada, tapi pyautogui (X11) tetap dipakai
+    monkeypatch.setattr(sc_module, "WINDOWS_AVAILABLE", False)
+    typed = MagicMock()
+    monkeypatch.setattr(sc_module.pyautogui, "typewrite", typed)
+
+    success, _ = system_control.type_text("halo")
+
+    assert success
+    typed.assert_called_once()
+
+
 # ── hotkey ──
 
 def test_hotkey_schema_is_array_of_strings():
@@ -317,6 +343,49 @@ def test_initialize_requires_exact_model_tag(monkeypatch, tmp_path, installed, o
     assert created["timeout"] == config.OLLAMA_TIMEOUT_SEC
     if not ok:
         assert "ollama pull qwen3:4b-instruct" in msg
+
+
+# ── Model LLM masuk VRAM lebih dulu dan ditahan selama aplikasi jalan ──
+
+def test_preload_loads_model_with_chat_context_size(tmp_path):
+    brain, _ = _brain_with_reply(tmp_path, {"content": ""})
+
+    ok, _ = brain.preload_model()
+
+    kwargs = brain.client.chat.call_args.kwargs
+    assert ok
+    assert kwargs["messages"] == []   # hanya memuat model, tanpa membuat jawaban
+    assert kwargs["keep_alive"] == config.OLLAMA_KEEP_ALIVE
+    # num_ctx berbeda dari request chat membuat Ollama memuat ulang model
+    assert kwargs["options"]["num_ctx"] == config.OLLAMA_NUM_CTX
+
+
+def test_chat_keeps_model_loaded(tmp_path):
+    brain, _ = _brain_with_reply(tmp_path, {"content": "[EMOTION:happy] こんにちは！"})
+
+    brain.think("こんにちは")
+
+    kwargs = brain.client.chat.call_args.kwargs
+    assert kwargs["keep_alive"] == config.OLLAMA_KEEP_ALIVE
+    assert kwargs["options"]["num_ctx"] == config.OLLAMA_NUM_CTX
+
+
+def test_cleanup_releases_model(tmp_path):
+    brain, _ = _brain_with_reply(tmp_path, {"content": ""})
+
+    brain.cleanup()
+
+    kwargs = brain.client.chat.call_args.kwargs
+    assert kwargs["messages"] == [] and kwargs["keep_alive"] == 0
+
+
+def test_preload_failure_is_reported(tmp_path):
+    brain, _ = _brain_with_reply(tmp_path, {"content": ""})
+    brain.client.chat.side_effect = RuntimeError("model not found")
+
+    ok, detail = brain.preload_model()
+
+    assert not ok and "model not found" in detail
 
 
 # ── Tool call & hasilnya tersimpan dalam format resmi (agent loop) ──

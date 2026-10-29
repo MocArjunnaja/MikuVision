@@ -4,8 +4,13 @@ import urllib.parse
 from pathlib import Path
 from config import DATA_DIR
 from core.tools import registry
-import pyautogui
 import time
+
+# Tanpa DISPLAY (SSH, CI) Xlib melempar KeyError saat import; makro pesan lalu gagal dengan pesan biasa
+try:
+    import pyautogui
+except Exception:
+    pyautogui = None
 
 try:
     from docx import Document

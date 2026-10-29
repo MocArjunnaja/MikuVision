@@ -463,15 +463,8 @@ class MikuGUIv4(ctk.CTk):
 
         self.memory_manager = MemoryManager(DATA_DIR)
 
-        # 1. Whisper
-        self._update_status("🟡 Loading Whisper...")
-        self.voice_input = VoiceInput()
-        if not self.voice_input.initialize():
-            self._update_status("🔴 Whisper failed!")
-            self._add_chat_message("System", "❌ Gagal load speech recognition.", "❌")
-            return
-
-        # 2. Ollama / AI Brain
+        # 1. Ollama / AI Brain lebih dulu: model harus masuk VRAM sebelum Whisper/RVC,
+        #    kalau tidak sebagian layer LLM jatuh ke CPU di GPU 6 GB
         self._update_status("🟡 Connecting to AI...")
         self.ai_brain = AIBrain(self.memory_manager)
         success, msg = self.ai_brain.initialize()
@@ -481,6 +474,17 @@ class MikuGUIv4(ctk.CTk):
             return
 
         self.ai_brain.set_character(self.current_character_name)
+        self._update_status("🟡 Loading AI model...")
+        loaded, detail = self.ai_brain.preload_model()
+        print(f"[GUI] LLM preload: {'OK' if loaded else 'gagal'} ({detail})")
+
+        # 2. Whisper
+        self._update_status("🟡 Loading Whisper...")
+        self.voice_input = VoiceInput()
+        if not self.voice_input.initialize():
+            self._update_status("🔴 Whisper failed!")
+            self._add_chat_message("System", "❌ Gagal load speech recognition.", "❌")
+            return
 
         # 3. RVC Voice Converter (load once for Miku)
         self._update_status("🟡 Loading RVC model...")
@@ -513,7 +517,9 @@ class MikuGUIv4(ctk.CTk):
             greeting,
             self.current_character.expressions.get(emotion, "😊")
         )
-        self._update_avatar(emotion)
+        # Lewat antrean: widget Tk hanya boleh diubah dari main thread
+        # (Tk 9 di Linux/X11 segfault bila diubah dari thread ini)
+        self.message_queue.put(("avatar", emotion))
 
         if self.voice_output:
             self.voice_output.speak(greeting, blocking=False)

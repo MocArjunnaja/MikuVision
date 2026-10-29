@@ -106,23 +106,28 @@ class MikuCLI:
         print("[1/5] Initializing memory...")
         self.memory_manager = MemoryManager(DATA_DIR)
 
-        # Voice Input
-        print("[2/5] Loading Faster-Whisper...")
-        self.voice_input = VoiceInput()
-        if not self.voice_input.initialize():
-            print("[ERROR] Failed to load Whisper")
-            return False
-        print("      ✓ Whisper loaded")
-
-        # AI Brain
-        print("[3/5] Connecting to Ollama...")
+        # AI Brain lebih dulu: model harus masuk VRAM sebelum Whisper/RVC,
+        # kalau tidak sebagian layer LLM jatuh ke CPU di GPU 6 GB
+        print("[2/5] Connecting to Ollama...")
         self.ai_brain = AIBrain(self.memory_manager)
         success, msg = self.ai_brain.initialize()
         if not success:
             print(f"[ERROR] Ollama connection failed: {msg}")
             return False
         self.ai_brain.set_character(self.character_name)
-        print("      ✓ Ollama connected")
+        loaded, detail = self.ai_brain.preload_model()
+        if loaded:
+            print(f"      ✓ Ollama connected, model loaded ({detail})")
+        else:
+            print(f"      ⚠ Ollama connected, model not preloaded: {detail}")
+
+        # Voice Input
+        print("[3/5] Loading Faster-Whisper...")
+        self.voice_input = VoiceInput()
+        if not self.voice_input.initialize():
+            print("[ERROR] Failed to load Whisper")
+            return False
+        print("      ✓ Whisper loaded")
 
         # RVC Converter
         print("[4/5] Loading RVC voice converter...")

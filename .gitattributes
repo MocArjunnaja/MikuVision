@@ -1,0 +1,11 @@
+# Folder repo bisa dipakai bersama Windows dan Linux (dual-boot).
+# Di git semua teks disimpan LF; script shell harus LF, script Windows harus CRLF.
+* text=auto
+*.sh text eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+*.png binary
+*.ico binary
+*.pth binary
+*.index binary

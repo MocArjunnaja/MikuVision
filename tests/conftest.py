@@ -42,6 +42,8 @@ import pytest  # noqa: E402
 def _no_real_windows(monkeypatch):
     """Test tidak boleh menemukan atau menutup jendela sungguhan di desktop."""
     from core import system_control
+    # Logika tutup-jendela Windows tetap dites di Linux, dengan jendela palsu
+    monkeypatch.setattr(system_control, "WINDOW_CLOSE_AVAILABLE", True)
     monkeypatch.setattr(system_control, "_windows_by_pid", lambda pids: {})
     monkeypatch.setattr(system_control, "_post_close", lambda hwnd: None)
 
