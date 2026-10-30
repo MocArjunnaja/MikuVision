@@ -2,7 +2,7 @@
 
 **Tujuan:** MikuVision jalan penuh di Linux dengan fitur setara Windows: suara dua arah, LLM lokal, aksi di komputer (buka/tutup aplikasi, volume, dokumen, pesan), dan maskot desktop. Windows tetap didukung dari kode yang sama.
 
-**Status:** Audit, Fase L0, Fase L1, dan perbaikan urutan muat VRAM selesai 29 Okt 2026 (hasil di bagian 2.5). Berikutnya: Fase L2. Urutan yang disarankan: L0 → L4 di dokumen ini, lalu agent visi Fase 1 ([`PLAN_VISION_AGENT.md`](PLAN_VISION_AGENT.md)) dengan backend Linux.
+**Status:** Audit, Fase L0, Fase L1, dan perbaikan urutan muat VRAM selesai 29 Okt 2026 (bagian 2.5); Fase L2 selesai 31 Okt 2026 (bagian 2.6). Berikutnya: Fase L3 (maskot). Urutan yang disarankan: L0 → L4 di dokumen ini, lalu agent visi Fase 1 ([`PLAN_VISION_AGENT.md`](PLAN_VISION_AGENT.md)) dengan backend Linux.
 
 ---
 
@@ -82,12 +82,33 @@ Detail dan angka lengkap ada di CHANGELOG v1.3.0.
 |---|---|---|
 | Aplikasi memuat Whisper + RVC (±1,7 GB) sebelum LLM; Ollama menyisakan cadangan 1 GB dan hanya menaruh 29/37 layer di GPU | Balasan pertama 49 s, berikutnya 1,6 s dengan 34 token/s | **Diperbaiki:** LLM dimuat lebih dulu dan ditahan (`keep_alive`), dilepas saat keluar. Balasan 1,3 s / 0,9 s, 100% GPU, 59 token/s, VRAM 5,5/6,1 GB |
 | Setelah LLM dimuat lebih dulu, sisa VRAM ±300 MB; RVC memproses balasan panjang sekaligus | Balasan 18,7 s: `CUDA out of memory`, suara jatuh ke MeloTTS | **Diperbaiki:** RVC dipotong per 6 s (puncak +207 MiB). Sisa tetap tipis; uji KV cache Ollama `q8_0` (backlog) |
-| Python 3.10 dari uv membawa Tcl/Tk 9.0; mengubah widget dari thread lain langsung segfault | GUI tertutup sendiri saat selesai memuat (sudah diperbaiki) | Audit sisa akses widget dari thread di L2 |
+| Python 3.10 dari uv membawa Tcl/Tk 9.0; mengubah widget dari thread lain langsung segfault | GUI tertutup sendiri saat selesai memuat (sudah diperbaiki) | **Diaudit di L2:** 12 fungsi yang jalan di thread lain tidak menyentuh widget langsung; semua lewat antrean |
 | Emoji berwarna tampil sebagai kotak di Tk Linux | Kosmetik | L3, bersama maskot |
+
+### 2.6 Setelah L2 (31 Okt 2026)
+
+Aksi OS sekarang lewat `core/desktop/` (`windows.py` berisi kode lama tanpa perubahan perilaku, `linux.py` baru). Semua jalan sebagai user biasa, tanpa sudo. Detail di CHANGELOG.
+
+| Uji sungguhan di Mint (lewat tool Miku, tanpa LLM) | Hasil |
+|---|---|
+| Volume 55 → 30 → mute → unmute → 55 (`wpctl`) | lulus |
+| Buka lalu tutup Kalkulator (`gnome-calculator`) dan Notepad (`xed`) | lulus; ditutup lewat `wmctrl -c` (sopan) |
+| Buka folder Documents (Nemo); jendela Downloads milik user tidak tersentuh | lulus |
+| Dokumen Word dibuat, dibuka di LibreOffice, lalu "tutup word" | lulus |
+| "Brave web browser" → `/usr/bin/brave-browser` (sebelumnya membuka alamat `https://brave`) | lulus |
+
+| Tool calling setelah deskripsi tool diubah (10 perintah JP/ID) | Hasil |
+|---|---|
+| Sekali jalan | 9/10; satu salah (`spotify_search` untuk "putar lagu … di YouTube") |
+| Perintah itu diulang 5× + "carikan lagu …" 5× | L2: 10/10 `youtube_search`; `main`: 8/10 (variasi lama, bukan regresi) |
+
+- Tool: 27/27 jalan atau menjawab jelas. Pengecualian yang disengaja: WhatsApp di Linux hanya menyiapkan draf di WhatsApp Web (user menekan Enter; grup belum didukung), Telegram butuh Telegram Desktop, dan `type_text`/`press_key`/`hotkey` baru dicek lewat unit test.
+- `pytest`: 216 lulus (35 test baru untuk backend Linux), juga di Python sistem tanpa paket suara/GUI, seperti di CI.
+- CI GitHub Actions (`.github/workflows/tests.yml`) menjalankan `pytest` di Ubuntu dan Windows.
 
 ## 3. Prinsip desain
 
-1. **Satu kode, dua backend.** Semua aksi OS lewat `core/platform/` (`windows.py`, `linux.py`). Tool tidak memanggil `os.startfile`, pycaw, atau win32 langsung, dan `sys.platform` tidak tersebar di banyak file.
+1. **Satu kode, dua backend.** Semua aksi OS lewat `core/desktop/` (`windows.py`, `linux.py`). Tool tidak memanggil `os.startfile`, pycaw, atau win32 langsung, dan `sys.platform` tidak tersebar di banyak file.
 2. **Keamanan tetap sama.** Aplikasi hanya dari whitelist, aksi berisiko tetap lewat gerbang konfirmasi, aplikasi ditutup dengan sopan (`WM_CLOSE` ↔ `_NET_CLOSE_WINDOW`), dan daftar proses yang dilindungi dibuat per OS.
 3. **X11 dulu.** Di Wayland, input sintetis dan screenshot dibatasi. Aplikasi mendeteksi `XDG_SESSION_TYPE` dan memberi peringatan, bukan gagal diam-diam.
 4. **Pakai standar freedesktop**: `xdg-open`, file `.desktop`, `wpctl`, MPRIS (`playerctl`), AT-SPI.
@@ -138,8 +159,8 @@ Detail dan angka lengkap ada di CHANGELOG v1.3.0.
 - Berlaku juga untuk Windows. Ukur ulang balasan pertama dan `ollama ps` di kedua OS.
 - **Keluaran:** balasan pertama ≤ 3 s, `ollama ps` 100% GPU selama aplikasi jalan.
 
-### Fase L2: Aksi komputer di Linux (2–3 hari)
-- `core/platform/`: antarmuka + backend Windows (kode lama dipindah tanpa mengubah perilaku) + backend Linux sesuai tabel bagian 4.
+### Fase L2: Aksi komputer di Linux (selesai 31 Okt 2026; hasil di bagian 2.6)
+- `core/desktop/` (bukan `core/platform/`, supaya tidak tertukar dengan modul standar Python `platform`): antarmuka + backend Windows (kode lama dipindah tanpa mengubah perilaku) + backend Linux sesuai tabel bagian 4.
 - Katalog aplikasi Linux di `config.py` (alias → kandidat), tetap whitelist.
 - Tool memakai platform layer: `open_application`, `close_application`, `open_folder`, volume, mute, media, membuka dokumen, WhatsApp Web, Telegram.
 - Perbaikan untuk dua OS: dokumen yang sudah tersimpan tidak lagi dilaporkan "Gagal" bila hanya gagal dibuka.
@@ -171,9 +192,9 @@ Detail dan angka lengkap ada di CHANGELOG v1.3.0.
 
 | Metrik | Sekarang | Target |
 |---|---|---|
-| `pytest` di Linux | 174/174 (paket asli) | Lulus semua, ditambah test backend Linux, juga di CI |
+| `pytest` di Linux | 216/216 (35 test backend Linux), juga di CI Ubuntu + Windows | Lulus semua, ditambah test backend Linux, juga di CI |
 | `miku.py --test` di Linux | lulus | lulus |
-| Tool berfungsi di Linux | 16/27 | 27/27 (atau pesan jelas "belum didukung") |
+| Tool berfungsi di Linux | 27/27 (WhatsApp: draf di WhatsApp Web; Telegram butuh aplikasinya) | 27/27 (atau pesan jelas "belum didukung") |
 | Tool calling, 10 perintah × 5 | 2/2 benar (uji singkat) | 50/50, sama dengan Windows |
 | Latensi LLM di dalam aplikasi | 1,3 s pertama, 0,9 s berikutnya (sebelum perbaikan VRAM: 49 s / 1,6 s) | ≤ 1,1 s (Windows median 0,9 s) |
 | STT (`experiments/stt_eval`) | belum diukur | Indonesia 14/14, Jepang 9/10 (sama dengan Windows) |

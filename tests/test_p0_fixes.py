@@ -8,6 +8,8 @@ import config
 from core import system_control as sc_module
 from core.ai_brain import AIBrain
 from core.confirmation import describe_action, is_affirmative
+from core.desktop.linux import LinuxDesktop
+from core.desktop.windows import WindowsDesktop
 from core.memory import MemoryManager
 from core.system_control import SystemControl
 from core.tools import Tool
@@ -34,7 +36,8 @@ def test_describe_whatsapp_action():
 
 @pytest.fixture
 def system_control():
-    return SystemControl()
+    # Tes close_application di sini memakai nama proses Windows (notepad.exe)
+    return SystemControl(desktop=WindowsDesktop())
 
 
 def test_risky_action_denied_without_callback(system_control, monkeypatch):
@@ -124,13 +127,15 @@ def test_close_application_refuses_protected_process(system_control, monkeypatch
     proc.terminate.assert_not_called()
 
 
-def test_close_application_refuses_without_window_close(system_control, monkeypatch):
-    # Linux: tanpa WM_CLOSE aplikasi berjendela akan di-terminate tanpa sempat menawarkan simpan
-    monkeypatch.setattr(sc_module, "WINDOW_CLOSE_AVAILABLE", False)
+def test_close_application_refuses_without_window_close(monkeypatch):
+    # Linux di Wayland: tanpa daftar jendela, aplikasi berjendela akan di-terminate
+    # tanpa sempat menawarkan simpan
+    monkeypatch.setattr(LinuxDesktop, "can_close_windows", property(lambda self: False))
+    control = SystemControl(desktop=LinuxDesktop())
     proc = _fake_proc("xed")
     monkeypatch.setattr(sc_module.psutil, "process_iter", lambda attrs: [proc])
 
-    success, msg = system_control.close_application("xed")
+    success, msg = control.close_application("xed")
 
     assert not success
     assert "belum didukung" in msg
@@ -138,13 +143,13 @@ def test_close_application_refuses_without_window_close(system_control, monkeypa
     proc.kill.assert_not_called()
 
 
-def test_keyboard_tools_do_not_need_windows_modules(system_control, monkeypatch):
+def test_keyboard_tools_do_not_need_windows_modules(monkeypatch):
     # Linux: pycaw/pygetwindow tidak ada, tapi pyautogui (X11) tetap dipakai
     monkeypatch.setattr(sc_module, "WINDOWS_AVAILABLE", False)
     typed = MagicMock()
     monkeypatch.setattr(sc_module.pyautogui, "typewrite", typed)
 
-    success, _ = system_control.type_text("halo")
+    success, _ = SystemControl(desktop=LinuxDesktop()).type_text("halo")
 
     assert success
     typed.assert_called_once()

@@ -154,7 +154,7 @@ Bila drive C sempit, buat variabel environment user `HF_HOME` (misalnya `D:\hf_h
 
 ### Linux (eksperimental)
 
-Teruji di Linux Mint 22.3 (Cinnamon, X11) dengan RTX 4050. Suara dua arah, LLM, RVC, GUI, dan dokumen sudah jalan. Sebagian aksi desktop (volume, buka/tutup aplikasi, buka folder, WhatsApp/Telegram) masih khusus Windows; rencananya ada di [docs/PLAN_LINUX.md](docs/PLAN_LINUX.md).
+Teruji di Linux Mint 22.3 (Cinnamon, X11) dengan RTX 4050. Suara dua arah, LLM, RVC, GUI, dokumen, dan aksi desktop (volume, buka/tutup aplikasi, buka folder, media) sudah jalan, semuanya tanpa sudo. Perbedaan dari Windows: WhatsApp hanya menyiapkan draf di WhatsApp Web (tekan Enter sendiri), Telegram butuh Telegram Desktop, dan maskot belum transparan. Rencana berikutnya ada di [docs/PLAN_LINUX.md](docs/PLAN_LINUX.md).
 
 1. Pastikan driver NVIDIA aktif: `nvidia-smi` harus menampilkan GPU. Setelah memasang driver baru, reboot dulu.
 2. Ambil kode, lalu jalankan installer dari folder repo:

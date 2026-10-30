@@ -8,6 +8,8 @@ import pytest
 from core import system_control as sc_module
 from core.ai_brain import AIBrain, _find_json_objects
 from core.automation_layer import AutomationManager
+from core.desktop import windows as win_module
+from core.desktop.windows import WindowsDesktop
 from core.system_control import SystemControl
 
 
@@ -76,7 +78,7 @@ def test_find_json_objects_returns_only_top_level():
 
 @pytest.fixture
 def control(monkeypatch):
-    monkeypatch.setattr(sc_module, "ALLOWED_APPS", {
+    monkeypatch.setattr(win_module, "ALLOWED_APPS", {
         "chrome": "start chrome",
         "spotify": "start spotify:",
         "notepad": "notepad",
@@ -84,10 +86,10 @@ def control(monkeypatch):
     })
     startfile = MagicMock()
     popen = MagicMock(return_value=MagicMock(pid=4242))
-    monkeypatch.setattr(sc_module.os, "startfile", startfile, raising=False)
-    monkeypatch.setattr(sc_module.subprocess, "Popen", popen)
+    monkeypatch.setattr(win_module.os, "startfile", startfile, raising=False)
+    monkeypatch.setattr(win_module.subprocess, "Popen", popen)
     monkeypatch.setattr(sc_module.psutil, "Process", MagicMock(return_value=MagicMock(create_time=lambda: 100.0)))
-    ctrl = SystemControl()
+    ctrl = SystemControl(desktop=WindowsDesktop())
     ctrl.startfile, ctrl.popen = startfile, popen
     return ctrl
 
@@ -101,7 +103,7 @@ def test_uri_command_uses_startfile(control):
 
 
 def test_exe_on_path_is_launched_without_shell_and_tracked(control, monkeypatch):
-    monkeypatch.setattr(sc_module.shutil, "which", lambda name: r"C:\Windows\notepad.exe")
+    monkeypatch.setattr(win_module.shutil, "which", lambda name: r"C:\Windows\notepad.exe")
 
     success, msg = control.open_application("notepad")
 
@@ -114,7 +116,7 @@ def test_exe_on_path_is_launched_without_shell_and_tracked(control, monkeypatch)
 
 def test_app_not_on_path_falls_back_to_shell_execute(control, monkeypatch):
     # Chrome tidak ada di PATH; `start chrome` menemukannya lewat App Paths
-    monkeypatch.setattr(sc_module.shutil, "which", lambda name: None)
+    monkeypatch.setattr(win_module.shutil, "which", lambda name: None)
 
     success, _ = control.open_application("chrome")
 
@@ -125,7 +127,7 @@ def test_app_not_on_path_falls_back_to_shell_execute(control, monkeypatch):
 
 def test_cmd_script_on_path_uses_shell_execute(control, monkeypatch):
     code_cmd = r"C:\VSCode\bin\code.CMD"
-    monkeypatch.setattr(sc_module.shutil, "which", lambda name: code_cmd)
+    monkeypatch.setattr(win_module.shutil, "which", lambda name: code_cmd)
 
     success, _ = control.open_application("vscode")
 
@@ -142,7 +144,7 @@ def test_unknown_app_is_rejected(control):
 
 
 def test_launch_error_reported_as_failure(control, monkeypatch):
-    monkeypatch.setattr(sc_module.shutil, "which", lambda name: None)
+    monkeypatch.setattr(win_module.shutil, "which", lambda name: None)
     control.startfile.side_effect = FileNotFoundError("not found")
 
     success, msg = control.open_application("chrome")
@@ -161,7 +163,7 @@ def _proc(pid, name, create_time=100.0):
 
 
 def test_tracked_pid_closed_even_if_name_differs(monkeypatch):
-    ctrl = SystemControl()
+    ctrl = SystemControl(desktop=WindowsDesktop())
     launcher = _proc(10, "notepad_launcher.exe")
     ctrl._opened_apps["notepad"] = [(10, 100.0)]
     monkeypatch.setattr(sc_module.psutil, "Process", lambda pid: launcher)
@@ -176,7 +178,7 @@ def test_tracked_pid_closed_even_if_name_differs(monkeypatch):
 
 
 def test_reused_pid_is_not_killed(monkeypatch):
-    ctrl = SystemControl()
+    ctrl = SystemControl(desktop=WindowsDesktop())
     other = _proc(10, "important.exe", create_time=999.0)
     ctrl._opened_apps["notepad"] = [(10, 100.0)]
     monkeypatch.setattr(sc_module.psutil, "Process", lambda pid: other)
@@ -189,7 +191,7 @@ def test_reused_pid_is_not_killed(monkeypatch):
 
 
 def test_stubborn_process_is_killed_after_timeout(monkeypatch):
-    ctrl = SystemControl()
+    ctrl = SystemControl(desktop=WindowsDesktop())
     stubborn = _proc(20, "notepad.exe")
     monkeypatch.setattr(sc_module.psutil, "process_iter", lambda attrs: [stubborn])
     waited = {}
@@ -209,7 +211,7 @@ def test_stubborn_process_is_killed_after_timeout(monkeypatch):
 
 
 def test_access_denied_reported_as_failure(monkeypatch):
-    ctrl = SystemControl()
+    ctrl = SystemControl(desktop=WindowsDesktop())
     locked = _proc(30, "notepad.exe")
     locked.terminate.side_effect = psutil.AccessDenied(30)
     monkeypatch.setattr(sc_module.psutil, "process_iter", lambda attrs: [locked])
@@ -239,12 +241,12 @@ def test_automation_volume_without_system_control_fails():
 # ── close_application: jendela ditutup sopan, tidak di-kill ──
 
 def test_window_process_gets_wm_close_not_terminate(monkeypatch):
-    ctrl = SystemControl()
+    ctrl = SystemControl(desktop=WindowsDesktop())
     proc = _proc(50, "notepad.exe")
     posted = []
     monkeypatch.setattr(sc_module.psutil, "process_iter", lambda attrs: [proc])
-    monkeypatch.setattr(sc_module, "_windows_by_pid", lambda pids: {50: [111, 222]})
-    monkeypatch.setattr(sc_module, "_post_close", posted.append)
+    monkeypatch.setattr(ctrl.desktop, "windows_by_pid", lambda pids: {50: [111, 222]})
+    monkeypatch.setattr(ctrl.desktop, "close_window", posted.append)
     monkeypatch.setattr(sc_module.psutil, "wait_procs", lambda procs, timeout: (list(procs), []))
 
     success, _ = ctrl.close_application("notepad")
@@ -256,10 +258,10 @@ def test_window_process_gets_wm_close_not_terminate(monkeypatch):
 
 
 def test_window_waiting_for_save_dialog_is_never_killed(monkeypatch):
-    ctrl = SystemControl()
+    ctrl = SystemControl(desktop=WindowsDesktop())
     proc = _proc(60, "notepad.exe")
     monkeypatch.setattr(sc_module.psutil, "process_iter", lambda attrs: [proc])
-    monkeypatch.setattr(sc_module, "_windows_by_pid", lambda pids: {60: [333]})
+    monkeypatch.setattr(ctrl.desktop, "windows_by_pid", lambda pids: {60: [333]})
     monkeypatch.setattr(sc_module.psutil, "wait_procs", lambda procs, timeout: ([], list(procs)))
 
     success, msg = ctrl.close_application("notepad")

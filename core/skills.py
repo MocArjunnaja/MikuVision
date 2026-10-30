@@ -33,7 +33,8 @@ SKILLS: Tuple[Skill, ...] = (
           ("open_application", "close_application", "open_folder"),
           _p(r"開いて|開けて|閉じて|起動|終了|アプリ|フォルダ|メモ帳|電卓"
              r"|\bbuka|tutup|aplikasi|folder|\bopen|\bclose|notepad|calculator|kalkulator"
-             r"|chrome|edge|firefox|word|excel|powerpoint|vscode|explorer|spotify|discord|whatsapp|telegram")),
+             r"|chrome|edge|firefox|brave|word|excel|powerpoint|vscode|explorer|spotify|discord|whatsapp|telegram"
+             r"|terminal|settings")),
     Skill("web", "Web & pencarian", "Situs, Google, YouTube, Spotify, kontrol tab browser",
           ("open_website", "google_search", "youtube_search", "spotify_search", "browser_media_control"),
           _p(r"検索|探して|サイト|ユーチューブ|グーグル|ブラウザ|動画"

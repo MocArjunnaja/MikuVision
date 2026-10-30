@@ -6,6 +6,52 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-10-31): aksi komputer di Linux (Fase L2)
+
+### Ditambahkan
+- `core/desktop/`: aksi yang berbeda per OS dalam satu antarmuka, dipilih otomatis. Tool di `core/system_control.py` dan `core/macro_tools.py` tidak lagi memanggil `os.startfile`, pycaw, atau win32 langsung.
+  - `windows.py`: kode Windows lama dipindah tanpa perubahan perilaku (App Paths/ShellExecute, pycaw, `WM_CLOSE`).
+  - `linux.py`, semua tanpa sudo:
+    - volume dan mute: `wpctl`, cadangan `pactl`
+    - buka aplikasi: katalog `LINUX_APPS` di `config.py`, tiap alias punya beberapa kandidat (`xed`/`gnome-text-editor`, Nemo/Nautilus, flatpak, browser default, versi web sebagai cadangan); aplikasi dijalankan di sesinya sendiri
+    - tutup aplikasi: `wmctrl -c` (`_NET_CLOSE_WINDOW`, sopan seperti tombol ✕)
+    - file dan folder: `xdg-open`, nama folder dari `xdg-user-dir`
+    - media: `playerctl`, cadangan tombol media
+    - teks Jepang: lewat clipboard (`xclip`) + Ctrl+V, karena pyautogui hanya bisa mengetik ASCII
+    - peringatan bila sesi Wayland
+- Linux: WhatsApp lewat WhatsApp Web (hanya draf; Enter ditekan user; grup belum didukung). Telegram lewat `tg://` bila Telegram Desktop terpasang, selain itu pesan jelas.
+- CI GitHub Actions (`.github/workflows/tests.yml`): `pytest` di Ubuntu dan Windows. `tests/conftest.py` men-stub paket suara/GUI/Office yang tidak terpasang.
+- 35 test backend Linux (`tests/test_desktop_linux.py`). Perintah desktop sungguhan dilarang di semua test.
+
+### Diubah
+- `open_website` dengan nama tanpa titik ("brave") membuka aplikasinya. Sebelumnya membuka alamat `https://brave` (terjadi di sesi GUI: "buka Brave web browser").
+- Brave di whitelist Windows, di atas kata umum "browser" (sebelumnya "Brave web browser" membuka Chrome di Windows). Skill aplikasi mengenali brave/terminal/settings.
+- Deskripsi tool `open_application`/`open_folder` tidak lagi menyebut "Windows".
+- Menutup aplikasi multi-proses (browser): bila ada proses yang berjendela, hanya jendelanya yang ditutup; proses pembantu tanpa jendela tidak lagi di-terminate karena ikut selesai bersama aplikasinya. Berlaku di kedua OS.
+
+### Diperbaiki
+- Dokumen Word/PowerPoint yang sudah tersimpan tidak lagi dilaporkan "Gagal…" bila hanya gagal dibuka (LLM bisa membuat ulang). Berlaku di kedua OS.
+- Linux: folder dokumen Miku memakai Desktop dari `xdg-user-dir` (namanya bisa diterjemahkan).
+
+### Pengujian
+- `pytest`: 216 lulus di venv dan di Python sistem tanpa paket suara/GUI (seperti CI).
+- Uji sungguhan di Linux Mint lewat tool Miku:
+
+  | Uji | Hasil |
+  |---|---|
+  | Volume 55 → 30 → mute → unmute → 55 | lulus |
+  | Buka/tutup Kalkulator dan Notepad (xed) | lulus, ditutup sopan lewat `wmctrl -c` |
+  | Buka folder Documents (jendela Downloads user tidak tersentuh) | lulus |
+  | Dokumen Word dibuka di LibreOffice, lalu ditutup | lulus |
+
+- Tool calling, 10 perintah JP/ID: 9/10 sekali jalan. Satu yang salah ("putar lagu … di YouTube" → `spotify_search`) diulang 5× bersama "carikan lagu …" 5×: 10/10 di branch ini, 8/10 di `main`, jadi itu variasi model yang sudah ada.
+- Audit GUI: 12 fungsi yang jalan di thread lain tidak menyentuh widget Tk langsung.
+
+### Keterbatasan diketahui
+- Belum dijalankan di Windows; perilaku Windows dijaga oleh test lama yang kini memakai backend Windows.
+- `type_text`/`press_key`/`hotkey` di Linux baru dicek lewat unit test.
+- Maskot desktop (`miku.py`) belum transparan di Linux (Fase L3).
+
 ## v1.3.0 (2026-10-29): MikuVision jalan di Linux (Fase L1)
 
 Rencana dan hasil audit: `docs/PLAN_LINUX.md`. Diuji di laptop yang sama (dual-boot), Linux Mint 22.3 Cinnamon X11, driver NVIDIA 595 (CUDA 13.2), Ollama 0.40.13.
