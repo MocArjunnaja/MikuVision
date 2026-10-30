@@ -61,3 +61,29 @@ def test_every_emotion_maps_to_existing_animation():
     for emotion, animation in EMOTION_ANIMATIONS.items():
         assert animation in ANIMATIONS, f"{emotion} -> {animation}"
     assert set(config.MIKU_EMOTION_FRAMES) <= set(EMOTION_ANIMATIONS)
+
+
+# ── Frame emosi buatan tools/make_emote_frames.py ──
+
+sys.path.insert(0, str(ROOT / "tools"))
+import make_emote_frames  # noqa: E402
+
+
+def test_generated_emotions_are_used_by_config():
+    for emotion, frames in make_emote_frames.emotion_frames().items():
+        assert config.MIKU_EMOTION_FRAMES[emotion] == frames
+
+
+def test_sheet_matches_generator(sheet):
+    # Sheet dan script harus sejalan: ubah polanya di script, lalu jalankan ulang script
+    for frame, cell in zip(make_emote_frames.build_frames(sheet), make_emote_frames.NEW_CELLS):
+        row, col = divmod(cell, config.MIKU_SHEET_COLS)
+        box = (col * config.MIKU_FRAME_W, row * config.MIKU_FRAME_H,
+               (col + 1) * config.MIKU_FRAME_W, (row + 1) * config.MIKU_FRAME_H)
+        assert sheet.crop(box).tobytes() == frame.convert("RGBA").tobytes(), f"frame {cell}"
+
+
+def test_generator_only_uses_empty_cells_and_real_base_frames():
+    original_frames = {base for _, base, _ in make_emote_frames.NEW_FRAMES}
+    assert not original_frames & set(make_emote_frames.NEW_CELLS)
+    assert len(set(make_emote_frames.NEW_CELLS)) == len(make_emote_frames.NEW_FRAMES)

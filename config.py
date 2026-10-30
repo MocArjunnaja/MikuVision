@@ -33,15 +33,17 @@ MIKU_FRAME_H = 213
 MIKU_SHEET_COLS = 20
 
 # Frame per emosi, dipakai GUI dan avatar window. Semua indeks berisi gambar.
+# 106-116 dibuat oleh tools/make_emote_frames.py dari frame asli (sheet belum punya
+# gambar sedih, kesal, malu, bingung, atau berpikir yang beranimasi).
 MIKU_EMOTION_FRAMES: Dict[str, List[int]] = {
     "neutral": [0, 1, 2, 3, 4],
     "happy": [123, 124, 125, 126],
     "excited": [131, 132, 133, 134, 135],
-    "thinking": [63],
-    "confused": [41, 42, 43],
-    "sad": [128, 129],
-    "embarrassed": [127],
-    "annoyed": [100],
+    "thinking": [114, 115, 116],
+    "confused": [112, 113],
+    "sad": [106, 107],
+    "embarrassed": [110, 111],
+    "annoyed": [108, 109],
 }
 
 # RVC model directory (shared across versions)

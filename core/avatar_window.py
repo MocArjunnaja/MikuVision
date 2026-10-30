@@ -39,8 +39,9 @@ FUCHSIA = (255, 0, 128)
 ALPHA_THR = 80
 
 # Animation sequences (frame indices from sprite sheet).
-# Hanya frame yang berisi gambar; sel 31-39, 52-59, 72-79, 92-99, 106-119
-# kosong sehingga avatar akan menghilang jika dirujuk.
+# Hanya frame yang berisi gambar; sel 31-39, 52-59, 72-79, 92-99, 117-119
+# kosong sehingga avatar akan menghilang jika dirujuk (106-116: frame emosi buatan
+# tools/make_emote_frames.py).
 ANIMATIONS: Dict[str, List[int]] = {
     "idle_front": [0, 1, 2, 3, 4],
     "idle_side_r": [5, 6, 7, 8],
