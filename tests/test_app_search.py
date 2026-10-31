@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -198,10 +199,10 @@ def test_application_dirs_follow_xdg_with_user_first(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "home"))
     monkeypatch.setenv("XDG_DATA_DIRS", "/usr/share/cinnamon:/usr/share")
 
-    dirs = [str(d) for d in linux._application_dirs()]
-
-    assert dirs[:3] == [str(tmp_path / "home" / "applications"),
-                        "/usr/share/cinnamon/applications", "/usr/share/applications"]
+    # Path, bukan string: CI Windows juga menjalankan test ini (pemisah "\")
+    assert linux._application_dirs()[:3] == [tmp_path / "home" / "applications",
+                                             Path("/usr/share/cinnamon/applications"),
+                                             Path("/usr/share/applications")]
 
 
 def test_linux_launch_entry_uses_gtk_launch(monkeypatch):
