@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Optional, Dict, List
 
 from config import MIKU_EMOTION_FRAMES, MIKU_FRAME_H, MIKU_FRAME_W
+from core.avatar_x11 import XLIB_AVAILABLE, X11Window, active_window_id, mask_rectangles
 
 try:
     import win32api
@@ -132,6 +133,19 @@ def cursor_pos():
         return 0, 0
 
 
+class _Win32Window:
+    """Jendela maskot Windows: dipindah lewat SetWindowPos; transparan lewat colorkey."""
+
+    def __init__(self, hwnd):
+        self.hwnd = hwnd
+
+    def move(self, x, y):
+        move_topmost(self.hwnd, x, y, WIN_W, WIN_H)
+
+    def pointer(self):
+        return cursor_pos()
+
+
 # ══════════════════════════════════════
 #  SPRITE LOADER
 # ══════════════════════════════════════
@@ -189,7 +203,7 @@ def _pil_to_pygame(crop) -> pygame.Surface:
 class SpriteAvatar:
     """Animated sprite character"""
 
-    def __init__(self, frames: list, screen_w: int, screen_h: int, hwnd=None):
+    def __init__(self, frames: list, screen_w: int, screen_h: int, window=None):
         self.frames = frames
         self.frames_mirror = (
             [pygame.transform.flip(f, True, False) for f in frames]
@@ -198,7 +212,9 @@ class SpriteAvatar:
         )
         self.screen_w = screen_w
         self.screen_h = screen_h
-        self.hwnd = hwnd
+        # _Win32Window atau X11Window: memindah jendela dan membaca posisi kursor di layar
+        self.window = window
+        self.last_surface: Optional[pygame.Surface] = None
 
         # Position (float for smooth movement)
         self.x = float(screen_w - WIN_W - 100) if screen_w > 0 else 0
@@ -240,11 +256,11 @@ class SpriteAvatar:
     def update(self):
         """Update position and state"""
         if self.dragging:
-            sx, sy = cursor_pos()
+            sx, sy = self._pointer()
             self.x = self.drag_ox + (sx - self.drag_sx)
             self.y = self.drag_oy + (sy - self.drag_sy)
-            if self.hwnd:
-                move_topmost(self.hwnd, self.x, self.y, WIN_W, WIN_H)
+            if self.window:
+                self.window.move(self.x, self.y)
             return
 
         # Auto-transition state periodically
@@ -263,8 +279,11 @@ class SpriteAvatar:
                 self.x = 0.0
                 self._set("walk_right")
 
-        if self.hwnd:
-            move_topmost(self.hwnd, self.x, self.y, WIN_W, WIN_H)
+        if self.window:
+            self.window.move(self.x, self.y)
+
+    def _pointer(self):
+        return self.window.pointer() if self.window else (0, 0)
 
     def _random_state(self):
         """Pick random idle/animation state"""
@@ -301,7 +320,7 @@ class SpriteAvatar:
 
     def on_drag_start(self):
         """Start dragging avatar"""
-        sx, sy = cursor_pos()
+        sx, sy = self._pointer()
         self.dragging = True
         self.drag_sx = sx
         self.drag_sy = sy
@@ -319,6 +338,7 @@ class SpriteAvatar:
         """Render frame to screen"""
         screen.fill(FUCHSIA)
         surf = self.current_surface()
+        self.last_surface = surf
         if surf:
             ox = (WIN_W - FRAME_W) // 2
             oy = (WIN_H - FRAME_H) // 2
@@ -347,6 +367,69 @@ class AvatarWindow:
         self.avatar: Optional[SpriteAvatar] = None
         self.clock: Optional[pygame.time.Clock] = None
         self.hwnd = None
+
+        # Linux (X11): bentuk jendela mengikuti sprite; menu klik kanan digambar sendiri
+        self.x11: Optional[X11Window] = None
+        self._shape_key = None
+        self._shape_cache: Dict[int, list] = {}
+        self.menu_rect: Optional[pygame.Rect] = None
+        self.menu_until = 0.0
+
+    def _open_x11(self, sw: int, sh: int) -> Optional[X11Window]:
+        """Linux: jendela maskot dibentuk seperti sprite, selalu di atas, tanpa taskbar."""
+        if not (XLIB_AVAILABLE and os.environ.get("DISPLAY")):
+            return None
+        if os.environ.get("XDG_SESSION_TYPE") == "wayland":
+            print("[avatar_window] Wayland: maskot tidak bisa transparan atau dipindah; pakai sesi X11")
+            return None
+        try:
+            window_id = pygame.display.get_wm_info().get("window")
+            return X11Window(window_id) if window_id else None
+        except Exception as e:
+            print(f"[avatar_window] X11 tidak tersedia: {e}")
+            return None
+
+    def _update_shape(self):
+        """X11: bentuk jendela = piksel sprite yang tampil (+ menu bila terbuka)."""
+        surf = self.avatar.last_surface
+        menu = tuple(self.menu_rect) if self.menu_rect else None
+        key = (id(surf), menu)
+        if not self.x11 or surf is None or key == self._shape_key:
+            return
+        if id(surf) not in self._shape_cache:
+            offset = ((WIN_W - FRAME_W) // 2, (WIN_H - FRAME_H) // 2)
+            self._shape_cache[id(surf)] = mask_rectangles(surf, offset)
+        rects = list(self._shape_cache[id(surf)])
+        if menu:
+            rects.append({"x": menu[0], "y": menu[1], "width": menu[2], "height": menu[3]})
+        self.x11.set_shape(rects)
+        self._shape_key = key
+
+    def _open_menu(self, pos):
+        """Menu klik kanan sederhana (X11 tidak punya menu bawaan seperti TrackPopupMenu)."""
+        width, height = 96, 28
+        x = min(max(pos[0] - width // 2, 0), WIN_W - width)
+        y = min(max(pos[1] - height - 4, 0), WIN_H - height)
+        self.menu_rect = pygame.Rect(x, y, width, height)
+        self.menu_until = time.time() + 4.0
+
+    def _draw_menu(self):
+        if not self.menu_rect:
+            return
+        if time.time() > self.menu_until:
+            self.menu_rect = None
+            return
+        # Sudut tidak dibulatkan: bentuk jendela untuk menu berupa persegi penuh, jadi sudut
+        # bulat akan menampakkan latar magenta
+        pygame.draw.rect(self.screen, (40, 44, 52), self.menu_rect)
+        pygame.draw.rect(self.screen, (57, 197, 187), self.menu_rect, width=2)
+        label = self._menu_font.render("Exit Miku", True, (255, 255, 255))
+        self.screen.blit(label, label.get_rect(center=self.menu_rect.center))
+
+    def _quit_from_menu(self):
+        self.running = False
+        if self.on_quit_callback:
+            self.on_quit_callback()
 
     def start(self):
         """Spawn avatar window in background thread"""
@@ -380,28 +463,47 @@ class AvatarWindow:
             info = pygame.display.Info()
             sw, sh = info.current_w, info.current_h
 
+            previous_focus = None
+            if not WINDOWS_API_AVAILABLE:
+                # Langsung di pojok kanan bawah (posisi awal SpriteAvatar), tanpa berkedip di tengah
+                os.environ["SDL_VIDEO_WINDOW_POS"] = f"{max(sw - WIN_W - 100, 0)},{max(sh - WIN_H - 60, 0)}"
+                previous_focus = active_window_id()
             self.screen = pygame.display.set_mode((WIN_W, WIN_H), pygame.NOFRAME)
             pygame.display.set_caption("Miku Avatar")
+            self._menu_font = pygame.font.SysFont(None, 20)
 
             frames = load_frames(self.sprite_sheet_path)
             if not frames:
                 print("[avatar_window] No frames loaded, falling back to placeholder")
 
             self.hwnd = None
+            window = None
             if WINDOWS_API_AVAILABLE:
                 try:
                     info_dict = pygame.display.get_wm_info()
                     self.hwnd = info_dict.get("window")
                     if self.hwnd:
                         setup_window(self.hwnd)
+                        window = _Win32Window(self.hwnd)
                 except Exception as e:
                     print(f"[avatar_window] Could not get hwnd: {e}")
+            else:
+                self.x11 = self._open_x11(sw, sh)
+                window = self.x11
 
-            self.avatar = SpriteAvatar(frames, sw, sh, self.hwnd)
-            if self.hwnd:
-                move_topmost(
-                    self.hwnd, int(self.avatar.x), int(self.avatar.y), WIN_W, WIN_H
-                )
+            self.avatar = SpriteAvatar(frames, sw, sh, window)
+            if window:
+                window.move(int(self.avatar.x), int(self.avatar.y))
+            if self.x11:
+                # Bentuk dulu sebelum frame pertama tampil, supaya tidak ada kotak magenta
+                self.avatar.draw(self.screen)
+                self._update_shape()
+                self.x11.setup()
+                # Seperti SWP_NOACTIVATE di Windows: terminal/aplikasi user tetap fokus
+                if previous_focus:
+                    pygame.display.flip()
+                    time.sleep(0.2)
+                    self.x11.activate(previous_focus)
 
             self.clock = pygame.time.Clock()
 
@@ -435,7 +537,15 @@ class AvatarWindow:
                             self.running = False
                     elif e.type == pygame.MOUSEBUTTONDOWN:
                         if e.button == 1 and not WINDOWS_API_AVAILABLE:  # Fallback for non-Windows
-                            self.avatar.on_drag_start()
+                            # Dengan bentuk X11, klik hanya sampai di sini bila mengenai Miku
+                            # atau menunya; selama tombol ditahan, X11 tetap mengirim event ke jendela ini
+                            if self.menu_rect and self.menu_rect.collidepoint(e.pos):
+                                self._quit_from_menu()
+                            else:
+                                self.menu_rect = None
+                                self.avatar.on_drag_start()
+                        elif e.button == 3 and not WINDOWS_API_AVAILABLE:
+                            self._open_menu(e.pos)
                         elif e.button == 3:  # Right click - menu (simple version)
                             if WINDOWS_API_AVAILABLE and self.hwnd:
                                 menu = win32gui.CreatePopupMenu()
@@ -463,9 +573,13 @@ class AvatarWindow:
                 # Update and draw
                 self.avatar.update()
                 self.avatar.draw(self.screen)
+                self._draw_menu()
+                self._update_shape()
                 pygame.display.flip()
                 self.clock.tick(60)
 
+            if self.x11:
+                self.x11.close()
             pygame.quit()
             print("[avatar_window] Closed")
 

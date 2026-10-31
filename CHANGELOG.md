@@ -6,6 +6,32 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-10-31): maskot desktop di Linux (Fase L3)
+
+### Ditambahkan
+- `core/avatar_x11.py`: maskot `python miku.py` di Linux (X11) setara Windows, lewat python-xlib (sudah terpasang bersama pyautogui, tanpa dependency baru).
+  - Transparan: bentuk jendela = piksel sprite (ekstensi SHAPE). Deretan piksel yang sama digabung, jadi satu frame ±90 persegi dan 4 ms; bentuk hanya dikirim saat frame berganti. Klik di area kosong jatuh ke jendela di bawahnya.
+  - Selalu di atas, di semua workspace, tidak muncul di taskbar/pager.
+  - Fokus keyboard dikembalikan ke jendela yang aktif sebelumnya (setara `SWP_NOACTIVATE`), jadi terminal tidak kehilangan fokus.
+  - Diseret lewat X11; posisi awal langsung di pojok kanan bawah tanpa berkedip di tengah.
+  - Menu klik kanan "Exit Miku" digambar sendiri (X11 tidak punya menu bawaan seperti `TrackPopupMenu`).
+  - Peringatan di sesi Wayland.
+- 10 test (`tests/test_avatar_linux.py`): bentuk dari piksel (persegi menutupi tepat piksel yang terisi, tanpa tumpang tindih), menu di dalam jendela, bentuk ikut menu.
+
+### Diubah
+- `SpriteAvatar` memindah jendela lewat objek jendela (`_Win32Window` atau `X11Window`), bukan memanggil Win32 langsung. Perilaku Windows sama.
+
+### Diperbaiki
+- GUI di Linux: emoji tidak lagi tampil sebagai kotak. Tk tidak bisa menggambar font emoji berwarna, jadi emoji (dan spasi sesudahnya) dibuang dari status, tombol, dan chat. Windows tidak berubah.
+
+### Pengujian
+- `pytest`: 229 lulus; di Python sistem seperti CI 224 lulus, 5 dilewati (butuh pygame asli).
+- Uji sungguhan di Linux Mint: maskot transparan di atas jendela lain, tetap di atas, tidak di taskbar, fokus user tidak berpindah; diseret (-300, -200) dan callback "mulai bicara" terpanggil; klik kanan → "Exit Miku" menutup mode suara, cleanup jalan, dan model dilepas dari VRAM. Juga dicek lewat `python miku.py` sungguhan.
+
+### Keterbatasan diketahui
+- Wayland belum didukung (maskot tidak transparan dan tidak bisa dipindah).
+- Belum diuji di monitor dengan skala HiDPI.
+
 ## v1.4.0 (2026-10-31): aksi komputer di Linux (Fase L2) dan ekspresi Miku baru
 
 [#18](https://github.com/MocArjunnaja/MikuVision/pull/18) (frame emosi) dan [#19](https://github.com/MocArjunnaja/MikuVision/pull/19) (Fase L2). Rencana Linux: `docs/PLAN_LINUX.md`.
