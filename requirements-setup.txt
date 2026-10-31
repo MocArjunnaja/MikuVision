@@ -1,0 +1,5 @@
+# Untuk membangun MikuVisionSetup.exe (miku_setup.spec, workflow release-setup.yml). Bukan dependency aplikasi.
+pyinstaller==6.11.1
+customtkinter==5.2.2
+Pillow==12.1.1
+psutil==7.2.2
