@@ -3,8 +3,10 @@ Test setup: stub dependency berat (audio, GUI, Windows API) agar logika inti
 bisa dites tanpa hardware dan tanpa Ollama.
 """
 
+import http.server
 import importlib
 import sys
+import threading
 import types
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -119,3 +121,46 @@ def _isolated_user_skills(monkeypatch, tmp_path):
     """Test hanya melihat contoh skill di repo, bukan skill milik user di data/skills/."""
     from core import user_skills
     monkeypatch.setattr(user_skills, "USER_SKILLS_DIR", tmp_path / "user_skills")
+
+
+class _ReleaseHandler(http.server.BaseHTTPRequestHandler):
+    """Aset rilis dari memori, dengan HTTP Range seperti GitHub (bisa dimatikan lewat server.ranges)."""
+
+    def do_GET(self):
+        server = self.server
+        server.requests.append((self.path, self.headers.get("Range")))
+        data = server.files.get(self.path.lstrip("/"))
+        if data is None:
+            self.send_error(404)
+            return
+        start = 0
+        requested = self.headers.get("Range")
+        if requested and server.ranges:
+            start = int(requested.split("=", 1)[1].split("-", 1)[0])
+            if start >= len(data):
+                self.send_response(416)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            self.send_response(206)
+            self.send_header("Content-Range", f"bytes {start}-{len(data) - 1}/{len(data)}")
+        else:
+            self.send_response(200)
+        self.send_header("Content-Length", str(len(data) - start))
+        self.end_headers()
+        self.wfile.write(data[start:])
+
+    def log_message(self, *args):
+        pass
+
+
+@pytest.fixture
+def release_server():
+    """Server HTTP lokal: .files {nama: byte}, .ranges, .requests [(path, Range)], .url (berakhiran /)."""
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _ReleaseHandler)
+    server.files, server.ranges, server.requests = {}, True, []
+    server.url = f"http://127.0.0.1:{server.server_port}/"
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield server
+    server.shutdown()
+    server.server_close()

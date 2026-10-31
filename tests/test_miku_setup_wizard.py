@@ -118,5 +118,27 @@ def test_failed_install_offers_retry(make_wizard):
     pump(wizard, lambda: wizard.index == 5)
 
 
-def test_without_dry_run_the_real_install_is_not_there_yet():
-    assert main([]) == 2
+def test_without_dry_run_the_wizard_installs_for_real(tmp_path, monkeypatch):
+    import miku_setup.main as entry
+    import miku_setup.wizard as wizard_module
+
+    opened = {}
+
+    class FakeWizard:
+        def __init__(self, setup, release_url):
+            opened.update(setup=setup, release_url=release_url)
+
+        def mainloop(self):
+            pass
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(entry, "setup_logging", lambda: tmp_path / "setup.log")
+    monkeypatch.setattr(wizard_module, "Wizard", FakeWizard)
+    assert main(["--release-url", "http://127.0.0.1:8765/"]) == 0
+    assert opened["setup"].dry_run is False and opened["release_url"] == "http://127.0.0.1:8765/"
+
+
+def test_dry_run_installs_nothing_in_make_runner(make_wizard):
+    from miku_setup.runner import DryRunRunner
+
+    assert isinstance(make_wizard().make_runner(None), DryRunRunner)

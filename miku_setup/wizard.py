@@ -14,7 +14,8 @@ from . import checks
 from .pages import PAGES
 from .pages.base import ACCENT, ACCENT_HOVER, MUTED, STATUS_COLORS
 from .pages.install import InstallPage
-from .runner import DryRunRunner, sample_lines
+from .download import RELEASE_URL
+from .runner import DryRunRunner, InstallRunner, sample_lines
 from .state import SetupState
 
 log = logging.getLogger("miku_setup")
@@ -22,10 +23,12 @@ WIDTH, HEIGHT = 760, 520
 
 
 class Wizard(ctk.CTk):
-    def __init__(self, setup: SetupState, check_functions=None, dry_run_delay: float = 0.15):
+    def __init__(self, setup: SetupState, check_functions=None, dry_run_delay: float = 0.15,
+                 release_url: str = RELEASE_URL):
         ctk.set_appearance_mode("dark")
         super().__init__()
         self.setup = setup
+        self.release_url = release_url
         # Bisa diganti test supaya tidak bergantung pada komputer yang menjalankannya
         self.check_functions = checks.SYSTEM_CHECKS if check_functions is None else check_functions
         self.find_ollama = checks.find_ollama
@@ -133,7 +136,8 @@ class Wizard(ctk.CTk):
     def make_runner(self, events):
         if self.setup.dry_run:
             return DryRunRunner(events, sample_lines(fail=self.setup.dry_run_fail), delay=self.dry_run_delay)
-        raise NotImplementedError("Runner install.ps1 menyusul di fase I3")
+        return InstallRunner(events, self.setup.selection, self.setup.log_path.parent / "downloads",
+                             release_url=self.release_url)
 
     def cancel(self):
         if self.index == len(self.pages) - 1:

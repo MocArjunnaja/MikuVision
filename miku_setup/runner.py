@@ -3,19 +3,41 @@ Menjalankan instalasi dan meneruskan progresnya ke wizard lewat queue.Queue (wid
 dari main thread, seperti gui.py).
 
 install.ps1 -Progress mencetak satu baris "##MIKU {json}" per kejadian: step {index, total, title},
-warn/error {message}, done {ok}. Baris lain adalah log biasa. Fase I2 hanya punya DryRunRunner, yang
-memutar ulang stdout nyata dari uji terima I1 (assets/dry_run_stdout.txt); runner install.ps1 menyusul di I3.
+warn/error {message}, done {ok}. Baris lain adalah log biasa.
+
+Kejadian di antrean: ("log", teks), ("progress", kejadian ##MIKU), ("phase", {title, fraction}) untuk
+unduh dan ekstrak, dan ("downloaded", byte) selama install.ps1 mengunduh PyTorch dan model.
+DryRunRunner memutar ulang stdout nyata dari uji terima I1 (assets/dry_run_stdout.txt).
 """
 
 import json
+import logging
+import os
 import queue
+import subprocess
+import sys
 import threading
+import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
+
+from .checks import format_gb
+from .components import Selection, install_args, model_locations
+from .download import RELEASE_URL, Cancelled, DownloadError, download, fetch_text, parse_sha256sums, \
+    parse_version, safe_extract, zip_name
+
+log = logging.getLogger("miku_setup")
 
 PREFIX = "##MIKU "
 EVENTS = {"step", "warn", "error", "done"}
 SAMPLE_LOG = Path(__file__).with_name("assets") / "dry_run_stdout.txt"
+SIZE_INTERVAL_SEC = 2.0
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+# Kode keluar install.ps1 (docs/PLAN_INSTALLER.md bagian 4)
+EXIT_MESSAGES = {
+    1: "Instalasi berhenti. Penyebabnya ada di log.",
+    2: "Error tak terduga di installer. Kirim log saat melapor.",
+}
 
 
 def parse_progress(line: str) -> Optional[Dict]:
@@ -74,3 +96,166 @@ class DryRunRunner:
                 return
             event = parse_progress(line)
             self.events.put(("progress", event) if event else ("log", line))
+
+
+def install_command(install_dir: Path, args: List[str]) -> List[str]:
+    """PowerShell tanpa profil; -ExecutionPolicy Bypass hanya untuk proses ini, sama seperti install.bat."""
+    return ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+            str(Path(install_dir) / "install.ps1"), *args]
+
+
+def folder_size(path: Path) -> int:
+    total = 0
+    stack = [str(path)]
+    while stack:
+        try:
+            with os.scandir(stack.pop()) as entries:
+                for entry in entries:
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            stack.append(entry.path)
+                        else:
+                            total += entry.stat(follow_symlinks=False).st_size
+                    except OSError:
+                        continue
+        except OSError:
+            continue
+    return total
+
+
+class InstallRunner:
+    """Unduh kode rilis → cocokkan SHA256 → ekstrak ke InstallDir → install.ps1 -Progress tanpa konsol.
+
+    Setiap langkah aman diulang: zip yang sudah cocok tidak diunduh lagi, .part dilanjutkan, dan
+    install.ps1 melewati langkah yang sudah beres. Jadi "Coba lagi" setelah batal atau gagal melanjutkan.
+    """
+
+    def __init__(self, events: "queue.Queue", selection: Selection, downloads_dir: Path,
+                 release_url: str = RELEASE_URL,
+                 command: Callable[[Path, List[str]], List[str]] = install_command):
+        self.events = events
+        self.selection = selection
+        self.downloads_dir = Path(downloads_dir)
+        self.release_url = release_url if release_url.endswith("/") else release_url + "/"
+        self.command = command
+        self.version = ""
+        self._cancel = threading.Event()
+        self._process: Optional[subprocess.Popen] = None
+        self._thread: Optional[threading.Thread] = None
+
+    def start(self):
+        self._cancel.clear()
+        self._thread = threading.Thread(target=self._run, name="setup-install", daemon=True)
+        self._thread.start()
+
+    @property
+    def running(self) -> bool:
+        return bool(self._thread and self._thread.is_alive())
+
+    def cancel(self):
+        """Hentikan dengan rapi: unduhan berhenti di blok berikutnya, install.ps1 dan anak prosesnya dimatikan."""
+        self._cancel.set()
+        process = self._process
+        if process and process.poll() is None:
+            if sys.platform == "win32":
+                # Pohon proses: install.ps1 menjalankan uv, python, dan ollama pull
+                subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True,
+                               creationflags=_NO_WINDOW)
+            else:
+                process.kill()
+
+    def _put(self, kind: str, data):
+        self.events.put((kind, data))
+
+    def _fail(self, message: str):
+        self._put("progress", {"event": "error", "message": message})
+        self._put("progress", {"event": "done", "ok": False})
+
+    def _run(self):
+        try:
+            zip_path = self._fetch()
+            self._extract(zip_path)
+            self._install()
+        except Cancelled:
+            self._put("progress", {"event": "done", "ok": False, "cancelled": True})
+        except DownloadError as e:
+            log.warning("Unduh/ekstrak gagal: %s", e)
+            self._fail(str(e))
+        except Exception as e:  # tetap jelaskan ke user, jangan biarkan wizard menunggu selamanya
+            log.exception("Instalasi gagal tak terduga")
+            self._fail(f"Error tak terduga: {e}. Kirim log saat melapor.")
+
+    def _fetch(self) -> Path:
+        self._put("phase", {"title": "Memeriksa rilis terbaru", "fraction": 0.0})
+        self.version = parse_version(fetch_text(self.release_url + "version.json"))
+        name = zip_name(self.version)
+        sums = parse_sha256sums(fetch_text(self.release_url + "SHA256SUMS"))
+        if name not in sums:
+            raise DownloadError(f"SHA256SUMS di rilis {self.version} tidak memuat {name}")
+        title = f"Mengunduh MikuVision {self.version}"
+        last = [0.0]
+
+        def progress(done: int, total: int):
+            now = time.monotonic()
+            if now - last[0] >= 0.25 or (total and done >= total):
+                last[0] = now
+                detail = f"{format_gb(done)}" + (f" dari {format_gb(total)}" if total else "")
+                self._put("phase", {"title": f"{title} ({detail})", "fraction": done / total if total else 0.0})
+
+        log.info("Rilis %s dari %s", self.version, self.release_url)
+        return download(self.release_url + name, self.downloads_dir / name, sums[name], progress, self._cancel)
+
+    def _extract(self, zip_path: Path):
+        if self._cancel.is_set():
+            raise Cancelled()
+        self._put("phase", {"title": f"Menyalin MikuVision {self.version} ke {self.selection.install_dir}",
+                            "fraction": 1.0})
+        written = safe_extract(zip_path, self.selection.install_dir)
+        self._put("log", f"[setup] {written} file diekstrak ke {self.selection.install_dir}")
+
+    def _size_paths(self) -> List[Path]:
+        """Folder yang membesar selama install.ps1 mengunduh: cache uv (PyTorch) dan blob model Ollama."""
+        ollama_dir, _ = model_locations(self.selection)
+        return [Path(self.selection.install_dir) / ".tools" / "uv-cache", ollama_dir / "blobs"]
+
+    def _watch_sizes(self, stop: threading.Event):
+        paths = self._size_paths()
+        baseline = sum(folder_size(p) for p in paths)
+        while not stop.wait(SIZE_INTERVAL_SEC):
+            self._put("downloaded", max(sum(folder_size(p) for p in paths) - baseline, 0))
+
+    def _install(self):
+        if self._cancel.is_set():
+            raise Cancelled()
+        install_dir = Path(self.selection.install_dir)
+        command = self.command(install_dir, install_args(self.selection))
+        log.info("Menjalankan: %s", " ".join(command))
+        try:
+            self._process = subprocess.Popen(command, cwd=install_dir, stdout=subprocess.PIPE,
+                                             stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                                             creationflags=_NO_WINDOW)
+        except OSError as e:
+            raise DownloadError(f"PowerShell tidak bisa dijalankan: {e}") from e
+        stop = threading.Event()
+        threading.Thread(target=self._watch_sizes, args=(stop,), name="setup-sizes", daemon=True).start()
+        last_error = ""
+        try:
+            for raw in self._process.stdout:
+                line = raw.decode("utf-8", errors="replace").rstrip("\r\n")
+                event = parse_progress(line)
+                if event is None:
+                    self._put("log", line)
+                elif event["event"] != "done":  # hasil akhir ditentukan kode keluar di bawah
+                    if event["event"] == "error":
+                        last_error = event.get("message", "")
+                    self._put("progress", event)
+            code = self._process.wait()
+        finally:
+            stop.set()
+        log.info("install.ps1 selesai dengan kode %s", code)
+        if self._cancel.is_set():
+            raise Cancelled()
+        if code != 0 and not last_error:
+            self._put("progress", {"event": "error",
+                                   "message": EXIT_MESSAGES.get(code, f"Installer berhenti dengan kode {code}.")})
+        self._put("progress", {"event": "done", "ok": code == 0})

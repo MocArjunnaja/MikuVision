@@ -1,9 +1,11 @@
 """Halaman 6: selesai, atau penjelasan gagal dengan Coba lagi dan Buka log."""
 
 import logging
+from tkinter import messagebox
 
 import customtkinter as ctk
 
+from ..launch import create_desktop_shortcut, launch
 from .base import ACCENT, ACCENT_HOVER, MUTED, STATUS_COLORS, Page, heading, paragraph
 from .install import open_folder
 
@@ -56,10 +58,27 @@ class FinishPage(Page):
         return False
 
     def finish(self):
-        """Tombol Selesai. Shortcut desktop dan menjalankan MikuVision menyusul di fase I4."""
+        """Tombol Selesai: shortcut Desktop dan menjalankan MikuVision bila dicentang."""
         if self.setup.install_ok:
             self.setup.desktop_shortcut = bool(self.desktop.get())
             self.setup.launch_now = bool(self.launch.get())
         log.info("Selesai: ok=%s, shortcut desktop=%s, jalankan=%s%s", self.setup.install_ok,
                  self.setup.desktop_shortcut, self.setup.launch_now,
                  " (dry-run: tidak dijalankan)" if self.setup.dry_run else "")
+        if not self.setup.install_ok or self.setup.dry_run:
+            return
+        install_dir = self.setup.selection.install_dir
+        problems = []
+        if self.setup.desktop_shortcut:
+            problem = create_desktop_shortcut(install_dir)
+            if problem:
+                problems.append(f"Shortcut Desktop tidak terbuat: {problem}")
+        if self.setup.launch_now:
+            problem = launch(install_dir)
+            if problem:
+                problems.append(f"MikuVision tidak bisa dijalankan: {problem}")
+        for problem in problems:
+            log.warning(problem)
+        if problems:
+            messagebox.showwarning("MikuVision Setup", "\n\n".join(problems) +
+                                   "\n\nMikuVision tetap bisa dibuka dari Start Menu.", parent=self.wizard)
