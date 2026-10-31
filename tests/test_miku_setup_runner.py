@@ -191,8 +191,23 @@ def test_cancel_stops_the_installer_process(release, tmp_path):
     assert not run.running and run._process.poll() is not None
 
 
-def test_download_size_is_reported_while_installing(release, tmp_path, monkeypatch):
+def test_download_size_comes_from_the_network_counter(release, tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "SIZE_INTERVAL_SEC", 0.05)
+    counter = iter(range(1_000_000_000, 10**12, 2_000_000))  # +2 MB per bacaan
+    monkeypatch.setattr(runner, "received_bytes", lambda: next(counter))
+    run = install_runner(release, tmp_path, """
+        Path(".tools/uv-cache").mkdir(parents=True)
+        Path(".tools/uv-cache/torch.whl").write_bytes(b"x" * 50_000_000)  # cache tidak dihitung
+        time.sleep(0.5)
+    """)
+    run.start()
+    sizes = [d for k, d in _drain(run.events, timeout=30) if k == "downloaded"]
+    assert sizes and sizes == sorted(sizes) and sizes[0] == 2_000_000 and max(sizes) < 50_000_000
+
+
+def test_download_size_falls_back_to_folder_sizes_without_psutil(release, tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "SIZE_INTERVAL_SEC", 0.05)
+    monkeypatch.setattr(runner, "received_bytes", lambda: None)
     run = install_runner(release, tmp_path, """
         Path(".tools/uv-cache").mkdir(parents=True)
         Path(".tools/uv-cache/torch.whl").write_bytes(b"x" * 3_000_000)

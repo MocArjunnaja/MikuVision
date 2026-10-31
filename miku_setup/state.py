@@ -6,6 +6,8 @@ from typing import List, Optional
 
 from .checks import CheckResult
 from .components import Selection
+from .maintenance import RemovalPlan
+from .registry import InstalledApp
 
 
 @dataclass
@@ -23,3 +25,10 @@ class SetupState:
     warnings: List[str] = field(default_factory=list)
     desktop_shortcut: bool = True
     launch_now: bool = True
+    # install, maintain (Setup dibuka lagi), update, repair, uninstall
+    mode: str = "install"
+    installed: Optional[InstalledApp] = None
+    latest_version: str = ""
+    version: str = ""                   # versi yang baru dipasang (dari version.json rilis)
+    removal: RemovalPlan = field(default_factory=RemovalPlan)
+    removal_problems: List[str] = field(default_factory=list)

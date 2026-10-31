@@ -2,7 +2,7 @@
 
 **Tujuan:** siapa saja bisa memasang MikuVision tanpa membuka GitHub, git, atau terminal. Caranya: unduh satu file `MikuVisionSetup.exe` (±25 MB), klik Lanjut beberapa kali, lalu Miku menyapa. Rasanya seperti installer aplikasi desktop besar (misalnya Ansys): ada pilihan folder, pilihan komponen, progres unduhan, serta Perbarui/Perbaiki/Hapus.
 
-**Status:** I1, I2, dan I3 selesai (I1 dan I2 31 Okt 2026, I3 1 Nov 2026); I4–I6 rencana. Dikerjakan di Windows dulu (fase I1–I6); Linux menyusul (fase IL). Urutan terhadap rencana lain: [`ROADMAP.md`](ROADMAP.md).
+**Status:** I1–I5 selesai (I1 dan I2 31 Okt 2026, I3–I5 1 Nov 2026); exe pertama terbit bersama rilis v1.6.0. I6 rencana. Dikerjakan di Windows dulu (fase I1–I6); Linux menyusul (fase IL). Urutan terhadap rencana lain: [`ROADMAP.md`](ROADMAP.md).
 
 **Untuk yang mengerjakan:** baca bagian 1–4 untuk gambaran, lalu kerjakan fase di bagian 8 satu per satu. Tiap fase satu PR, dengan kriteria selesai yang bisa dicek. Kode installer yang sudah teruji (`install.ps1`) **dibungkus, bukan ditulis ulang**.
 
@@ -180,6 +180,16 @@ Entri registry (per-user, tanpa admin): `HKCU\Software\Microsoft\Windows\Current
 | **Hapus** | Konfirmasi dengan pilihan: [x] Hapus aplikasi (InstallDir kecuali `data/`), [ ] Hapus percakapan, memori, dan skill (`data/`), [ ] Hapus model (ModelDir). Lalu hapus shortcut, entri registry, dan variabel `OLLAMA_MODELS`/`HF_HOME` bila menunjuk ke ModelDir yang dihapus. Ollama **tidak** dihapus (aplikasi terpisah); tampilkan cara menghapusnya dari "Apps & features" |
 
 Folder yang sedang dipakai (Miku masih jalan): cek proses `pythonw.exe` yang berjalan dari InstallDir, lalu minta user menutup Miku dulu.
+
+**Hasil I4** (1 Nov 2026). `registry.py` (entri HKCU dan catatan instalasi), `maintenance.py` (logika Perbarui/Perbaiki/Hapus tanpa UI), halaman `pages/maintenance.py` (Pilih tindakan) dan `pages/uninstall.py` (Hapus dan prosesnya). Keputusan dan temuan:
+- **Instalasi dikenali dari registry**, bukan dari folder. Entri tanpa `install.ps1` di InstallLocation diabaikan (folder sudah dihapus manual). Instalasi lewat git/`install.bat` tidak tercatat, jadi Setup memperlakukannya sebagai belum terpasang.
+- **Alur per mode** (`pages.FLOWS`): halaman Pilih tindakan menyambungkan halaman mode yang dipilih (`Wizard.switch_flow`), dan daftar langkah di kiri ikut berubah. Kembali lalu memilih lagi membangun ulang halamannya.
+- **Perbarui/Perbaiki memakai pilihan tercatat** (`MikuComponents`, `MikuModelDir`). RVC tidak dikirim lagi sebagai `-RvcModel`, karena file model sudah ada di `models/` dan `install.ps1` memasang `rvc-python` bila filenya ada. RVC dicatat hanya bila `weights\miku_default_rvc.pth` ada; folder kosongnya ikut di zip rilis (`.gitkeep`).
+- **Ukuran (`EstimatedSize`)** menghitung file yang di-hardlink sekali, karena uv me-hardlink cache ke `.venv` (14,4 GB terhitung ganda → 8,5 GB).
+- **Hapus** tidak pernah menyentuh model di lokasi bawaan Ollama atau `OLLAMA_MODELS`/`HF_HOME` yang menunjuk ke tempat lain, dan hanya menghapus shortcut yang targetnya di dalam InstallDir. Uninstall dari "Apps & features" menjalankan exe di `.tools`; exe itu menyalin dirinya ke Temp lalu keluar (`--uninstall` diteruskan), karena exe yang berjalan tidak bisa menghapus dirinya sendiri. Salinan di Temp tidak dihapus otomatis.
+- **Dialog sendiri** (`pages.base.dialog`) menggantikan `messagebox`, supaya tombolnya berbahasa Indonesia.
+
+**Hasil I5** (1 Nov 2026). `MikuVisionSetup.py` (entry), `miku_setup.spec`, `requirements-setup.txt`, `miku_setup/assets/mikuvision.ico`, dan `.github/workflows/release-setup.yml`. Exe 16,8 MB; target ≤ 40 MB dilepas (keputusan user 1 Nov: yang penting berfungsi). Belum ada: uji di VM Windows bersih (bagian 9) dan jalannya workflow di GitHub; keduanya terjadi saat tag v1.6.0 pertama. Uji terima I4/I5 memakai exe dan rilis uji yang dibuat dengan perintah yang sama dengan workflow; angkanya di CHANGELOG.
 
 ### Cek pembaruan dari aplikasi (fase I6)
 

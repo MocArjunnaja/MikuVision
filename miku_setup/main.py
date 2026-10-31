@@ -1,16 +1,20 @@
 """
 Entry MikuVision Setup.
 
-    python -m miku_setup.main            # unduh rilis terbaru dan pasang
+    python -m miku_setup.main            # pasang; bila sudah terpasang: pilih Perbarui, Perbaiki, atau Hapus
     python -m miku_setup.main --dry-run  # jalani semua halaman tanpa mengunduh atau memasang apa pun
+    python -m miku_setup.main --update | --repair | --uninstall
 
---update, --repair, dan --uninstall menyusul di fase I4 (docs/PLAN_INSTALLER.md).
+Instalasi dikenali dari entrinya di "Apps & features" (registry.py, docs/PLAN_INSTALLER.md bagian 6).
 """
 
 import argparse
 import logging
 import os
+import shutil
+import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import List, Optional
@@ -42,7 +46,34 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument("--dry-run-fail", action="store_true", help=argparse.SUPPRESS)
     # Folder rilis lain (uji terima dengan server lokal); harus berisi version.json, SHA256SUMS, dan zip
     parser.add_argument("--release-url", default=RELEASE_URL, help=argparse.SUPPRESS)
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--update", action="store_true", help="perbarui instalasi yang ada ke rilis terbaru")
+    modes.add_argument("--repair", action="store_true", help="jalankan ulang pemasangan dengan pilihan yang sama")
+    modes.add_argument("--uninstall", action="store_true", help="hapus MikuVision (dipakai \"Apps & features\")")
     return parser.parse_args(argv)
+
+
+def requested_mode(args: argparse.Namespace, installed) -> str:
+    """Mode wizard: install bila belum terpasang; maintain bila Setup dibuka lagi tanpa opsi."""
+    flag = next((mode for mode in ("update", "repair", "uninstall") if getattr(args, mode)), None)
+    if installed is None:
+        return "missing" if flag else "install"
+    return flag or "maintain"
+
+
+def relaunch_outside(install_dir: Path, argv: List[str]) -> bool:
+    """Exe Setup di <InstallDir>\\.tools tidak bisa menghapus dirinya sendiri: salin ke Temp lalu jalankan dari sana."""
+    if not getattr(sys, "frozen", False):
+        return False
+    exe = Path(sys.executable).resolve()
+    try:
+        exe.relative_to(Path(install_dir).resolve())
+    except ValueError:
+        return False
+    copy = Path(tempfile.gettempdir()) / f"MikuVisionSetup-hapus-{os.getpid()}.exe"
+    shutil.copy2(exe, copy)
+    subprocess.Popen([str(copy), *argv], close_fds=True)
+    return True
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -53,15 +84,38 @@ def main(argv: Optional[List[str]] = None) -> int:
             sys.stderr.write("MikuVision Setup hanya untuk Windows. Di Linux pakai install.sh, "
                              "atau --dry-run untuk melihat halamannya.\n")
         return 2
+    log = logging.getLogger("miku_setup")
     log_path = setup_logging()
-    logging.getLogger("miku_setup").info("MikuVision Setup dimulai%s", " (dry-run)" if dry_run else "")
+    log.info("MikuVision Setup dimulai%s", " (dry-run)" if dry_run else "")
 
     from .components import Selection, default_install_dir
+    from .registry import read_installed
     from .state import SetupState
+
+    installed = None if dry_run else read_installed()
+    mode = requested_mode(args, installed)
+    log.info("Mode: %s%s", mode, f" ({installed.version} di {installed.install_dir})" if installed else "")
+    if mode == "missing":
+        from tkinter import Tk, messagebox
+        root = Tk()
+        root.withdraw()
+        messagebox.showinfo("MikuVision Setup", "MikuVision belum terpasang lewat Setup di komputer ini.",
+                            parent=root)
+        root.destroy()
+        return 1
+    if mode == "uninstall" and relaunch_outside(installed.install_dir, list(sys.argv[1:] if argv is None else argv)):
+        log.info("Hapus dilanjutkan dari salinan Setup di folder Temp")
+        return 0
+
     from .wizard import Wizard
 
-    setup = SetupState(selection=Selection(default_install_dir()), log_path=log_path,
-                       dry_run=dry_run, dry_run_fail=args.dry_run_fail)
+    selection = Selection(installed.install_dir if installed else default_install_dir())
+    setup = SetupState(selection=selection, log_path=log_path, dry_run=dry_run, dry_run_fail=args.dry_run_fail,
+                       mode=mode, installed=installed)
+    if mode in ("update", "repair"):
+        from .maintenance import selection_for
+        setup.selection = selection_for(installed)
+        setup.desktop_shortcut = setup.launch_now = False
     Wizard(setup, release_url=args.release_url).mainloop()
     return 0
 

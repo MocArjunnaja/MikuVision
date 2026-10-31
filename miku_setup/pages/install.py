@@ -14,6 +14,7 @@ from .base import ACCENT, ACCENT_HOVER, MUTED, STATUS_COLORS, Page, heading, par
 
 log = logging.getLogger("miku_setup")
 LOG_LINES = 400
+HEADINGS = {"update": "Memperbarui MikuVision", "repair": "Memperbaiki MikuVision"}
 
 
 def open_folder(path):
@@ -34,7 +35,7 @@ class InstallPage(Page):
         self.downloaded = 0
 
     def create(self, frame):
-        heading(frame, "Memasang MikuVision")
+        heading(frame, HEADINGS.get(self.setup.mode, "Memasang MikuVision"))
         self.step = paragraph(frame, "Menyiapkan…", size=14)
         self.step_color = self.step.cget("text_color")
         self.bar = ctk.CTkProgressBar(frame, progress_color=ACCENT)
@@ -125,7 +126,7 @@ class InstallPage(Page):
         minutes, seconds = divmod(int(time.monotonic() - self.started_at), 60)
         parts = [f"Berjalan {minutes:02d}:{seconds:02d}"]
         if self.downloaded >= 10e6:
-            parts.append(f"{format_gb(self.downloaded)} terunduh")
+            parts.append(f"±{format_gb(self.downloaded)} terunduh")
         if self.setup.warnings:
             parts.append(f"{len(self.setup.warnings)} peringatan")
         self.info.configure(text=" · ".join(parts))
@@ -133,6 +134,7 @@ class InstallPage(Page):
     def _finished(self):
         self._show_info()
         ok = self.setup.install_ok
+        self.setup.version = getattr(self.runner, "version", "")
         log.info("Instalasi selesai: ok=%s, error=%s", ok, self.setup.last_error)
         if ok:
             self.bar.set(1)
