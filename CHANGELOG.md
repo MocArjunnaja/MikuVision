@@ -6,6 +6,40 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-10-31): skill bernilai tetap selalu dijalankan, dan "X lalu Y" diselesaikan
+
+Dari uji ulang daftar cek Windows ([`docs/ROADMAP.md`](docs/ROADMAP.md) bagian 2) di `main` setelah #32: penyimpanan skill sudah benar 3/3, tetapi baris "Skill buatan user" masih gagal karena dua perilaku qwen3:4b. Di giliran "kecilkan volume ke 20 lalu putar lofi di youtube", model hanya mengatur volume (4/4 run). Saat "mode fokus dong", model menjawab "モード fokus に切り替えますね！" tanpa tool call (2/3 run).
+
+### Diubah
+- **Skill bernilai tetap dijalankan oleh kode.** Bila setiap langkah `SKILL.md` berbentuk `Panggil <tool>: <param> = <nilai JSON>` (seperti hasil "simpan ini sebagai skill" tanpa isian dari user), langkah yang belum dipanggil model diambil langsung dari file (`UserSkill.fixed_calls`), bukan lewat satu panggilan LLM lagi. Model tetap dipakai lebih dulu, jadi variasi dari user ("mode fokus, volume 35 aja") tetap dihormati, dan langkah yang sudah dipanggil model tidak diulang.
+  - Hanya bila tepat satu skill user aktif, dan tidak bila user menyangkal ("jangan", "tidak usah", "やめて", "don't"): di situ model yang memutuskan seperti sebelumnya.
+  - Skill dengan petunjuk bebas (seperti contoh `laporan harian` dan `musik mood`) atau isian dari user tetap lewat model.
+  - Nilai dibaca dengan `json.JSONDecoder.raw_decode`, jadi teks yang berisi `"; "` tidak terpotong; nilai yang bukan JSON membuat skill kembali ke model.
+- **"simpan ini sebagai skill": `query` yang ditandai isian dari user menyimpan nilai tadi sebagai bawaan** (`query = "lofi music" (atau dari permintaan user saat ini bila disebut: …)`). Skill seperti itu tidak bertanya lagi dan tetap bernilai tetap. Isi dokumen, pesan, dan teks panjang tetap sekali pakai dan tidak pernah disalin.
+- **Permintaan berurutan tanpa skill.** Bila ucapan berisi ≥ 2 bagian yang masing-masing meminta aksi, dipisah "lalu", "terus", "kemudian", "dan", "、", "それから", dst., tetapi tool yang jalan lebih sedikit, model diminta sekali lagi dengan menyebut bagian yang belum dikerjakan (`AIBrain.next_request_calls`). Tool call yang persis sama dengan yang sudah jalan dibuang. Bila model sudah memanggil semuanya, tidak ada panggilan tambahan.
+- **`run_routine` ke routine yang tidak ada dibuang selama skill user aktif.** "mode fokus dong" juga memicu skill bawaan routine (kata "mode"), dan model kadang memanggil `run_routine('mode fokus')`; routine itu pasti gagal dan menghentikan langkah skill. Routine yang ada tetap jalan.
+
+### Pengujian
+- 24 test baru di `tests/test_user_skills.py` dan `tests/test_skill_builder.py`: pembacaan langkah tetap (Indonesia dan Jepang, nilai bawaan berkurung, isian dari user, petunjuk bebas, tool di luar daftar), skill tetap dijalankan walau model hanya mengobrol atau melewatkan langkah, penyangkalan, routine yang tidak ada vs yang ada, pembagian ucapan berurutan, satu kali lanjutan dengan tool call kembar dibuang, dan isi dokumen yang tidak pernah jadi nilai bawaan. Mematikan jalur langkah tetap atau jalur lanjutan masing-masing membuat test gagal. 476 test lulus.
+- `experiments/skills/bench_save_skill.py 3` (6 skenario × 3), `main` setelah #32 vs branch ini:
+
+  | | Tool skill tepat | Pakai ulang benar |
+  |---|---|---|
+  | `main`, riwayat disuntikkan | 18/18 | 17/18 |
+  | Branch ini, riwayat disuntikkan | 18/18 | **18/18** |
+  | `main`, `--live` | 10/18 | 9/18 |
+  | Branch ini, `--live` | **18/18** | **18/18** |
+
+  - Satu run `--live` di tengah pengerjaan (sebelum `run_routine` disaring) gagal di `campur_id`: model memanggil `run_routine('mode fokus')` dulu. Run akhir di atas sudah dengan saringan itu.
+- `bench_skills.py 3 regression` (perintah umum, tanpa skill user): 27/30 dengan skill dan 25/30 tanpa skill. Acuan `main` di hari yang sama: 26/30 dan 24/30. Perintah yang meleset tetap sama (次の曲にして, ミュートして), jadi lanjutan permintaan berurutan tidak mengganggu perintah tunggal.
+- Urutan daftar cek di aplikasi sungguhan (`miku.py --text`: laporan harian → lagu buat belajar → "kecilkan volume ke 20 lalu putar lofi di youtube" → simpan "mode fokus" → "mode fokus dong"):
+  - giliran tugas yang menjalankan volume + YouTube: 6/9 run dengan perubahan ini, dan 0/4 di `main`. Di run yang gagal, kedua percobaan lanjutan jalan, tetapi qwen3:4b tetap tidak memanggil YouTube;
+  - "mode fokus dong" menjalankan semua langkah skill yang tersimpan di setiap run sejak nilai bawaan `query` ditambahkan (6/6). Di `main`, 2 dari 3 run tidak menjalankan apa pun.
+
+### Keterbatasan diketahui
+- Giliran tugas berurutan masih kadang hanya menjalankan bagian pertama (±1 dari 3 di urutan daftar cek). Skill yang disimpan sesudahnya setia pada yang berhasil, dan pratinjau `SKILL.md` memperlihatkannya sebelum disimpan.
+- Bila model tidak memanggil tool, langkah skill bernilai tetap dijalankan dengan nilai yang tersimpan, termasuk `query`; variasi yang hanya diucapkan ("mode fokus tapi jazz") dihormati hanya bila model sendiri memanggil tool-nya.
+
 ## Belum dirilis (2026-10-31): "simpan ini sebagai skill" menyimpan tugas yang baru selesai
 
 Perbaikan S2 setelah baris "Skill buatan user" di checklist Windows ([`docs/ROADMAP.md`](docs/ROADMAP.md) bagian 2) gagal. Masalahnya bukan khusus Windows.

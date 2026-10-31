@@ -59,6 +59,9 @@ LONG_VALUE = 60
 # Hanya parameter ini yang boleh diambil dari user bila LLM menandainya. Sisanya (volume, folder,
 # aplikasi) selalu tetap: qwen3:4b kadang menandai "Downloads" sebagai isian, lalu bertanya setiap kali
 VARIABLE_PARAMS = FREE_TEXT_PARAMS | {"query", "contact_name", "key", "value"}
+# Isian dari user yang menyimpan nilai tadi sebagai bawaan ("lofi music" untuk "mode fokus dong"), supaya skill
+# tidak bertanya dan bisa dijalankan tanpa model (UserSkill.fixed_calls). Isi dokumen dan pesan tetap sekali pakai
+DEFAULT_PARAMS = {"query"}
 HINT_CHARS = 60
 
 # Nama yang disebut user: "namanya mode fokus", "...sebagai skill siap kerja", 「名前はジャズタイム」, "called x"
@@ -277,10 +280,17 @@ def _short_hint(hint: str) -> str:
     return hint[:HINT_CHARS].rsplit(" ", 1)[0].rstrip(",;:")
 
 
-def _render_step(call: Call, from_user: List[str], hint: str, name: str, japanese: bool) -> str:
+def _render_step(call: Call, from_user: List[str], hint: str, name: str, japanese: bool,
+                 defaults: List[str] = ()) -> str:
     parts = []
     for param in [p.name for p in registry.get_tool(call.tool).params]:
-        if param in from_user:
+        if param in defaults:
+            # Nilai JSON lebih dulu, supaya UserSkill.fixed_calls bisa membacanya sebagai nilai tetap
+            other = ("ユーザーが別の内容を言えばそれを使う" if japanese
+                     else "atau dari permintaan user saat ini bila disebut")
+            parts.append(f"{param} = {json.dumps(call.args[param], ensure_ascii=False)} ({other}"
+                         + (f": {hint})" if hint else ")"))
+        elif param in from_user:
             source = "今回のユーザーの依頼から" if japanese else "dari permintaan user saat ini"
             parts.append(f"{param} = {source}" + (f" ({hint})" if hint else ""))
         elif param == "filename" and param in call.args:
@@ -360,8 +370,11 @@ def draft_skill(brain, request: str, transcript: List[str], calls: List[Call]) -
         from_user = [p for p in params if (p in from_user and p in VARIABLE_PARAMS)
                      or (p in FREE_TEXT_PARAMS and p in call.args)
                      or (isinstance(call.args.get(p), str) and len(call.args[p]) > LONG_VALUE)]
-        may_ask = may_ask or bool(from_user)
-        steps.append(_render_step(call, from_user, _short_hint(hint) if from_user else "", name, japanese))
+        defaults = [p for p in from_user if p in DEFAULT_PARAMS and isinstance(call.args.get(p), str)
+                    and len(call.args[p]) <= LONG_VALUE]
+        may_ask = may_ask or any(p not in defaults for p in from_user)
+        steps.append(_render_step(call, from_user, _short_hint(hint) if from_user else "", name, japanese,
+                                  defaults))
     tools = [call.tool for call, _, _ in chosen]
     steps.insert(0, _opening_step(tools, may_ask, japanese))
     turns = list(dict.fromkeys(call.turn for call, _, _ in chosen))

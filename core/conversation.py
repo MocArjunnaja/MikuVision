@@ -89,10 +89,12 @@ def run_turn(
             brain.record_tool_results(
                 [(r.action, f"{'SUKSES' if r.success else 'GAGAL'} - {r.message}") for r in batch]
             )
-            # Lanjut ke langkah skill berikutnya hanya bila semua tool barusan berhasil
+            # Lanjut ke langkah skill berikutnya, atau ke sisa permintaan berurutan ("… lalu …"),
+            # hanya bila semua tool barusan berhasil
             if not all(r.success for r in batch):
                 break
-            calls = brain.next_skill_calls([r.action for r in results])
+            calls = (brain.next_skill_calls([r.action for r in results])
+                     or brain.next_request_calls([(r.action, r.params) for r in results]))
             if not calls:
                 break
         if report_results:
