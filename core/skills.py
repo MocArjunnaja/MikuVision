@@ -53,6 +53,11 @@ SKILLS: Tuple[Skill, ...] = (
     Skill("memory", "Memori", "Mengingat, mencari, dan melupakan fakta tentang user",
           ("remember", "recall_memory", "forget"),
           _p(r"覚え|忘れ|思い出|ingat|lupakan|remember|forget|recall")),
+    Skill("screen", "Layar", "Membaca layar: aplikasi yang terbuka, pesan error, tulisan, tombol",
+          ("describe_screen", "find_on_screen"),
+          _p(r"画面|スクリーン|エラー|表示|書いてある|何て書|読んで|ボタン"
+             r"|layar|\berror|\beror|tulisan|tertulis|\bbaca|tombol|jendela ini"
+             r"|\bscreen|\bbutton|what does it say")),
     Skill("system", "Info sistem", "CPU, RAM, baterai",
           ("get_system_info",),
           _p(r"システム|バッテリー|メモリ|\bcpu|\bram\b|baterai|battery|sistem|spesifikasi")),

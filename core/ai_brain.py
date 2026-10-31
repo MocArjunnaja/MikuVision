@@ -22,6 +22,7 @@ from core.emotion import EmotionDetector
 from core.tools import registry
 from core import long_term_memory  # mendaftarkan tool remember/recall_memory/forget
 from core import routines  # mendaftarkan tool run_routine/list_routines
+from core.vision import screen_tools  # noqa: F401  mendaftarkan tool describe_screen/find_on_screen
 from core import user_skills
 from core.skills import select_skills, tool_names
 

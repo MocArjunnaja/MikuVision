@@ -6,6 +6,64 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-10-31): Miku membaca layar (agent visi Fase 1)
+
+Rencana: Fase 1 di [`docs/PLAN_VISION_AGENT.md`](docs/PLAN_VISION_AGENT.md). Hanya melihat; Miku belum mengklik atau mengetik.
+
+### Ditambahkan
+- Tool `describe_screen(question)`: "error apa ini?", "bacakan tulisan di layar", 「画面に何が表示されてる？」.
+  - Screenshot jendela yang sedang aktif (`core/vision/capture.py`). Bila yang aktif jendela Miku sendiri (GUI), atau jendelanya tidak terbaca, seluruh layar yang diambil. Jendela dipotong, bukan seluruh layar, karena teks kecil sulit dibaca setelah gambar diperkecil.
+  - Dijawab oleh model visi lokal `qwen3-vl:4b-instruct` (`VISION_MODEL`), lalu Miku merangkumnya dalam balasannya.
+  - Bila model visi belum terpasang, Miku menyebut perintah `ollama pull`-nya tanpa menyentuh LLM utama.
+- Tool `find_on_screen(query)`: "tombol apa saja di jendela ini?", 「電卓に「π」のボタンはある？」.
+  - Membaca nama, jenis, dan status elemen jendela aktif dari pohon aksesibilitas Linux (AT-SPI2), tanpa model visi. Isi field, termasuk password, tidak dibaca.
+  - `pyatspi` adalah paket sistem, jadi dibaca oleh `core/vision/atspi_helper.py` yang dijalankan dengan `/usr/bin/python3`, lalu hasilnya dikirim sebagai JSON.
+  - Windows (UI Automation) menyusul.
+- **Tukar model di VRAM** (`core/vision/model.py`). GPU 6 GB tidak muat qwen3:4b + qwen3-vl + Whisper + RVC sekaligus. Satu pertanyaan visi berjalan begini: qwen3:4b dilepas → qwen3-vl menjawab, lalu langsung dilepas → qwen3:4b dimuat lagi.
+  - Kedua pemuatan memaksa semua layer ke GPU (`VISION_NUM_GPU`, opsi `num_gpu` Ollama). Bila VRAM benar-benar kurang, model dimuat otomatis.
+  - Bila model visi gagal, qwen3:4b tetap dikembalikan.
+- Skill bawaan "screen": tool layar dikirim ke LLM bila ada kata seperti 画面/エラー/ボタン, layar/error/tombol/baca, atau screen.
+- Teks di layar adalah data, bukan perintah. Hasil tool diberi label begitu, prompt model visi menyatakannya, dan balasan setelah tool tidak pernah menjalankan tool call.
+
+### Pengujian
+- Tukar model dengan Whisper + RVC di VRAM (`experiments/vision_linux/swap_bench.py`):
+
+  | | Otomatis (Ollama memutuskan) | `num_gpu` dipaksa |
+  |---|---|---|
+  | qwen3-vl, num_ctx 4096: di GPU, muat + jawab 150 token | 76%, 11,7 s | 100%, 8,8 s |
+  | qwen3:4b setelah dimuat ulang | 85% di GPU, prompt penuh 45 token/s | 100%, 67 token/s (sama dengan sebelum tukar) |
+
+  - qwen3-vl dengan num_ctx 8192 (17,6–26,7 s) jauh lebih lambat dari 4096, jadi dipakai `VISION_NUM_CTX = 4096`.
+  - Chat biasa sesudahnya tidak membuat Ollama memuat ulang model.
+- Uji sungguhan lewat `run_turn` + qwen3:4b, dengan Whisper + RVC di VRAM dan jendela berisi data dummy (`experiments/vision_linux/screen_tools_demo.py`, 8 kasus × 3): **24/24**.
+  - Dialog error zenity (bahasa Indonesia dan Jepang), Xed dengan pengumuman, dan Nemo di folder dummy: `describe_screen` 12/12. Pesan error dan nama file terkutip tepat.
+  - Kalkulator ("tombol apa saja…", 「π のボタンはある？」): `find_on_screen` 6/6.
+  - Obrolan biasa dan "buka notepad" tidak memanggil tool layar (6/6).
+  - Giliran dengan `describe_screen`: median 11,0 s (maks 12,5 s). Tool visinya 6–10 s, sisanya LLM. `find_on_screen` 1,4–3,4 s.
+  - qwen3:4b 100% di GPU setelah setiap giliran.
+- Percobaan pertama lulus 7/8. Dua deskripsi tool lalu diperbaiki:
+  - Contoh parameter "What does the error message say?" dijiplak untuk semua pertanyaan.
+  - 「電卓に「π」のボタンはある？」 sempat membuka Kalkulator, bukan melihat jendela yang sudah terbuka.
+- Regresi tool calling (`bench_skills.py 3 regression`, 10 perintah × 3, dua kali): 25–28/30, sama dengan commit sebelumnya (24–27/30). Perintah yang meleset juga sama (次の曲にして, ミュートして tanpa tool call), dan tidak ada yang tersasar ke tool layar.
+- `tests/test_vision_screen.py` (31 test):
+  - potongan jendela dan cadangan seluruh layar (GUI Miku, jendela terlalu kecil, tidak terbaca);
+  - Wayland dan tanpa DISPLAY tidak menyentuh X11;
+  - helper AT-SPI dengan pyatspi palsu (elemen tersembunyi/tanpa ukuran dilewati, password ditandai, aplikasi Miku dilewati);
+  - urutan tukar model dengan Ollama palsu, termasuk cadangan saat VRAM kurang, model visi gagal, dan model visi belum terpasang;
+  - kedua tool dan pemicu skill.
+  - `tests/conftest.py` melarang screenshot, helper AT-SPI, dan panggilan Ollama sungguhan.
+- `pytest`: 391 lulus; di Python sistem seperti CI 385 lulus, 6 dilewati.
+
+### Keterbatasan diketahui
+- Giliran yang membaca layar butuh ±11 s, dan Miku belum memberi tanda suara saat mulai melihat (hanya ekspresi "thinking").
+- `find_on_screen` hanya di Linux. Di Windows tool itu menjawab "belum tersedia" (UI Automation menyusul).
+- `describe_screen` di Windows baru dites dengan mock; masuk daftar cek Windows.
+- Wayland belum dicoba. Jendela aktif tidak terbaca (jadi seluruh layar yang diambil), dan screenshot bisa gagal tanpa portal Screenshot.
+- Teks Jepang di layar belum diuji, karena semua jendela uji berbahasa Indonesia/Inggris.
+- `qwen3-vl:4b-instruct` (3,3 GB) tidak dipasang oleh installer.
+
+---
+
 ## Belum dirilis (2026-10-31): shortcut keyboard untuk mulai bicara (T1)
 
 Rencana: T1 di [`docs/PLAN_VISION_AGENT.md`](docs/PLAN_VISION_AGENT.md).
