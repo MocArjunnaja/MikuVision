@@ -312,6 +312,190 @@ def test_skill_step_reply_without_tool_ends_the_loop(tmp_path):
     assert turn.reply == "Sudah jadi!"
 
 
+# ── Skill bernilai tetap (buatan "simpan ini sebagai skill") ──
+
+FOCUS_SKILL = """---
+name: mode fokus
+description: Volume pelan lalu musik lofi
+triggers: [putar lofi, fokus belajar]
+tools: [set_volume, youtube_search]
+---
+1. Jangan bertanya dulu: panggil semua tool ini berurutan dalam satu balasan: set_volume, youtube_search
+2. Panggil set_volume: level = 20
+3. Panggil youtube_search: query = "lofi music; study"
+"""
+FOCUS_CALLS = [{"action": "set_volume", "params": {"level": 20}},
+               {"action": "youtube_search", "params": {"query": "lofi music; study"}}]
+
+
+def _skill(tmp_path, text):
+    skill, error = parse_skill(_write(tmp_path, "s", text))
+    assert error is None, error
+    return skill
+
+
+def test_fixed_calls_of_a_saved_skill(tmp_path):
+    assert _skill(tmp_path, FOCUS_SKILL).fixed_calls == FOCUS_CALLS
+
+
+def test_fixed_calls_of_a_japanese_saved_skill(tmp_path):
+    text = ("---\nname: ジャズタイム\ntools: [set_volume, youtube_search]\n---\n"
+            "1. 確認なしで、次のツールを同じ返事の中で順番にすべて呼ぶ: set_volume, youtube_search\n"
+            "2. set_volume を呼ぶ: level = 25\n3. youtube_search を呼ぶ: query = \"ジャズ\"\n")
+    assert _skill(tmp_path, text).fixed_calls == [{"action": "set_volume", "params": {"level": 25}},
+                                                 {"action": "youtube_search", "params": {"query": "ジャズ"}}]
+
+
+def test_fixed_calls_use_the_default_of_a_user_value(tmp_path):
+    # Isian dari user dengan nilai bawaan (skill_builder.DEFAULT_PARAMS); keterangannya boleh berkurung
+    text = ("---\nname: ジャズタイム\ntools: [set_volume, youtube_search]\n---\n"
+            "1. 確認なしで、次のツールを同じ返事の中で順番にすべて呼ぶ: set_volume, youtube_search\n"
+            "2. set_volume を呼ぶ: level = 30\n"
+            '3. youtube_search を呼ぶ: query = "jazz (smooth)" (ユーザーが別の内容を言えばそれを使う: ジャンル (例: ボサノバ))\n')
+    skill = _skill(tmp_path, text)
+    assert not skill.may_ask
+    assert skill.fixed_calls == [{"action": "set_volume", "params": {"level": 30}},
+                                 {"action": "youtube_search", "params": {"query": "jazz (smooth)"}}]
+
+
+@pytest.mark.parametrize("steps", [
+    # Isian dari permintaan user
+    '1. Bila user sudah menyebut isinya, langsung panggil: create_word_document\n'
+    '2. Panggil create_word_document: filename = "Belanja"; content = dari permintaan user saat ini (daftar barang)',
+    '2. create_word_document を呼ぶ: filename = "Nikki"; content = 今回のユーザーの依頼から',
+    # Petunjuk bebas yang ditulis sendiri
+    "Panggil set_volume dengan level 15.",
+    "2. Panggil set_volume: level = 20\nLalu tanyakan lagu apa yang diinginkan.",
+    # Tool di luar daftar tools skill
+    "2. Panggil open_application: app_name = \"Notepad\"",
+])
+def test_skills_that_need_the_model_have_no_fixed_calls(tmp_path, steps):
+    text = f"---\nname: x\ntools: [set_volume, create_word_document]\n---\n{steps}\n"
+    assert _skill(tmp_path, text).fixed_calls is None
+
+
+def test_example_skills_still_go_through_the_model(examples):
+    assert all(skill.fixed_calls is None for skill in examples)
+
+
+def test_fixed_skill_runs_even_when_the_model_only_chats(tmp_path):
+    _write(user_skills.USER_SKILLS_DIR, "mode-fokus", FOCUS_SKILL)
+    brain = _brain(tmp_path, {"content": "[EMOTION:happy] モード fokus に切り替えますね！"})
+
+    turn = run_turn(brain, _system_control(), "mode fokus dong", source="text", report_results=False)
+
+    assert [(r.action, r.params) for r in turn.tool_results] == [(c["action"], c["params"]) for c in FOCUS_CALLS]
+    # Langkahnya dari SKILL.md, tanpa panggilan model kedua
+    assert brain.client.chat.call_count == 1
+
+
+def test_fixed_skill_finishes_the_steps_the_model_skipped(tmp_path):
+    _write(user_skills.USER_SKILLS_DIR, "mode-fokus", FOCUS_SKILL)
+    # Model memakai nilai lain dari ucapan user; langkah itu tidak diulang dengan nilai skill
+    brain = _brain(tmp_path, _tool_call("set_volume", level=35))
+
+    turn = run_turn(brain, _system_control(), "mode fokus dong, volume 35 aja", source="text",
+                    report_results=False)
+
+    assert [(r.action, r.params) for r in turn.tool_results] == [
+        ("set_volume", {"level": 35}), ("youtube_search", {"query": "lofi music; study"})]
+    assert brain.client.chat.call_count == 1
+
+
+def _routine_call(routine_name):
+    return {"content": "", "tool_calls": [{"function": {"name": "run_routine", "arguments": {"name": routine_name}}}]}
+
+
+def test_unknown_routine_named_like_the_skill_is_dropped(tmp_path):
+    # "mode fokus dong" juga memicu skill routine (kata "mode"); routine "mode fokus" tidak ada
+    _write(user_skills.USER_SKILLS_DIR, "mode-fokus", FOCUS_SKILL)
+    brain = _brain(tmp_path, _routine_call("mode fokus"))
+
+    turn = run_turn(brain, _system_control(), "mode fokus dong", source="text", report_results=False)
+
+    assert [r.action for r in turn.tool_results] == ["set_volume", "youtube_search"]
+
+
+def test_existing_routine_still_runs_with_a_user_skill_active(tmp_path):
+    _write(user_skills.USER_SKILLS_DIR, "mode-fokus", FOCUS_SKILL)
+    brain = _brain(tmp_path, _routine_call("mode belajar"))
+
+    _, calls, _ = brain.think("putar lofi lalu jalankan mode belajar")
+
+    assert [c["params"]["name"] for c in calls] == ["mode belajar"]
+
+
+def test_negated_request_does_not_run_fixed_steps(tmp_path):
+    _write(user_skills.USER_SKILLS_DIR, "mode-fokus", FOCUS_SKILL)
+    brain = _brain(tmp_path, {"content": "[EMOTION:happy] Oke, tidak jadi."},
+                   {"content": "Tidak ada langkah."})
+
+    turn = run_turn(brain, _system_control(), "mode fokus jangan dulu ya", source="text", report_results=False)
+
+    assert turn.tool_results == []
+    # Model yang memutuskan, seperti skill biasa
+    assert "Continue the active skill" in brain.client.chat.call_args_list[1].kwargs["messages"][-1]["content"]
+
+
+# ── Permintaan berurutan tanpa skill ("… lalu …") ──
+
+@pytest.mark.parametrize("text, parts", [
+    ("kecilkan volume ke 20 lalu putar lofi di youtube", 2),
+    ("buka notepad, terus buka kalkulator", 2),
+    ("音量を20にして、ローファイを流して", 2),
+    ("kecilkan volume ke 20", 1),
+    ("carikan lagu buat tidur", 1),
+    ("buka notepad dan kalkulator", 1),
+    ("halo miku, apa kabar", 0),
+])
+def test_action_parts(text, parts):
+    from core.ai_brain import _action_parts
+    assert len(_action_parts(text)) == parts
+
+
+def test_rest_of_a_sequential_request_is_asked_once(tmp_path):
+    brain = _brain(tmp_path,
+                   _tool_call("set_volume", level=20),
+                   # Model mengulang set_volume dan menambah youtube_search: yang sama persis dibuang
+                   {"content": "", "tool_calls": [
+                       {"function": {"name": "set_volume", "arguments": {"level": 20}}},
+                       {"function": {"name": "youtube_search", "arguments": {"query": "lofi"}}}]})
+
+    turn = run_turn(brain, _system_control(), "kecilkan volume ke 20 lalu putar lofi di youtube",
+                    source="text", report_results=False)
+
+    assert [r.action for r in turn.tool_results] == ["set_volume", "youtube_search"]
+    instruction = brain.client.chat.call_args_list[1].kwargs["messages"][-1]["content"]
+    assert "several actions" in instruction and 'set_volume({"level": 20})' in instruction
+    assert brain.client.chat.call_count == 2
+
+
+def test_rest_of_a_sequential_request_is_asked_again_without_used_tools(tmp_path):
+    brain = _brain(tmp_path,
+                   _tool_call("set_volume", level=20),
+                   _tool_call("set_volume", level=20),  # hanya mengulang: dibuang
+                   _tool_call("youtube_search", query="lofi"))
+
+    turn = run_turn(brain, _system_control(), "kecilkan volume ke 20 lalu putar lofi di youtube",
+                    source="text", report_results=False)
+
+    assert [r.action for r in turn.tool_results] == ["set_volume", "youtube_search"]
+    assert "set_volume" in _sent_tools(brain, call=1)
+    assert "set_volume" not in _sent_tools(brain, call=2) and "youtube_search" in _sent_tools(brain, call=2)
+    assert brain.client.chat.call_count == 3
+
+
+def test_sequential_request_done_in_one_reply_needs_no_extra_call(tmp_path):
+    brain = _brain(tmp_path, {"content": "", "tool_calls": [
+        {"function": {"name": "set_volume", "arguments": {"level": 20}}},
+        {"function": {"name": "youtube_search", "arguments": {"query": "lofi"}}}]})
+
+    run_turn(brain, _system_control(), "kecilkan volume ke 20 lalu putar lofi di youtube",
+             source="text", report_results=False)
+
+    assert brain.client.chat.call_count == 1
+
+
 # ── Slash command ──
 
 def test_skills_command_lists_user_skills_and_errors(tmp_path):

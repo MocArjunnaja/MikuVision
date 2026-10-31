@@ -18,10 +18,11 @@ Skill hanya bisa memakai tool yang sudah terdaftar; aksi berisiko tetap melewati
 gerbang konfirmasi di execute_action, dan petunjuk skill tidak bisa mematikannya.
 """
 
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import yaml
 
@@ -38,6 +39,11 @@ _ASK_STEP = re.compile(r"\b(tanya|tanyakan|ask)\b|聞|質問", re.IGNORECASE)
 
 _FRONT_MATTER = re.compile(r"\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)(.*)\Z", re.DOTALL)
 
+# Langkah yang ditulis skill_builder: "2. Panggil set_volume: level = 20" / "2. set_volume を呼ぶ: level = 20",
+# dan langkah pembukanya bila tidak ada isian dari user ("Jangan bertanya dulu: ...", "確認なしで、...")
+_CALL_STEP = re.compile(r"^(?:\d+\.\s*)?(?:Panggil (\w+):|(\w+) を呼ぶ:)\s*(.*)$")
+_OPENING_STEP = re.compile(r"^(?:\d+\.\s*)?(?:Jangan bertanya dulu|確認なしで)")
+
 
 @dataclass(frozen=True)
 class UserSkill:
@@ -51,6 +57,61 @@ class UserSkill:
     @property
     def may_ask(self) -> bool:
         return bool(_ASK_STEP.search(self.instructions))
+
+    @property
+    def fixed_calls(self) -> Optional[List[Dict[str, Any]]]:
+        """Tool call skill yang semua nilainya tetap, berurutan; None bila skill butuh model.
+
+        Hanya skill yang setiap langkahnya "Panggil <tool>: <param> = <nilai JSON>" (seperti buatan
+        "simpan ini sebagai skill" tanpa isian dari user). Petunjuk bebas, isian "dari permintaan
+        user", atau nilai yang bukan JSON membuat skill tetap dijalankan lewat LLM.
+        """
+        calls = []
+        for line in self.instructions.splitlines():
+            line = line.strip()
+            if not line or _OPENING_STEP.match(line):
+                continue
+            match = _CALL_STEP.match(line)
+            tool = match and (match.group(1) or match.group(2))
+            if not tool or tool not in self.tools:
+                return None
+            params = _fixed_params(match.group(3).strip())
+            if params is None:
+                return None
+            calls.append({"action": tool, "params": params})
+        return calls or None
+
+
+_PARAM_NAME = re.compile(r"(\w+) = ")
+# Keterangan setelah nilai bawaan: 'query = "lofi" (atau dari permintaan user saat ini bila disebut: genre)'
+_VALUE_NOTE = re.compile(r" \((?:[^()]|\([^()]*\))*\)")
+
+
+def _fixed_params(text: str) -> Optional[Dict[str, Any]]:
+    """'level = 20; query = "lofi; jazz"' → {"level": 20, "query": "lofi; jazz"}; None bila ada nilai bukan JSON.
+
+    Nilai dibaca satu per satu dengan raw_decode, karena teks di dalamnya boleh berisi "; ". Keterangan
+    dalam kurung setelah nilai (isian dari user dengan nilai bawaan) dilewati: nilainya dipakai.
+    """
+    decoder = json.JSONDecoder()
+    params: Dict[str, Any] = {}
+    pos = 0
+    while pos < len(text):
+        name = _PARAM_NAME.match(text, pos)
+        if not name:
+            return None
+        try:
+            params[name.group(1)], pos = decoder.raw_decode(text, name.end())
+        except ValueError:  # "dari permintaan user saat ini (…)", "今回のユーザーの依頼から"
+            return None
+        note = _VALUE_NOTE.match(text, pos)
+        if note:
+            pos = note.end()
+        if text.startswith("; ", pos):
+            pos += 2
+        elif pos != len(text):
+            return None
+    return params
 
 
 def estimate_tokens(text: str) -> int:
