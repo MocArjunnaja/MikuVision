@@ -6,6 +6,45 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-11-01): MikuVision Setup memasang sungguhan (PLAN_INSTALLER I3)
+
+Rencana: I3 di [`docs/PLAN_INSTALLER.md`](docs/PLAN_INSTALLER.md). Tanpa `--dry-run`, wizard sekarang mengunduh rilis, menjalankan `install.ps1`, dan membuka MikuVision di akhir.
+
+### Ditambahkan
+- **`miku_setup/download.py`**: unduh `version.json`, `SHA256SUMS`, dan `MikuVision-<versi>.zip` dari `releases/latest/download/` (tanpa GitHub API). Unduhan disimpan di `%LOCALAPPDATA%\MikuVision-setup\downloads`. Unduhan terputus dilanjutkan dari `.part` lewat HTTP Range, dan zip yang hash-nya cocok tidak diunduh lagi. Hash yang tidak cocok membuang file dan meminta "Coba lagi".
+  - Ekstrak aman: semua entri diperiksa dulu, sehingga zip berisi `..`, path absolut, atau huruf drive tidak menulis apa pun. `data/`, `models/`, `.venv/`, `.tools/`, dan `logs/` yang sudah ada dibiarkan.
+- **`InstallRunner`** (`miku_setup/runner.py`): unduh → ekstrak → `install.ps1 -Yes -Progress …` lewat PowerShell tanpa jendela konsol. Baris `##MIKU` diteruskan ke halaman instalasi.
+  - "x GB terunduh" dihitung dari pertumbuhan `.tools\uv-cache` dan `blobs\` Ollama setiap 2 detik.
+  - Kode keluar `install.ps1` menentukan berhasil atau gagal.
+  - Batal mematikan seluruh pohon proses (`taskkill /T`: PowerShell, uv, python, `ollama pull`).
+- **Halaman Selesai:** shortcut Desktop (`pythonw.exe gui.py`, ikon Miku) dan "Jalankan MikuVision sekarang" tanpa jendela konsol. Bila salah satunya gagal, muncul peringatan dan MikuVision tetap bisa dibuka dari Start Menu.
+- Opsi tersembunyi `--release-url` untuk folder rilis lain, misalnya server lokal saat uji terima.
+
+### Pengujian
+- 19 test baru di `test_miku_setup_download.py`, `test_miku_setup_runner.py`, dan `test_miku_setup_wizard.py`:
+  - unduh dengan resume, HTTP 416, dan hash rusak;
+  - `SHA256SUMS` dan `version.json` yang tidak valid;
+  - zip slip, dan folder `keep` yang tidak ditimpa;
+  - urutan kejadian runner, kode keluar, dan pembatalan;
+  - runner nyata dipakai tanpa `--dry-run`.
+
+  556 test lulus di venv aplikasi (31 dilewati). `test_dry_run_installs_nothing_in_make_runner` gagal sekali pada jalan pertama, lalu lulus pada 4 jalan berikutnya; penyebabnya belum diketahui.
+- **Uji terima I3** di laptop pengembang (Windows 11, RTX 4050, driver 621.01, Ollama dan model sudah ada di D:). Aset rilis dibuat dari commit ini (`git archive`, `version.json`, `SHA256SUMS`) dan disajikan `python -m http.server` di `127.0.0.1`. Wizard dijalankan dengan `python -m miku_setup.main --release-url http://127.0.0.1:8765/` ke folder bawaan `%LOCALAPPDATA%\Programs\MikuVision` yang belum ada.
+  - **Batal di tengah PyTorch:** di langkah 4/10, setelah 1 menit 24 detik dan "2,2 GB terunduh". Konfirmasi → semua proses berhenti (tidak ada PowerShell, uv, atau python tersisa), log mencatat "Dibatalkan saat instalasi", dan wizard menutup.
+  - **Dijalankan lagi:** zip tidak diminta ulang dari server (hanya `version.json` dan `SHA256SUMS`). Langkah uv, Python 3.10, dan `.venv` dilewati, dan resolusi paket turun dari 23,7 s menjadi 1,2 s. Delapan paket yang sudah selesai diunduh di run pertama tidak diunduh lagi.
+  - **Sampai Selesai:** 10/10 langkah, `install.ps1` keluar dengan kode 0 dalam 7,5 menit, `miku.py --test` lulus. Model `qwen3:4b-instruct` yang sudah ada tidak diunduh lagi. Shortcut Start Menu dibuat.
+  - **Halaman Selesai:** shortcut Desktop menunjuk ke `.venv\Scripts\pythonw.exe gui.py` di folder instalasi. MikuVision terbuka dengan judul "MikuVision - Hatsune Miku" dan memuat LLM 100% di GPU (3,6 GB VRAM). `WM_CLOSE` menutupnya dalam 4 s, dan `ollama ps` kosong sesudahnya.
+  - Shortcut Start Menu dan Desktop dari uji ini dihapus atau dikembalikan sesudahnya.
+
+### Keterbatasan yang diketahui
+- uv tidak melanjutkan unduhan wheel yang terpotong. Batal saat wheel `torch` (±2,5 GB) sedang diunduh membuat wheel itu diunduh lagi dari nol; paket yang sudah selesai tetap dipakai.
+- "x GB terunduh" menghitung pertumbuhan cache uv, termasuk wheel yang dibongkar dan paket yang dibangun. Angkanya lebih besar dari data internet yang sebenarnya (5,3 GB tampil di run kedua).
+- Tombol dialog konfirmasi Batal berbahasa sistem ("Yes"/"No" di Windows berbahasa Inggris), bukan Indonesia.
+- Cek ruang disk menghitung kebutuhan penuh lagi saat melanjutkan instalasi yang sebagian sudah terpasang.
+- Belum diuji: run tanpa batal dari folder kosong (uji di atas memakai satu folder dengan batal di tengah), internet yang putus, dan hash yang tidak cocok dari server sungguhan.
+
+---
+
 ## Belum dirilis (2026-10-31): kerangka MikuVision Setup (PLAN_INSTALLER I2)
 
 Rencana: I2 di [`docs/PLAN_INSTALLER.md`](docs/PLAN_INSTALLER.md). Installer berantarmuka untuk user yang tidak memakai GitHub atau terminal; fase ini kerangka wizard-nya, tanpa memasang apa pun.
