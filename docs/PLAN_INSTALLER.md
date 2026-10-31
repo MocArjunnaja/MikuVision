@@ -2,7 +2,7 @@
 
 **Tujuan:** siapa saja bisa memasang MikuVision tanpa membuka GitHub, git, atau terminal. Caranya: unduh satu file `MikuVisionSetup.exe` (±25 MB), klik Lanjut beberapa kali, lalu Miku menyapa. Rasanya seperti installer aplikasi desktop besar (misalnya Ansys): ada pilihan folder, pilihan komponen, progres unduhan, serta Perbarui/Perbaiki/Hapus.
 
-**Status:** rencana (31 Okt 2026). Dikerjakan di Windows dulu (fase I1–I5); Linux menyusul (fase IL). Urutan terhadap rencana lain: [`ROADMAP.md`](ROADMAP.md).
+**Status:** I1 selesai (31 Okt 2026, branch `feat/installer-options`); I2–I6 rencana. Dikerjakan di Windows dulu (fase I1–I6); Linux menyusul (fase IL). Urutan terhadap rencana lain: [`ROADMAP.md`](ROADMAP.md).
 
 **Untuk yang mengerjakan:** baca bagian 1–4 untuk gambaran, lalu kerjakan fase di bagian 8 satu per satu. Tiap fase satu PR, dengan kriteria selesai yang bisa dicek. Kode installer yang sudah teruji (`install.ps1`) **dibungkus, bukan ditulis ulang**.
 
@@ -93,8 +93,13 @@ Semua opsi baru bersifat tambahan: menjalankan `install.bat` seperti sekarang ti
 | Kode keluar | 0 = selesai, 1 = gagal yang sudah dijelaskan (`Stop-Install`), 2 = error tak terduga. Wizard menampilkan pesan `error` terakhir apa adanya |
 
 Catatan:
-- **RVC index:** sekarang `config.py` memakai nama file index yang tetap (`added_IVF4457_Flat_nprobe_1_miku_default_rvc_v2.index`). Untuk `-RvcIndex`, salin dengan nama itu (paling sederhana), **atau** ubah `config.py` supaya memakai file `*.index` pertama di folder tersebut. Pilih yang pertama untuk fase I1, dan catat keputusannya di PR.
-- **Progres unduhan besar:** uv dijalankan dengan `UV_NO_PROGRESS=1`, dan progres `ollama pull` tidak terbaca rapi. Untuk "x GB terunduh", wizard **menghitung ukuran folder** `.tools\uv-cache` (langkah PyTorch) dan `<ModelDir>\ollama\models\blobs` (langkah model) setiap 2 detik. Tidak perlu mengubah `install.ps1`.
+- **RVC index:** sekarang `config.py` memakai nama file index yang tetap (`added_IVF4457_Flat_nprobe_1_miku_default_rvc_v2.index`). Untuk `-RvcIndex`, salin dengan nama itu (paling sederhana), **atau** ubah `config.py` supaya memakai file `*.index` pertama di folder tersebut. **Dipilih (I1): disalin dengan nama tetap.** `$RvcIndexName` di `install.ps1` dicek sama dengan `config.py` oleh test.
+- **Progres unduhan besar:** uv dijalankan dengan `UV_NO_PROGRESS=1`, dan progres `ollama pull` tidak terbaca rapi. Untuk "x GB terunduh", wizard **menghitung ukuran folder** `.tools\uv-cache` (langkah PyTorch) dan `<ModelDir>\ollama\blobs` (langkah model; Ollama menaruh `blobs\` dan `manifests\` langsung di `OLLAMA_MODELS`) setiap 2 detik. Tidak perlu mengubah `install.ps1`.
+
+Hasil pengecekan saat I1 dikerjakan (31 Okt, Windows 11, Ollama 0.40.13):
+- **Installer Ollama** berbasis Inno Setup (`unins000.exe` di folder Ollama; `app/ollama.iss`): `PrivilegesRequired=lowest`, folder `%LOCALAPPDATA%\Programs\Ollama`. Opsi diam: `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`. Setelah selesai, installer menyalakan aplikasi Ollama sendiri (entri `[Run]` tanpa `skipifsilent`), jadi `install.ps1` memakai `WaitForExit()`, bukan `Start-Process -Wait` yang ikut menunggu proses turunan dan tidak pernah selesai. `OllamaSetup.exe` ±1,7 GB; sebelum dijalankan, tanda tangannya dicek (`Get-AuthenticodeSignature`: `Valid`, penanda tangan `CN=Ollama Inc.`).
+- **Baris `##MIKU`:** stdout UTF-8 tanpa BOM di PowerShell 5.1 dan 7. PowerShell 5.1 menulis `<`, `>`, `&`, `'` sebagai `<` dan sejenisnya (tetap JSON valid); akhir baris `\n` di 5.1 dan `\r\n` di 7. Field: `step` {`index`, `total`, `title`}, `warn`/`error` {`message`}, `done` {`ok`}. Jejak stack dan baris penutup error tidak dipancarkan, jadi `error` terakhir selalu penyebab kegagalannya.
+- **Dua perbaikan yang ditemukan di daftar cek Windows** (ikut PR I1 karena di file yang sama): driver NVIDIA 621 menulis `CUDA UMD Version: 13.5` sehingga versi CUDA tidak terbaca (tetap jatuh ke cu128 yang benar); dan uv kadang gagal me-rename file di cache karena masih dipindai antivirus (`Access is denied. (os error 5)`), yang sebelumnya dilaporkan sebagai "butuh Visual Studio Build Tools". Sekarang dicoba sekali lagi.
 
 Test fase I1 (pytest, jalan di CI Windows lewat `pwsh`):
 - `install.ps1 -Progress` dengan langkah palsu: tambahkan opsi tersembunyi `-SelfCheck`, yang hanya memancarkan 3 baris `##MIKU` lalu keluar. Test memastikan setiap baris adalah JSON valid dengan field yang benar.
@@ -150,6 +155,22 @@ Entri registry (per-user, tanpa admin): `HKCU\Software\Microsoft\Windows\Current
 
 Folder yang sedang dipakai (Miku masih jalan): cek proses `pythonw.exe` yang berjalan dari InstallDir, lalu minta user menutup Miku dulu.
 
+### Cek pembaruan dari aplikasi (fase I6)
+
+Mode **Perbarui** di atas hanya jalan bila user sendiri membuka Setup lagi, padahal user tidak tahu kapan ada rilis baru. Fase I6: Miku sendiri yang memberi tahu.
+
+| Bagian | Rancangan |
+|---|---|
+| Versi aplikasi | File `VERSION` di root repo (satu baris, misalnya `1.6.0`), dibaca `config.py` sebagai `APP_VERSION`, `install.ps1`, wizard (`DisplayVersion`), dan workflow rilis. Saat ini aplikasi belum punya nomor versi sama sekali, hanya tag git. Test: isi `VERSION` sama dengan judul rilis teratas di CHANGELOG; workflow rilis menolak tag yang tidak sama dengan `VERSION` |
+| Sumber | `releases/latest/download/version.json` yang sama dengan mode Perbarui (dilampirkan fase I5): `{"version": "1.6.0", "date": "2026-11-15", "notes_url": "https://github.com/MocArjunnaja/MikuVision/releases/tag/v1.6.0"}`. Bukan GitHub API, supaya tidak kena batas rate |
+| Kapan | Saat GUI atau maskot mulai, di thread latar setelah Miku siap (tidak menunda sapaan). Paling sering sekali per 24 jam (waktu cek terakhir di `data/update_check.json`), timeout 5 s. Gagal atau offline: diam saja, dicatat di log |
+| Privasi | Satu permintaan GET ke GitHub tanpa data apa pun dari komputer user, tanpa ID atau telemetri. Dimatikan dengan `UPDATE_CHECK = False` di `config.py`. README perlu menyebut ini, karena tagline "100% lokal" dan bagian "Data & privasi" sekarang menjanjikan tidak ada koneksi keluar selain unduhan yang diminta user (keputusan 6) |
+| Tampilan | GUI: satu baris System "MikuVision 1.6.0 tersedia (terpasang 1.5.0). [Catatan rilis] [Perbarui]". Maskot: item "Perbarui ke 1.6.0" di menu klik kanan. Mode teks: satu baris saat mulai. Slash command `/update` untuk cek sekarang tanpa menunggu 24 jam. Versi yang sama tidak diberitahukan dua kali bila user menutup pemberitahuannya |
+| Aksi Perbarui | Tergantung cara pasang. **Lewat Setup** (entri registry bagian 6 ada): jalankan `<InstallDir>\.tools\MikuVisionSetup.exe --update`, lalu Miku menutup diri (Setup butuh Miku tertutup). **Lewat git** (ada `.git`): tampilkan `git pull` lalu `install.bat` (Linux: `./install.sh`), tidak dijalankan otomatis karena bisa ada branch atau perubahan lokal. **Zip manual**: buka halaman rilis |
+| Linux | Pengecekan yang sama; aksinya pesan `git pull && ./install.sh` sampai fase IL punya Setup sendiri |
+
+Yang tidak dilakukan: mengunduh atau memasang di latar tanpa diminta (bagian 10). Test I6: perbandingan versi (`1.10.0` > `1.9.0`; `1.6.0-rc1` tidak ditawarkan), batas 24 jam, offline dan JSON rusak, deteksi cara pasang (registry/git/zip), dan pemberitahuan tidak muncul dua kali.
+
 ## 7. Build dan rilis (fase I5)
 
 Workflow baru `.github/workflows/release-setup.yml`, dipicu tag `v*`:
@@ -158,6 +179,7 @@ Workflow baru `.github/workflows/release-setup.yml`, dipicu tag `v*`:
 3. Buat `MikuVision-<versi>.zip` dari `git archive` tag itu, `version.json`, dan `SHA256SUMS`.
 4. `gh release upload <tag> MikuVisionSetup.exe MikuVision-<versi>.zip version.json SHA256SUMS`.
 5. README: bagian **Instalasi cepat** diganti tombol/link unduhan `MikuVisionSetup.exe`. `install.bat` tetap disebut untuk pengembang.
+6. Catatan rilis dan README menjelaskan SmartScreen ("More info → Run anyway", dengan tangkapan layar). Tanpa halaman GitHub Pages dan tanpa code signing untuk versi pertama (keputusan 4 dan 5).
 
 ## 8. Fase kerja
 
@@ -167,7 +189,8 @@ Workflow baru `.github/workflows/release-setup.yml`, dipicu tag `v*`:
 | **I2** | Kerangka wizard: 6 halaman, navigasi, validasi, cek sistem nyata, `--dry-run` | Semua halaman bisa dijalani dengan `python -m miku_setup.main --dry-run`; test `checks.py` (parsing `nvidia-smi`, disk, path) hijau di CI |
 | **I3** | Unduh + ekstrak + `runner.py` + progres + penanganan gagal/batal | Dari folder kosong sampai "Selesai" lewat `python -m miku_setup.main` di laptop dengan RTX; batal di tengah PyTorch lalu jalankan lagi → lanjut tanpa mengulang dari awal |
 | **I4** | Registry, shortcut Start Menu, mode Perbarui/Perbaiki/Hapus | MikuVision muncul di "Apps & features"; Hapus tidak menyisakan file kecuali yang dipilih untuk disimpan; Perbarui dari rilis lama ke baru mempertahankan `data/` |
-| **I5** | `miku_setup.spec`, workflow rilis, halaman/link unduhan di README | `MikuVisionSetup.exe` ≤ 40 MB terlampir otomatis di rilis; uji di VM Windows bersih (bagian 9) lulus |
+| **I5** | `miku_setup.spec`, workflow rilis, link unduhan di README | `MikuVisionSetup.exe` ≤ 40 MB terlampir otomatis di rilis; uji di VM Windows bersih (bagian 9) lulus |
+| **I6** | Cek pembaruan dari aplikasi (bagian 6): `VERSION`, `core/updates.py`, pemberitahuan di GUI/maskot/teks, `/update` | Instalasi rilis lama di VM memberi tahu rilis baru dalam satu kali start; Perbarui membuka Setup mode Perbarui dan `data/` tetap; offline tidak memunculkan error; `UPDATE_CHECK = False` tidak mengirim permintaan apa pun |
 | **IL** (nanti) | Wizard yang sama untuk Linux: runner memanggil `install.sh` dengan opsi setara (`--progress`, `--model-dir`, ...), sudo lewat `pkexec` (jendela password grafis), dibekukan menjadi AppImage atau binary tunggal, entri `.desktop` untuk uninstall | Teman pengguna Arch bisa memasang tanpa terminal |
 
 ## 9. Uji dan risiko
@@ -183,7 +206,7 @@ Workflow baru `.github/workflows/release-setup.yml`, dipicu tag `v*`:
 | Ruang disk kurang | Dihentikan di halaman 4 sebelum mengunduh apa pun |
 | Nama user non-ASCII (`C:\Users\Siti Nurhaliza Ñ`) | Instalasi lulus, atau wizard menyarankan folder lain sebelum mulai |
 | Tanpa winget | Ollama terpasang lewat `OllamaSetup.exe` |
-| SmartScreen | Halaman unduhan menjelaskan "More info → Run anyway" dengan tangkapan layar |
+| SmartScreen | Catatan rilis dan README menjelaskan "More info → Run anyway" dengan tangkapan layar |
 | Hapus lalu pasang lagi | Bersih; skill dan percakapan kembali bila `data/` dipilih untuk disimpan |
 | Tidak ada jendela hitam | Tidak satu pun jendela konsol muncul dari awal sampai selesai |
 
@@ -191,7 +214,7 @@ Workflow baru `.github/workflows/release-setup.yml`, dipicu tag `v*`:
 
 | Risiko | Mitigasi |
 |---|---|
-| SmartScreen "Windows protected your PC" (exe belum ditandatangani) | Penjelasan di halaman unduhan. Nanti: SignPath (gratis untuk proyek open source) atau Azure Trusted Signing (berbayar bulanan) |
+| SmartScreen "Windows protected your PC" (exe belum ditandatangani) | Penjelasan di catatan rilis dan README. Nanti: SignPath (gratis untuk proyek open source, tapi mensyaratkan lisensi OSI; repo belum punya file LICENSE untuk kodenya, dan aset Miku tetap PCL non-komersial) atau Azure Trusted Signing (berbayar bulanan) |
 | Antivirus menandai exe PyInstaller | Tanpa UPX, `--onefile` dengan versi PyInstaller dipatok; bila tetap ditandai, kirim ke Microsoft Security Intelligence untuk dianalisis ulang |
 | Proxy/firewall kampus | Cek internet per situs di halaman 3, sehingga yang diblokir disebut namanya |
 | `install.ps1` bertanya (`Confirm-Action`) | Wizard selalu memakai `-Yes`; persetujuan sudah diberikan user di halaman 4 |
@@ -208,8 +231,9 @@ Workflow baru `.github/workflows/release-setup.yml`, dipicu tag `v*`:
 
 ## 11. Keputusan yang dibutuhkan dari user
 
-1. Nama di "Apps & features" dan nama file: `MikuVision` / `MikuVisionSetup.exe`, oke?
-2. Halaman lisensi karakter wajib dicentang, oke?
-3. Folder instalasi bawaan `%LOCALAPPDATA%\Programs\MikuVision` (tanpa admin), oke?
-4. Perlu halaman unduhan di GitHub Pages (fase I5), atau cukup link Releases?
-5. Anggaran code signing: tidak ada dulu (SmartScreen dijelaskan), atau coba SignPath?
+1. ~~Nama di "Apps & features" dan nama file: `MikuVision` / `MikuVisionSetup.exe`, oke?~~ Ya (31 Okt).
+2. ~~Halaman lisensi karakter wajib dicentang, oke?~~ Ya, wajib dicentang (31 Okt).
+3. ~~Folder instalasi bawaan `%LOCALAPPDATA%\Programs\MikuVision` (tanpa admin), oke?~~ Ya (31 Okt). Halaman 4 menyarankan drive lain bila ruang di C: kurang.
+4. ~~Perlu halaman unduhan di GitHub Pages (fase I5), atau cukup link Releases?~~ Cukup link Releases (31 Okt).
+5. ~~Anggaran code signing: tidak ada dulu (SmartScreen dijelaskan), atau coba SignPath?~~ Tidak ada dulu (31 Okt).
+6. Cek pembaruan (fase I6): menyala sejak awal dengan opsi mematikan di `config.py`, atau ditanyakan di halaman Selesai wizard ("Beri tahu bila ada versi baru", tercentang)? Keduanya berarti tagline "100% lokal" perlu catatan "kecuali cek pembaruan".

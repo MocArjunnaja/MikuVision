@@ -97,6 +97,13 @@ Opsi bisa diteruskan lewat `install.bat` atau `install.ps1`, misalnya `install.b
 | `-WithRvc` | Pasang `rvc-python` walau model RVC belum diletakkan |
 | `-SkipOllama`, `-SkipShortcut`, `-SkipTest` | Lewati langkah tersebut |
 | `-PythonVersion 3.x` | Ganti versi Python (default 3.10; RVC tidak jalan di 3.11) |
+| `-ModelDir D:\MikuVision\models` | Simpan model Ollama dan cache Hugging Face di folder ini (`ollama\`, `huggingface\`). Variabel user `OLLAMA_MODELS` dan `HF_HOME` diatur, dan Ollama dinyalakan ulang |
+| `-WithVision` | Unduh juga model visi untuk membaca layar (3,3 GB) |
+| `-RvcModel <file.pth> -RvcIndex <file.index>` | Salin model RVC Anda ke `models\` lalu pasang `rvc-python` (lihat [Suara Miku (RVC)](#suara-miku-rvc)) |
+| `-StartMenu` | Buat juga shortcut di Start Menu |
+| `-Progress` | Untuk installer berantarmuka: baris `##MIKU {json}` per langkah di stdout |
+
+Kode keluar: `0` selesai, `1` gagal dengan penyebab di pesan `[ERROR]` terakhir, `2` error tak terduga (lampirkan log saat melapor). Tanpa winget (misalnya Windows LTSC), Ollama dipasang dari installer resmi ollama.com setelah tanda tangan digitalnya dicek.
 
 </details>
 
@@ -109,7 +116,7 @@ Opsi bisa diteruskan lewat `install.bat` atau `install.ps1`, misalnya `install.b
 | Whisper + MeloTTS | ±2 GB | Cache Hugging Face, default `C:\Users\<user>\.cache\huggingface` |
 | Model LLM | ±2,5 GB | Ollama, default `C:\Users\<user>\.ollama\models` |
 
-Bila drive C sempit, buat variabel environment user `HF_HOME` (misalnya `D:\hf_home`) dan `OLLAMA_MODELS` (misalnya `D:\ollama_models`) **sebelum** menjalankan installer, lalu restart Ollama.
+Bila drive C sempit, jalankan `install.bat -ModelDir D:\MikuVision\models`. Atau buat sendiri variabel environment user `HF_HOME` (misalnya `D:\hf_home`) dan `OLLAMA_MODELS` (misalnya `D:\ollama_models`) **sebelum** menjalankan installer, lalu restart Ollama. Model yang sudah ada di lokasi lama tidak dipindah.
 
 **Menghapus:** tutup MikuVision, hapus folder aplikasi dan shortcut desktop. Ollama di-uninstall terpisah lewat Settings → Apps.
 
@@ -351,6 +358,7 @@ Benchmark yang butuh GPU/Ollama ada di `experiments/` beserta hasilnya (`RESULTS
 | Balasan LLM lambat | Jalankan `ollama ps`: kolom PROCESSOR harus `100% GPU`. Bila ada bagian CPU, aplikasi lain memakai VRAM saat model dimuat; tutup aplikasi itu lalu buka ulang MikuVision |
 | Linux: emoji tampil sebagai kotak di GUI | Tk di Linux belum menampilkan emoji berwarna; hanya kosmetik |
 | `Shortcut Ctrl+Shift+M tidak dipasang: sudah dipakai aplikasi lain` | Ganti `WAKE_HOTKEY` di `config.py`, atau pakai `miku.py --trigger` sebagai shortcut desktop (lihat [Menjalankan](#menjalankan)). Hindari tombol Super di Cinnamon |
+| Windows: `Ctrl+Shift+M` membuat Miku mendengarkan, tapi aplikasi yang sedang aktif juga menjalankan shortcut-nya (misalnya menu profil di Chrome) | Shortcut milik satu aplikasi tidak terlihat dari luar aplikasi itu, jadi Miku tidak bisa memperingatkan. Begitu juga aplikasi yang memasang shortcut global setelah Miku jalan. Ganti kombinasinya di `config.py`, misalnya `WAKE_HOTKEY = "ctrl+alt+shift+m"` (harus memakai Ctrl, Alt, atau Super), lalu buka ulang Miku |
 | `Model visi qwen3-vl:4b-instruct belum terpasang` | Jalankan `ollama pull qwen3-vl:4b-instruct` (3,3 GB, hanya untuk membaca layar) |
 | Linux: `Elemen layar tidak terbaca: pyatspi tidak terpasang` | Pasang paket sistem `python3-pyatspi` (Debian/Ubuntu/Mint, Fedora) atau `python-atspi` (Arch). Membaca lewat screenshot tetap jalan tanpa paket itu |
 | `--trigger tidak aktif: Miku lain sudah jalan` | Miku (maskot atau GUI) sudah terbuka di jendela lain; shortcut dan `--trigger` memanggil yang pertama |

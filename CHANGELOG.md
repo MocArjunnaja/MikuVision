@@ -73,6 +73,60 @@ Perbaikan S2 setelah baris "Skill buatan user" di checklist Windows ([`docs/ROAD
 
 ---
 
+## Belum dirilis (2026-10-31): shortcut di Windows memberi tahu bila kombinasinya sudah dipakai
+
+Dari daftar cek Windows ([`docs/ROADMAP.md`](docs/ROADMAP.md) bagian 2): baris "Shortcut `Ctrl+Shift+M` (T1)" gagal di kriteria "pesan jelas bila kombinasi sudah dipakai aplikasi lain". Deteksi tekan sendiri lulus (6/6 saat Miku diam, 63–66 ms; `--trigger` 342–410 ms).
+
+### Diperbaiki
+- Windows: sebelum memasang hook `keyboard`, `KeyboardHotkey` mencoba `RegisterHotKey` lalu langsung `UnregisterHotKey` (ctypes, tetap library standar untuk `--trigger`). Bila gagal dengan `ERROR_HOTKEY_ALREADY_REGISTERED` (1409), Miku menampilkan pesan yang sama dengan Linux, "Shortcut Ctrl+Shift+M tidak dipasang: sudah dipakai aplikasi lain…", dan jalan tanpa shortcut. Sebelumnya Miku mengaku shortcut aktif, lalu satu tekan menjalankan Miku dan aplikasi lain sekaligus.
+  - Kombinasinya tidak dipegang Miku. Tekan tetap dideteksi hook `keyboard` seperti sebelumnya, jadi shortcut di dalam aplikasi tidak ditelan.
+  - Error `RegisterHotKey` lain bukan bukti bentrok: diabaikan, hook tetap dipasang.
+  - Mengganti `keyboard` seluruhnya dengan `RegisterHotKey` + message loop tidak dipilih. Kombinasinya akan ditelan dari semua aplikasi, dan deteksi tekan yang baru lulus di daftar cek harus diuji ulang.
+
+### Pengujian
+- `tests/test_hotkey.py` (+6 test, user32 palsu): kombinasi yang sudah dipakai menghasilkan pesan tanpa memasang hook, pengecekan melepas kombinasinya lagi, error lain tetap memasang hook, kode virtual-key angka dan F1/F24, pesan `ListenTriggers` di Windows. `conftest.py` menolak panggilan `RegisterHotKey` sungguhan dari test.
+- Manual di Windows 11 (31 Okt), dengan proses pembantu yang memegang `Ctrl+Shift+M` lewat `RegisterHotKey`:
+  - Pembantu jalan dulu, lalu `python miku.py`: setelah sapaan muncul `[Shortcut] Shortcut Ctrl+Shift+M tidak dipasang: sudah dipakai aplikasi lain. …`, dan petunjuk "HOW TO USE" hanya menyebut maskot.
+  - Tanpa pembantu: "Shortcut Ctrl+Shift+M: mulai bicara dari aplikasi mana pun."
+  - Miku jalan dulu, lalu pembantu: pembantu berhasil mendaftar (pengecekan tidak memegang kombinasinya), dan satu tekan lewat `keybd_event` sampai ke keduanya.
+
+### Dokumentasi
+- README Troubleshooting: shortcut di dalam aplikasi (misalnya `Ctrl+Shift+M` di Chrome) tidak bisa dideteksi, dan cara mengganti `WAKE_HOTKEY`.
+
+### Keterbatasan diketahui
+- Hanya bentrok saat Miku mulai yang terdeteksi. Aplikasi yang mendaftarkan kombinasi yang sama setelah itu tidak ketahuan, dan satu tekan menjalankan keduanya.
+- Shortcut di dalam aplikasi tidak lewat `RegisterHotKey`: di Chrome, `Ctrl+Shift+M` tetap membuka menu profil sekaligus membuat Miku mendengarkan.
+- Saran cadangan di pesan ("pasang `python miku.py --trigger` sebagai shortcut di pengaturan keyboard desktop") ditulis untuk Linux. Windows tidak punya pengaturan seperti itu.
+- Tekan saat Miku sedang memproses atau bicara tetap dibuang tanpa tanda, seperti sejak T1.
+
+---
+
+## Belum dirilis (2026-10-31): opsi installer untuk MikuVision Setup (PLAN_INSTALLER I1)
+
+Rencana: I1 di [`docs/PLAN_INSTALLER.md`](docs/PLAN_INSTALLER.md). Semua opsi bersifat tambahan; `install.bat` tanpa opsi berperilaku sama seperti sebelumnya.
+
+### Ditambahkan
+- `install.ps1 -Progress`: selain log biasa, satu baris `##MIKU {json}` per kejadian di stdout (`step` dengan nomor dan total langkah, `warn`, `error`, `done`), untuk wizard yang menjalankan installer tanpa jendela konsol. Jejak stack dan baris penutup error tidak dipancarkan, jadi `error` terakhir selalu penyebab kegagalannya.
+- `-ModelDir <folder>`: model Ollama di `<folder>\ollama` dan cache Hugging Face di `<folder>\huggingface`. `OLLAMA_MODELS` dan `HF_HOME` diatur sebagai variabel user sebelum Ollama dan Whisper dipakai; Ollama yang sedang jalan dimatikan lalu dinyalakan ulang, karena Ollama hanya membaca `OLLAMA_MODELS` saat start.
+- `-WithVision`: `ollama pull` model visi dari `VISION_MODEL` di `config.py`, sebagai langkah tersendiri.
+- `-RvcModel <pth> -RvcIndex <index>`: menyalin model RVC ke `models\miku_default_rvc\`, lalu `rvc-python` ikut dipasang. Index disalin dengan nama tetap yang dibaca `config.py`.
+- `-StartMenu`: shortcut juga di Start Menu (`Programs\MikuVision\MikuVision.lnk`). Berlaku walau `-SkipShortcut` (yang hanya melewati shortcut desktop).
+- Cadangan Ollama tanpa winget (Windows LTSC, sebagian laptop kantor): `OllamaSetup.exe` resmi (±1,7 GB) diunduh ke `.tools\`, tanda tangan digitalnya dicek (`Valid`, `CN=Ollama Inc.`), lalu dipasang diam-diam per-user (`/VERYSILENT`, Inno Setup).
+- Kode keluar: `0` selesai, `1` gagal yang sudah dijelaskan, `2` error tak terduga (sebelumnya keduanya `1`).
+
+### Diperbaiki
+- Driver NVIDIA 621 menulis `CUDA UMD Version: 13.5` di header `nvidia-smi`, sehingga installer melapor "Versi CUDA dari nvidia-smi tidak terbaca" (tetap memakai cu128, jadi hasilnya benar). Kedua format sekarang terbaca.
+- Instalasi pertama di Windows: uv gagal me-rename file yang baru diekstrak di cache karena masih dipindai antivirus (`Access is denied. (os error 5)`). Installer melaporkannya sebagai "fairseq butuh Visual Studio Build Tools" lalu lanjut tanpa RVC, padahal Build Tools sudah ada: perintah yang sama berhasil saat installer dijalankan ulang. Sekarang `uv pip install` dicoba sekali lagi bila errornya file terkunci, dan pesannya menyebut penyebab yang benar.
+
+### Diubah
+- Langkah instalasi disusun di `Get-InstallSteps` (total langkah untuk `-Progress`); setiap fungsi langkah memanggil `Write-Step` tepat sekali. Deteksi build PyTorch dicatat di bawah judul langkah PyTorch, bukan di atasnya. `install.ps1` bisa di-source oleh test tanpa menjalankan instalasi.
+
+### Pengujian
+- `tests/test_install_ps1.py` (27 test, Windows PowerShell 5.1 dan PowerShell 7): parsing script, file tetap ASCII (PowerShell 5.1 membaca script tanpa BOM sebagai ANSI), `-SelfCheck` memancarkan tiga baris `##MIKU` JSON yang valid dengan judul berhuruf Jepang, baris mesin hanya muncul dengan `-Progress`, daftar langkah per kombinasi opsi, satu `Write-Step` per langkah, penyalinan dan penolakan file RVC, `-ModelDir` (variabel user diganti pencatat, tidak diubah sungguhan), dua format header `nvidia-smi`, dan deteksi file terkunci dari potongan log nyata. Dua mutasi (hapus `Write-Step` dari satu langkah; kembalikan regex CUDA lama) masing-masing membuat test gagal.
+- Uji terima I1 di laptop pengembang (Windows 11, RTX 4050, Ollama sudah jalan dengan model di `D:\ollama_models`): `install.ps1 -Yes -Progress -ModelDir D:\MikuTest\models -WithVision -RvcModel … -RvcIndex … -StartMenu -SkipShortcut` dari worktree kosong selesai dalam ±11 menit, 13/13 langkah, `{"event":"done","ok":true}`, `miku.py --test` lulus, `RVC ready`. Ollama dimatikan lalu dinyalakan ulang dan hanya melihat dua model yang baru diunduh; model Ollama (5,5 GB) dan cache Hugging Face (1,8 GB: Whisper, MeloTTS) ada di `D:\MikuTest\models`, bukan di lokasi lama. Header `CUDA UMD Version: 13.5` terbaca. `install.ps1` baru tanpa opsi pada instalasi yang sudah ada (sama dengan menjalankan ulang `install.bat`): exit 0 dalam 76 s, langkah yang sama dilewati seperti sebelumnya, tanpa baris `##MIKU`.
+
+---
+
 ## Belum dirilis (2026-10-31): "simpan ini sebagai skill" (PLAN_SKILLS S2)
 
 Rencana: S2 di [`docs/PLAN_SKILLS.md`](docs/PLAN_SKILLS.md). Keputusan 2 dari user: Miku boleh menyusun skill dari percakapan, dengan konfirmasi.

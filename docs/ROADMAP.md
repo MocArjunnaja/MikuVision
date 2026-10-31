@@ -14,8 +14,10 @@
 | #25 | Installer untuk dnf/pacman/zypper (L5); peta jalan ini | Setelah #24 |
 | #26 | T1: shortcut `Ctrl+Shift+M` dan `miku.py --trigger` | Setelah #25 |
 | #27 | Agent visi Fase 1: Miku membaca layar | Setelah #26 |
-| (baru) | S2: "simpan ini sebagai skill" (branch `feat/skill-from-chat`) | Setelah #27 |
-| #21 | README lebih ringkas | Kapan saja; bentrok kecil dengan #25 di teks instalasi Linux |
+| #28 | S2: "simpan ini sebagai skill" | Setelah #27 |
+| #29 | Langkah instalasi Linux di README; rencana MikuVision Setup | Setelah #28 |
+| (baru) | Installer I1: opsi baru `install.ps1` untuk wizard; rencana cek pembaruan (branch `feat/installer-options`) | Setelah #29 |
+| #21 | README lebih ringkas | Terakhir; bentrok kecil dengan #25 di teks instalasi Linux |
 
 Setelah semuanya merge dan daftar cek Windows (bagian 2) lulus: rilis **v1.5.0**.
 
@@ -33,7 +35,8 @@ Setelah semuanya merge dan daftar cek Windows (bagian 2) lulus: rilis **v1.5.0**
 | 8 | L4: benchmark Linux vs Windows | keduanya | LINUX L4 | Butuh angka Windows dari bagian 2 |
 | 9 | L5: uji di VM Fedora, Arch, Ubuntu | Linux | LINUX L5 | Installer sudah siap, belum dicoba di distro aslinya |
 | 10 | W1: Wayland | Linux | VISION, LINUX L5 | Menunggu keputusan 3 di bagian 3 |
-| 11 | **MikuVision Setup**: installer dengan antarmuka (`MikuVisionSetup.exe`), tanpa GitHub/terminal | Windows dulu, Linux menyusul | [PLAN_INSTALLER](PLAN_INSTALLER.md) | Untuk user yang repot lewat GitHub. Dikerjakan dari sesi Windows; fase I1 (opsi baru `install.ps1`) bisa mulai kapan saja, wizard (I2–I5) sebaiknya setelah daftar cek Windows lulus |
+| 11 | **MikuVision Setup**: installer dengan antarmuka (`MikuVisionSetup.exe`), tanpa GitHub/terminal | Windows dulu, Linux menyusul | [PLAN_INSTALLER](PLAN_INSTALLER.md) | Untuk user yang repot lewat GitHub. Dikerjakan dari sesi Windows; I1 (opsi baru `install.ps1`) selesai 31 Okt, wizard (I2–I5) sebaiknya setelah daftar cek Windows lulus |
+| 12 | Cek pembaruan dari aplikasi: Miku memberi tahu bila ada rilis baru, satu klik ke Setup mode Perbarui | keduanya | [PLAN_INSTALLER bagian 6, fase I6](PLAN_INSTALLER.md) | Butuh `version.json` di rilis (I5) dan mode Perbarui (I4). Sekarang aplikasi bahkan belum punya nomor versi; menunggu keputusan 6 di bagian 3 |
 
 ## 2. Daftar cek di Windows
 
@@ -71,4 +74,5 @@ Dijalankan setelah boot ke Windows, di folder repo yang sama (`D:`). Lakukan set
 2. ~~S2: boleh Miku menyusun skill sendiri dari percakapan, dengan konfirmasi dulu?~~ Ya (31 Okt).
 3. Wayland (W1): perlu dikerjakan, atau cukup X11?
 4. Agent visi: tugas nyata apa yang paling ingin diotomatiskan, dan aplikasi apa yang tidak boleh disentuh (misalnya aplikasi bank)?
-5. Installer: nama, halaman lisensi, folder bawaan, halaman unduhan, dan code signing ([PLAN_INSTALLER](PLAN_INSTALLER.md) bagian 11).
+5. ~~Installer: nama, halaman lisensi, folder bawaan, halaman unduhan, dan code signing ([PLAN_INSTALLER](PLAN_INSTALLER.md) bagian 11).~~ Semua sesuai usulan (31 Okt): `MikuVision`, lisensi wajib dicentang, `%LOCALAPPDATA%\Programs\MikuVision`, cukup link Releases, tanpa code signing dulu.
+6. Cek pembaruan: menyala sejak awal (bisa dimatikan di `config.py`), atau ditanyakan di halaman Selesai wizard? ([PLAN_INSTALLER](PLAN_INSTALLER.md) bagian 11, keputusan 6)
