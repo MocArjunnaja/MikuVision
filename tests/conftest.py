@@ -75,6 +75,18 @@ def _no_real_desktop(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_hotkey(monkeypatch, tmp_path):
+    """Test tidak boleh memasang shortcut global sungguhan atau memakai socket --trigger milik Miku yang jalan."""
+    from core import hotkey
+
+    def refuse():
+        raise AssertionError("Test membuka koneksi X11 sungguhan untuk shortcut")
+
+    monkeypatch.setattr(hotkey, "_open_display", refuse)
+    monkeypatch.setattr(hotkey, "default_runtime_dir", lambda: tmp_path / "runtime")
+
+
+@pytest.fixture(autouse=True)
 def _isolated_app_cache(monkeypatch, tmp_path):
     """Test tidak boleh membaca/menulis cache aplikasi asli di data/."""
     from core import system_control

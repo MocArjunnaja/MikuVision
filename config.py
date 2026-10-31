@@ -125,7 +125,10 @@ OLLAMA_THINK: Optional[bool] = None
 OLLAMA_KEEP_ALIVE = -1
 
 # ============ Hotkey Config ============
+# Shortcut global untuk mulai bicara dari aplikasi mana pun (maskot dan GUI). Butuh Ctrl, Alt,
+# atau Super; hindari Super di Cinnamon (diambil desktop). Cadangan: `python miku.py --trigger`.
 WAKE_HOTKEY = "ctrl+shift+m"
+HOTKEY_ENABLED = True
 STOP_HOTKEY = "ctrl+shift+s"
 
 

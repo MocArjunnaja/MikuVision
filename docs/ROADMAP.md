@@ -12,6 +12,7 @@
 | #23 | Buka aplikasi apa pun dari menu sistem + cache; rencana skill | Setelah #22 |
 | #24 | Skill buatan user (S1); spike agent visi di Linux | Setelah #23 |
 | #25 | Installer untuk dnf/pacman/zypper (L5); peta jalan ini | Setelah #24 |
+| (baru) | T1: shortcut `Ctrl+Shift+M` dan `miku.py --trigger` (branch `feat/hotkey-trigger`) | Setelah #25 |
 | #21 | README lebih ringkas | Kapan saja; bentrok kecil dengan #25 di teks instalasi Linux |
 
 Setelah semuanya merge dan daftar cek Windows (bagian 2) lulus: rilis **v1.5.0**.
@@ -22,7 +23,7 @@ Setelah semuanya merge dan daftar cek Windows (bagian 2) lulus: rilis **v1.5.0**
 |---|---|---|---|---|
 | 1 | Daftar cek di Windows | Windows | bagian 2 di bawah | Sejak v1.3.0, kode Windows berubah tanpa pernah dijalankan di Windows: backend dipindah (L2), jendela maskot dibungkus ulang (#22), pencarian aplikasi ditambah (#23). Selama ini hanya dites di CI |
 | 2 | Rilis v1.5.0 | keduanya | CHANGELOG | Mengumpulkan #21–#25 |
-| 3 | **T1**: shortcut keyboard untuk mulai bicara | keduanya | [VISION bagian 5, T1](PLAN_VISION_AGENT.md) | Kecil (±1 hari), langsung terasa, tidak tergantung visi; rancangan dan kriteria selesai sudah rinci |
+| 3 | ~~**T1**: shortcut keyboard untuk mulai bicara~~ | keduanya | [VISION bagian 5, T1](PLAN_VISION_AGENT.md) | Selesai di Linux (31 Okt); Windows lewat daftar cek di bagian 2 |
 | 4 | Agent visi Fase 1: membaca layar | keduanya | VISION Fase 1 | Hanya membaca, jadi aman; dasar untuk mengendalikan mouse/keyboard |
 | 5 | S2: "simpan ini sebagai skill" | keduanya | SKILLS S2 | Menunggu keputusan 2 di bagian 3 |
 | 6 | T2: "Oke Miku" di mode suara | keduanya | VISION T2 | Perlu gerbang VAD dan pengukuran pemicu palsu |
@@ -33,7 +34,7 @@ Setelah semuanya merge dan daftar cek Windows (bagian 2) lulus: rilis **v1.5.0**
 
 ## 2. Daftar cek di Windows
 
-Dijalankan setelah boot ke Windows, di folder repo yang sama (`D:`). Lakukan setelah #22–#25 merge, atau checkout `feat/installer-distros` yang sudah memuat semuanya.
+Dijalankan setelah boot ke Windows, di folder repo yang sama (`D:`). Lakukan setelah #22–#25 merge, atau checkout `feat/hotkey-trigger` yang sudah memuat semuanya (termasuk T1).
 
 **Persiapan**
 1. `git pull`, lalu jalankan ulang `install.ps1` (langkah yang sudah beres dilewati).
@@ -50,6 +51,7 @@ Dijalankan setelah boot ke Windows, di folder repo yang sama (`D:`). Lakukan set
 | Buka aplikasi apa pun + cache | #23: `Get-StartApps`, `shell:AppsFolder` | Aplikasi di luar katalog, termasuk aplikasi Store (misalnya Paint, Photos); buka sekali lagi; `/apps` | Terbuka, tercatat di `/apps`, kedua kali dari cache. Catat lama `Get-StartApps` |
 | Skill buatan user | #24 | "buatkan laporan harian: tadi …", "putar lagu buat belajar", `/skills` | Dokumen dibuat lalu foldernya terbuka; volume diatur lalu YouTube diputar |
 | Urutan muat VRAM | v1.3.0, belum diukur di Windows | Waktu balasan pertama, `ollama ps` | Balasan pertama ≤ 3 s, model 100% di GPU |
+| Shortcut `Ctrl+Shift+M` (T1) | `feat/hotkey-trigger`: library `keyboard`, named pipe untuk `--trigger` | `python miku.py`, tekan shortcut dari Notepad/browser 10×; GUI: tekan, bicara, tekan lagi; `python miku.py --trigger` di terminal lain | 10/10 mulai merekam tanpa jeda terasa; pesan jelas bila kombinasi sudah dipakai aplikasi lain; `--trigger` ≤ 1 s |
 
 **Angka untuk L4** (skrip yang sama dengan Linux)
 - `python experiments/skills/bench_skills.py 3`
@@ -57,7 +59,6 @@ Dijalankan setelah boot ke Windows, di folder repo yang sama (`D:`). Lakukan set
 - `experiments/stt_eval`, latensi MeloTTS/RVC, VRAM, waktu start
 
 **Bahan untuk rencana berikutnya**
-- T1: cek apakah `Ctrl+Shift+M` sudah dipakai aplikasi lain di Windows.
 - Agent visi Fase 1: OCR Jepang di Windows butuh paket bahasa Jepang (Settings → Time & language → Language → Japanese → Optical character recognition). Pilihannya: pasang paket itu, atau pakai RapidOCR di kedua OS.
 
 ## 3. Keputusan yang dibutuhkan dari user

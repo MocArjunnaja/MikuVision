@@ -190,12 +190,20 @@ Teruji di Linux Mint 22.3 (Cinnamon, X11) dengan RTX 4050. Suara dua arah, LLM, 
 
 | Mode | Perintah | Keterangan |
 |---|---|---|
-| GUI | Shortcut **MikuVision**, `run.bat`, atau `python gui.py` | Jendela chat + tombol **Hold to Speak** |
-| Suara + maskot | `python miku.py` | Seret maskot Miku di layar untuk mulai bicara |
+| GUI | Shortcut **MikuVision**, `run.bat`, atau `python gui.py` | Jendela chat + tombol **Hold to Speak**, atau `Ctrl+Shift+M` (tekan sekali untuk mulai merekam, sekali lagi untuk selesai) |
+| Suara + maskot | `python miku.py` | Seret maskot Miku, atau tekan `Ctrl+Shift+M` dari aplikasi mana pun, lalu langsung bicara |
 | Teks (terminal) | `python miku.py --text` | Paling mudah untuk mencoba pertama kali |
 | Lanjutkan sesi | `python miku.py --text --resume` | Sesi terakhir, atau `--resume <SESSION_ID>`; di GUI: tombol **↺ Sesi lalu** |
 
 Dengan installer, ganti `python` dengan `.venv\Scripts\python.exe`. Di Linux: `~/.local/share/mikuvision/venv/bin/python` (repo di NTFS) atau `.venv/bin/python`, dan `run.sh` menggantikan `run.bat`.
+
+**Shortcut untuk mulai bicara.** `Ctrl+Shift+M` aktif selama Miku jalan, di Windows dan Linux X11. Kombinasinya diganti lewat `WAKE_HOTKEY` di `config.py` (harus memakai Ctrl, Alt, atau Super), atau dimatikan dengan `HOTKEY_ENABLED = False`. Di Wayland, atau bila kombinasinya sudah dipakai aplikasi lain, pasang perintah berikut sebagai shortcut di pengaturan keyboard desktop (Cinnamon: *Keyboard → Shortcuts → Custom Shortcuts*):
+
+```bash
+~/.local/share/mikuvision/venv/bin/python /path/ke/repo/miku.py --trigger
+```
+
+`--trigger` hanya meminta Miku yang sedang jalan untuk mendengarkan (±0,2 s), tanpa memuat model.
 
 **Contoh perintah:** "buka notepad", "kecilkan volume ke 30", "carikan lagu Yorushika di YouTube", "buka folder Downloads", "buatkan dokumen Word tentang Hukum Newton beserta rumusnya", "ingat ya, aku kuliah di ITS".
 
@@ -307,6 +315,8 @@ Benchmark yang butuh GPU/Ollama ada di `experiments/` beserta hasilnya (`RESULTS
 | Suara Miku kadang jadi suara MeloTTS biasa | Cari `CUDA out of memory` di `data/logs/gui.log`: VRAM penuh. Tutup aplikasi lain yang memakai GPU NVIDIA, atau kecilkan `chunk_sec` di `RVCConfig` (`config.py`) |
 | Balasan LLM lambat | Jalankan `ollama ps`: kolom PROCESSOR harus `100% GPU`. Bila ada bagian CPU, aplikasi lain memakai VRAM saat model dimuat; tutup aplikasi itu lalu buka ulang MikuVision |
 | Linux: emoji tampil sebagai kotak di GUI | Tk di Linux belum menampilkan emoji berwarna; hanya kosmetik |
+| `Shortcut Ctrl+Shift+M tidak dipasang: sudah dipakai aplikasi lain` | Ganti `WAKE_HOTKEY` di `config.py`, atau pakai `miku.py --trigger` sebagai shortcut desktop (lihat [Menjalankan](#menjalankan)). Hindari tombol Super di Cinnamon |
+| `--trigger tidak aktif: Miku lain sudah jalan` | Miku (maskot atau GUI) sudah terbuka di jendela lain; shortcut dan `--trigger` memanggil yang pertama |
 
 ## Lisensi & kredit
 
