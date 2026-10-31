@@ -6,6 +6,47 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-10-31): skill buatan user, dan spike agent visi di Linux
+
+Lanjutan [`docs/PLAN_SKILLS.md`](docs/PLAN_SKILLS.md) fase S1, dan Fase 0 Linux dari [`docs/PLAN_VISION_AGENT.md`](docs/PLAN_VISION_AGENT.md).
+
+### Ditambahkan
+- **Skill buatan user** (`core/user_skills.py`): satu file `SKILL.md` berisi nama, deskripsi, pemicu, daftar tool, dan petunjuk. Contoh ada di `skills/`; skill milik user ditaruh di `data/skills/<nama>/SKILL.md` dan menimpa contoh bernama sama.
+  - Petunjuk dan skema tool skill hanya dikirim ke LLM saat pemicunya ada di ucapan user (maksimal 2 skill); skill lain cukup disebut nama dan deskripsinya.
+  - Skill hanya bisa memakai tool yang sudah terdaftar, tidak bisa menjalankan routine, dan petunjuknya maksimal ±400 token. Aksi berisiko tetap dikonfirmasi.
+  - Dua contoh: **laporan harian** (dokumen Word dari cerita user, lalu membuka foldernya) dan **musik mood** (volume + YouTube sesuai suasana).
+- `run_turn`: selama skill user aktif dan masih ada tool-nya yang belum dipakai, Miku diminta langkah berikutnya (maks. 3), karena qwen3:4b biasanya hanya memanggil satu tool per balasan.
+- `/skills` menampilkan skill user dan file yang gagal dimuat beserta alasannya; `/skill <nama>` menampilkan isi satu skill.
+- Spike agent visi Linux di `experiments/vision_linux/` dan `experiments/triggers_linux/`: cakupan AT-SPI2, Qwen-VL memilih elemen dan membaca layar, percobaan agent yang menggerakkan mouse/keyboard, dan shortcut global lewat XGrabKey.
+
+### Diubah
+- Retry "tool terlewat" tidak memaksa tool call bila skill aktif menyuruh bertanya dulu dan user belum memberi detail.
+- 「かけて」 dan 「流して」 kini dianggap permintaan aksi (memutar musik).
+- `PLAN_VISION_AGENT.md`: backend per OS (Windows, Linux X11, Wayland), pemicu tanpa tangan (shortcut keyboard dan "Oke Miku"), fase T1/T2. `PLAN_LINUX.md`: kompatibilitas distro dan desktop lain (L5).
+
+### Pengujian
+- `pytest`: 299 lulus (40 test baru di `tests/test_user_skills.py`); di Python sistem seperti CI 294 lulus, 5 dilewati.
+- Skill dengan qwen3:4b-instruct (`experiments/skills/bench_skills.py`, 3 percobaan):
+  - skill tepat terpilih 60/60;
+  - laporan harian 29/30, musik mood 29/30;
+  - perintah umum tidak mengaktifkan skill user 30/30, dan tool calling-nya 27/30 dengan skill vs 25/30 tanpa skill;
+  - prompt +54 token.
+  - Rinciannya di `docs/PLAN_SKILLS.md` bagian 8.
+- Agent visi Linux (`experiments/vision_linux/RESULTS.md`):
+  - AT-SPI2 membaca 5 jendela dalam < 1 s;
+  - qwen3-vl:4b memilih elemen yang benar 51/54 (daftar AT-SPI + gambar);
+  - nama file di Nemo terbaca dari screenshot;
+  - mengetik di Xed lewat keyboard 5/5;
+  - menghitung 12 + 7 di Kalkulator dengan klik mouse 3/3 bila rencananya disusun dari daftar nama tanpa gambar (0/7 dengan gambar);
+  - tukar model 2,4–2,6 s.
+- Shortcut global XGrabKey (`experiments/triggers_linux/hotkey_spike.py`): `Ctrl+Shift+M` 5/5, ±24 ms; `Super+M` tidak sampai di Cinnamon.
+
+### Keterbatasan diketahui
+- `/skill forget`, `/skill new`, dan "simpan ini sebagai skill" belum ada (fase S2).
+- Agent visi masih berupa eksperimen di `experiments/`; Miku belum bisa mengendalikan mouse/keyboard dari percakapan.
+
+---
+
 ## Belum dirilis (2026-10-31): buka aplikasi apa pun dari menu sistem, dan Miku mengingatnya
 
 Pemicunya sesi GUI: "libreOffice o haite kudasai" → "Aplikasi 'LibreOffice' tidak dikenali", karena hanya aplikasi di katalog `config.py` yang bisa dibuka.

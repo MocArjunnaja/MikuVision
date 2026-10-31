@@ -1,8 +1,11 @@
 # Rencana Update: Miku Vision Agent (Computer Use)
 
-**Tujuan:** Miku bisa melihat layar (screenshot), memahami isinya (teks, tombol, pesan error, pemicu tertentu), lalu menggerakkan mouse dan keyboard untuk mencapai sebuah tujuan. Kalau langkah pertama belum berhasil, Miku mengamati lagi, merevisi rencana, dan mencoba lagi sampai berhasil atau meminta bantuan.
+**Tujuan:** Miku bisa melihat layar (screenshot), memahami isinya (teks, tombol, pesan error, pemicu tertentu), lalu menggerakkan mouse dan keyboard untuk mencapai sebuah tujuan. Kalau langkah pertama belum berhasil, Miku mengamati lagi, merevisi rencana, dan mencoba lagi sampai berhasil atau meminta bantuan. User cukup bicara ("Oke Miku, …") atau menekan shortcut keyboard, tanpa mengetik.
 
-**Status:** Fase 0 selesai (25 Okt 2026, Windows); hasil di [`experiments/vision_phase0/RESULTS.md`](../experiments/vision_phase0/RESULTS.md). Fase 1 belum dimulai. Fase 1 menunggu port Linux ([`PLAN_LINUX.md`](PLAN_LINUX.md) L0–L4) dan spike Fase 0 versi Linux: AT-SPI2 menggantikan UI Automation, RapidOCR menggantikan Windows OCR.
+**Status:**
+- Fase 0 Windows selesai (25 Okt 2026): [`experiments/vision_phase0/RESULTS.md`](../experiments/vision_phase0/RESULTS.md).
+- Fase 0 Linux selesai (31 Okt 2026): [`experiments/vision_linux/RESULTS.md`](../experiments/vision_linux/RESULTS.md). AT-SPI2 menggantikan UI Automation, `xdotool` menggerakkan mouse dan keyboard, dan shortcut global lewat XGrabKey sudah teruji.
+- Berikutnya: **T1** (shortcut keyboard untuk mulai bicara), lalu Fase 1 (hanya membaca layar).
 
 ---
 
@@ -11,14 +14,14 @@
 | Batasan | Nilai | Dampak |
 |---|---|---|
 | GPU | RTX 4050, **6 GB VRAM** | qwen3:4b-instruct (±3,5 GB) + Whisper (1,1 GB) + RVC (±1 GB) ≈ 5,6 GB. Tidak ada ruang untuk model visi kedua secara bersamaan. |
-| Storage C | **±8 GB kosong** | Model baru harus disimpan di D (`OLLAMA_MODELS`, `HF_HOME`). |
+| Storage | Windows C: **±8 GB kosong**; Linux root: ±45 GB kosong | Di Windows model baru disimpan di D (`OLLAMA_MODELS`, `HF_HOME`). |
 | Model kecil | 2–4B parameter | Sulit menebak koordinat piksel dengan akurat. Lebih andal memilih **dari daftar elemen bernomor** (Set-of-Mark). |
 | Keamanan | Mouse dan keyboard sungguhan | Salah klik bisa mengirim pesan, menghapus file, atau membeli sesuatu. Teks di layar juga bisa berisi instruksi jahat (prompt injection). |
 
 ## 2. Prinsip desain
 
 1. **Persepsi bertingkat, mulai dari yang paling murah dan pasti:**
-   1. **Windows UI Automation** (pohon aksesibilitas, lewat `uiautomation`/`pywinauto`): nama tombol, jenis, posisi persis. Tanpa GPU, tanpa menebak. Bisa dipakai di sebagian besar aplikasi Windows (Settings, Explorer, Office, browser).
+   1. **Pohon aksesibilitas**: Windows UI Automation (`uiautomation`/`pywinauto`) atau Linux AT-SPI2 (`pyatspi`). Nama tombol, jenis, posisi persis. Tanpa GPU, tanpa menebak. Bisa dipakai di sebagian besar aplikasi (Settings, file manager, Office, browser).
    2. **OCR** untuk teks yang tidak terbaca UIA (game, gambar, canvas): Windows OCR bawaan (`winrt`, kecil, CPU) atau RapidOCR (ONNX, CPU).
    3. **Model visi (VLM)** hanya bila dua tingkat sebelumnya tidak cukup, misalnya untuk ikon tanpa teks atau memahami tata letak secara umum.
 2. **Model memilih, kode yang mengklik.** Elemen hasil UIA/OCR diberi nomor dan digambar di screenshot (Set-of-Mark). Model menjawab "klik elemen #12", lalu koordinatnya diambil dari kotak elemen itu, bukan dari tebakan piksel model.
@@ -32,14 +35,14 @@ User: "Miku, nyalakan Bluetooth"
         │
         ▼
  ┌─────────────── Vision Agent Loop (maks N langkah) ───────────────┐
- │ 1. OBSERVE   screenshot (mss) + pohon UIA + OCR                   │
+ │ 1. OBSERVE   screenshot + pohon UIA/AT-SPI + OCR                  │
  │              → daftar elemen bernomor + gambar Set-of-Mark        │
  │ 2. PLAN      LLM: tujuan + daftar langkah (todo) + elemen         │
  │              → aksi berikutnya: click(#12) / type(#5,"..")        │
  │                / hotkey / scroll / done / ask_user                │
  │ 3. GUARD     aksi berisiko? → konfirmasi user (sudah ada)         │
  │              kill switch (mouse ke pojok layar / Esc) dicek       │
- │ 4. ACT       pyautogui / pywinauto pada koordinat elemen          │
+ │ 4. ACT       pyautogui / xdotool pada koordinat elemen            │
  │ 5. VERIFY    amati ulang; apakah kondisi sukses langkah ini       │
  │              terpenuhi? ya → langkah berikutnya, tidak → refleksi │
  └───────────────────────────────────────────────────────────────────┘
@@ -59,6 +62,30 @@ Modul baru (rencana):
 | `core/vision/som.py` | Gabungkan elemen UIA + OCR, beri nomor, gambar overlay |
 | `core/vision/agent.py` | Loop amati/rencanakan/bertindak/verifikasi, daftar langkah, refleksi, batas langkah |
 | `core/vision/actions.py` | Aksi berbasis elemen (click, type, hotkey, scroll) + guard keamanan |
+
+### Backend per OS
+
+| Bagian | Windows | Linux X11 | Linux Wayland |
+|---|---|---|---|
+| Screenshot | `PIL.ImageGrab` | `PIL.ImageGrab` (22 ms, 1920×1080) | Portal Screenshot/ScreenCast (izin user) |
+| Pohon UI | UI Automation | AT-SPI2 lewat helper kecil di Python sistem (`pyatspi` tidak ada di venv) | AT-SPI2 terbaca, tapi posisi elemen tidak global: pakai aksi AT-SPI (`doAction`) |
+| Klik dan ketik | `pyautogui` | `xdotool` atau `pyautogui` (XTest) | Portal RemoteDesktop atau `ydotool` (butuh akses `/dev/uinput`) |
+| Shortcut global | `keyboard` / `RegisterHotKey` | XGrabKey (`python-xlib`, sudah dipakai maskot) | Portal GlobalShortcuts, atau shortcut desktop yang menjalankan `miku --trigger` |
+| OCR | Windows OCR | RapidOCR | RapidOCR |
+
+Wayland belum didukung untuk aksi keyboard/mouse; installer dan Miku sudah memberi peringatan. GNOME terbaru tidak lagi menyediakan sesi X11, jadi backend Wayland perlu fase sendiri (W1) bila MikuVision ingin jalan di Ubuntu/Fedora GNOME terbaru.
+
+## 3b. Pemicu tanpa tangan
+
+Dua cara memulai, keduanya berakhir di alur yang sama: dengar satu ucapan → STT → `AIBrain`. Bila permintaannya butuh layar ("klik tombol Simpan", "nyalakan Bluetooth"), LLM memanggil tool `computer_task(goal)` dan sesi visi dimulai.
+
+| Pemicu | Cara kerja | Status |
+|---|---|---|
+| **Shortcut keyboard** (T1) | Default `Ctrl+Shift+M` (`WAKE_HOTKEY` di config, bisa diganti). Ditekan → Miku mendengarkan satu ucapan, sama seperti menyeret maskot. Linux X11: XGrabKey pada root window, tanpa root. Windows: library `keyboard` (sudah dependency). | Spike Linux: 5/5 diterima, jeda ±24 ms. `Super+M` tidak sampai (diambil Cinnamon), jadi hindari tombol Super. Bila kombinasi sudah dipakai aplikasi lain, X11 menolak grab dan Miku harus memberi tahu. |
+| **Cadangan universal** | `python miku.py --trigger` mengirim sinyal ke Miku yang sedang jalan lewat socket lokal. User memasangnya sebagai shortcut di pengaturan keyboard desktop. | Jalan di semua desktop, termasuk Wayland |
+| **"Oke Miku"** (T2) | GUI sudah punya mode wake phrase: potongan audio 2–3 s terus ditranskripsi Whisper. Untuk mode suara (maskot) perlu gerbang VAD dulu, supaya Whisper hanya jalan saat ada suara. Bila masih berat, ganti ke model wake word khusus (openWakeWord, CPU). | Target: ≥ 9/10 "Oke Miku" terdeteksi, ≤ 1 pemicu palsu per jam obrolan/musik, GPU diam saat tidak ada suara |
+
+Keamanan saat tanpa tangan: maskot menunjukkan sedang mendengarkan atau mengendalikan layar, `Esc` dan mouse ke pojok kiri atas menghentikan agent, dan aksi berisiko tetap dikonfirmasi lewat suara ("ya"/"tidak").
 
 ## 4. Pilihan model (perlu dibuktikan di Fase 0)
 
@@ -83,6 +110,13 @@ Rekomendasi awal: coba A dulu. Kalau tool calling-nya turun, pakai B.
 - Jalankan benchmark tool MikuWin (`bench_models.py`) pada `qwen3-vl:4b-instruct` untuk memutuskan opsi A atau B.
 - **Keluaran:** tabel angka + keputusan model.
 
+### Fase 0 Linux (selesai)
+- AT-SPI2 pada 5 jendela, Qwen-VL memilih elemen dan membaca layar, percobaan agent mouse/keyboard di Kalkulator dan Xed, shortcut global XGrabKey. Angka di [`experiments/vision_linux/RESULTS.md`](../experiments/vision_linux/RESULTS.md).
+
+### T1: Shortcut keyboard untuk mulai bicara
+- `core/hotkey.py`: XGrabKey (Linux X11) dan `keyboard` (Windows), plus `miku.py --trigger` sebagai cadangan.
+- Dipakai di mode suara (maskot) dan GUI. Tidak bergantung pada fase visi, jadi bisa dikerjakan lebih dulu.
+
 ### Fase 1: Miku bisa "membaca" layar (hanya baca)
 - Tool `describe_screen()` dan `find_on_screen(query)` → ringkasan dan daftar elemen yang cocok.
 - Contoh: "Miku, error apa ini?", "di layar ada tombol apa saja?", "bacakan pesan ini".
@@ -99,6 +133,9 @@ Rekomendasi awal: coba A dulu. Kalau tool calling-nya turun, pakai B.
 - Batas: maksimal 15 langkah, 3 percobaan per langkah, 2 menit per tugas. Kalau buntu, Miku bertanya ke user.
 - Daftar langkah dan hasilnya disimpan di memori sesi, jadi user bisa bertanya "sampai mana tadi?".
 - Contoh tugas: nyalakan Bluetooth; ganti wallpaper; buka email terbaru di Outlook; ekspor dokumen Word ke PDF.
+
+### T2: "Oke Miku" di mode suara
+- Wake phrase dari GUI dipindah ke alur bersama, dengan gerbang VAD. Diukur: tingkat deteksi, pemicu palsu per jam, beban GPU/CPU saat diam.
 
 ### Fase 4: Pemicu layar & belajar routine
 - Pemantauan ringan (OCR berkala, bukan VLM): "kalau unduhan selesai, buka foldernya", "kalau muncul error X, bacakan".
@@ -133,13 +170,16 @@ Semua langkah tercatat di `data/logs/` (aksi, elemen, alasan, thumbnail), memaka
 
 | Paket | Ukuran | Catatan |
 |---|---|---|
-| `mss` | < 1 MB | Screenshot cepat |
+| `mss` | < 1 MB | Opsional: `PIL.ImageGrab` sudah cukup cepat di Windows dan Linux X11 |
 | `uiautomation` atau `pywinauto` | ±5 MB | Pohon UI Automation |
 | `winrt` OCR atau `rapidocr-onnxruntime` | ±1 / ±100 MB | OCR CPU; di Linux hanya RapidOCR |
-| AT-SPI2 (`pyatspi` / PyGObject) | paket sistem | Pohon aksesibilitas di Linux, pengganti UI Automation |
+| AT-SPI2 (`pyatspi` / PyGObject) | paket sistem | Pohon aksesibilitas di Linux. Venv memakai Python 3.10 dari uv, sedangkan `pyatspi` milik Python sistem; jadi dibaca lewat helper `/usr/bin/python3` (JSON di stdout), atau PyGObject dipasang di venv (butuh paket dev `libgirepository` dan `cairo`) |
+| `xdotool` | paket sistem | Klik dan ketik di Linux X11 (sudah ditawarkan installer) |
 | `qwen3-vl:4b-instruct` | 3,3 GB | **Simpan di D:** set `OLLAMA_MODELS=D:\ollama_models` sebelum `ollama pull` |
 
 ## 9. Keputusan yang dibutuhkan dari user
-1. Opsi model mana yang diuji lebih dulu (rekomendasi: A).
+1. ~~Opsi model mana yang diuji lebih dulu~~: diputuskan opsi B di Fase 0.
 2. Tugas nyata apa saja yang paling ingin diotomatiskan (untuk 15 tugas evaluasi).
 3. Aksi apa saja yang **selalu** butuh konfirmasi, dan apakah ada aplikasi yang dilarang disentuh agent (misalnya aplikasi bank, password manager).
+4. Kombinasi shortcut: `Ctrl+Shift+M` (default) atau yang lain?
+5. Apakah dukungan Wayland (W1) perlu dikerjakan, atau cukup X11 dulu?
