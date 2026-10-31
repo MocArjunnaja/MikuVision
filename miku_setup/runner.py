@@ -105,6 +105,18 @@ def install_command(install_dir: Path, args: List[str]) -> List[str]:
             str(Path(install_dir) / "install.ps1"), *args]
 
 
+def received_bytes() -> Optional[int]:
+    """Byte yang diterima semua kartu jaringan sejak boot, atau None tanpa psutil.
+
+    Mencakup unduhan aplikasi lain yang berjalan bersamaan, jadi tampil sebagai perkiraan.
+    """
+    try:
+        import psutil
+        return psutil.net_io_counters().bytes_recv
+    except Exception:  # psutil tidak ada, atau kartu jaringan tidak terbaca
+        return None
+
+
 def folder_size(path: Path) -> int:
     total = 0
     stack = [str(path)]
@@ -129,17 +141,24 @@ class InstallRunner:
 
     Setiap langkah aman diulang: zip yang sudah cocok tidak diunduh lagi, .part dilanjutkan, dan
     install.ps1 melewati langkah yang sudah beres. Jadi "Coba lagi" setelah batal atau gagal melanjutkan.
+
+    fetch_code=False (Perbaiki): kode yang sudah terpasang dipakai, tanpa unduh dan ekstrak. register dipanggil
+    setelah install.ps1 berhasil untuk mencatat instalasi di "Apps & features"; kegagalannya hanya peringatan.
     """
 
     def __init__(self, events: "queue.Queue", selection: Selection, downloads_dir: Path,
                  release_url: str = RELEASE_URL,
-                 command: Callable[[Path, List[str]], List[str]] = install_command):
+                 command: Callable[[Path, List[str]], List[str]] = install_command,
+                 fetch_code: bool = True, version: str = "",
+                 register: Optional[Callable[[Selection, str], Optional[str]]] = None):
         self.events = events
         self.selection = selection
         self.downloads_dir = Path(downloads_dir)
         self.release_url = release_url if release_url.endswith("/") else release_url + "/"
         self.command = command
-        self.version = ""
+        self.fetch_code = fetch_code
+        self.version = version
+        self.register = register
         self._cancel = threading.Event()
         self._process: Optional[subprocess.Popen] = None
         self._thread: Optional[threading.Thread] = None
@@ -174,8 +193,8 @@ class InstallRunner:
 
     def _run(self):
         try:
-            zip_path = self._fetch()
-            self._extract(zip_path)
+            if self.fetch_code:
+                self._extract(self._fetch())
             self._fetch_rvc()
             self._install()
         except Cancelled:
@@ -244,10 +263,18 @@ class InstallRunner:
         return [Path(self.selection.install_dir) / ".tools" / "uv-cache", ollama_dir / "blobs"]
 
     def _watch_sizes(self, stop: threading.Event):
-        paths = self._size_paths()
-        baseline = sum(folder_size(p) for p in paths)
+        """Byte yang diterima jaringan sejak install.ps1 mulai.
+
+        Ukuran cache uv tidak dipakai lagi bila psutil ada: cache ikut membesar saat wheel dibongkar dan paket
+        dibangun, sehingga angkanya dua kali lipat data internet (uji terima I3).
+        """
+        measure = received_bytes
+        if measure() is None:
+            paths = self._size_paths()
+            measure = lambda: sum(folder_size(p) for p in paths)  # noqa: E731
+        baseline = measure()
         while not stop.wait(SIZE_INTERVAL_SEC):
-            self._put("downloaded", max(sum(folder_size(p) for p in paths) - baseline, 0))
+            self._put("downloaded", max(measure() - baseline, 0))
 
     def _install(self):
         if self._cancel.is_set():
@@ -283,4 +310,8 @@ class InstallRunner:
         if code != 0 and not last_error:
             self._put("progress", {"event": "error",
                                    "message": EXIT_MESSAGES.get(code, f"Installer berhenti dengan kode {code}.")})
+        if code == 0 and self.register:
+            problem = self.register(self.selection, self.version)
+            if problem:
+                self._put("progress", {"event": "warn", "message": problem})
         self._put("progress", {"event": "done", "ok": code == 0})

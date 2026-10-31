@@ -1,0 +1,193 @@
+"""MikuVision Setup fase I4: entri "Apps & features", Perbarui/Perbaiki, dan Hapus."""
+
+import sys
+import uuid
+from pathlib import Path
+
+import pytest
+
+from miku_setup import maintenance, registry
+from miku_setup.components import Selection, install_args
+from miku_setup.main import parse_args, requested_mode
+from miku_setup.maintenance import RemovalPlan, app_shortcuts, register_install, remove_installation, selection_for
+from miku_setup.registry import InstalledApp
+
+windows_only = pytest.mark.skipif(sys.platform != "win32", reason="registry Windows")
+
+
+def fake_install(root: Path) -> InstalledApp:
+    install_dir = root / "MikuVision"
+    for name in ("install.ps1", "gui.py", ".venv/Scripts/pythonw.exe", ".tools/mikuvision.ico",
+                 "data/memory.json", "data/skills/kopi.yaml", "models/miku_default_rvc/weights/miku.pth"):
+        path = install_dir / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x" * 1000)
+    (install_dir / ".tools" / "mikuvision.ico").chmod(0o444)  # file read-only tetap terhapus
+    model_dir = root / "models"
+    (model_dir / "ollama" / "blobs").mkdir(parents=True)
+    (model_dir / "ollama" / "blobs" / "sha256-1").write_bytes(b"m")
+    return InstalledApp(install_dir, "1.6.0", model_dir, {"core", "brain", "vision", "rvc"})
+
+
+@pytest.mark.parametrize("argv, installed, mode", [
+    ([], None, "install"),
+    ([], "ada", "maintain"),
+    (["--update"], "ada", "update"),
+    (["--repair"], "ada", "repair"),
+    (["--uninstall"], "ada", "uninstall"),
+    (["--uninstall"], None, "missing"),
+])
+def test_requested_mode(argv, installed, mode):
+    assert requested_mode(parse_args(argv), installed) == mode
+
+
+def test_modes_cannot_be_combined():
+    with pytest.raises(SystemExit):
+        parse_args(["--update", "--uninstall"])
+
+
+def test_update_and_repair_reuse_the_recorded_choices_without_rvc_files(tmp_path):
+    app = fake_install(tmp_path)
+    selection = selection_for(app)
+    assert selection.install_dir == app.install_dir and selection.model_dir == app.model_dir
+    assert selection.components == {"core", "brain", "vision"}
+    args = install_args(selection)
+    assert "-WithVision" in args and "-ModelDir" in args and "-RvcModel" not in args
+
+
+def test_registry_values(tmp_path):
+    app = fake_install(tmp_path)
+    values = registry.entry_values(app, 12345)
+    assert values["DisplayName"] == "MikuVision" and values["DisplayVersion"] == "1.6.0"
+    assert values["InstallLocation"] == str(app.install_dir)
+    assert values["EstimatedSize"] == 12345 and values["NoRepair"] == 1
+    assert values["UninstallString"].endswith(" --uninstall")
+    assert values["UninstallString"].startswith('"') and str(registry.ENTRY_SCRIPT) in values["ModifyPath"]
+    assert values["MikuComponents"] == "brain,core,rvc,vision"
+    assert values["MikuModelDir"] == str(app.model_dir)
+
+
+@windows_only
+def test_registry_round_trip(tmp_path):
+    key = rf"Software\MikuVisionTest\{uuid.uuid4().hex}"
+    app = fake_install(tmp_path)
+    try:
+        registry.write_entry(app, 10, key_path=key)
+        assert registry.read_installed(key_path=key) == app
+        app.model_dir = None
+        registry.write_entry(app, 10, key_path=key)
+        assert registry.read_installed(key_path=key).model_dir is None
+    finally:
+        assert registry.delete_entry(key_path=key)
+    assert registry.read_installed(key_path=key) is None
+    assert not registry.delete_entry(key_path=key)
+
+
+@windows_only
+def test_registry_entry_without_the_folder_is_ignored(tmp_path):
+    key = rf"Software\MikuVisionTest\{uuid.uuid4().hex}"
+    app = InstalledApp(tmp_path / "hilang", "1.6.0")
+    try:
+        registry.write_entry(app, 10, key_path=key)
+        assert registry.read_installed(key_path=key) is None
+    finally:
+        registry.delete_entry(key_path=key)
+
+
+def test_register_install_records_rvc_already_in_models(tmp_path):
+    app = fake_install(tmp_path)
+    written = []
+    problem = register_install(Selection(app.install_dir, components={"core", "brain"}), "1.6.0",
+                               write=lambda entry, size: written.append((entry, size)))
+    assert problem is None
+    entry, size_kb = written[0]
+    assert entry.components == {"core", "brain", "rvc"} and entry.version == "1.6.0"
+    assert size_kb == 7000 // 1024  # 7 file × 1000 byte
+
+
+def test_register_install_failure_is_only_a_warning(tmp_path):
+    def broken(entry, size):
+        raise PermissionError("akses ditolak")
+    problem = register_install(Selection(tmp_path), "1.6.0", write=broken)
+    assert "Apps & features" in problem and "akses ditolak" in problem
+
+
+def test_shortcuts_pointing_elsewhere_are_kept(tmp_path):
+    app = fake_install(tmp_path)
+    start_menu = tmp_path / "Start Menu" / "MikuVision"
+    start_menu.mkdir(parents=True)
+    (start_menu / "MikuVision.lnk").write_bytes(b"lnk")
+    desktop = tmp_path / "Desktop" / "MikuVision.lnk"
+    desktop.parent.mkdir()
+    desktop.write_bytes(b"lnk")
+    targets = {desktop: str(app.install_dir / ".venv" / "Scripts" / "pythonw.exe")}
+    found = app_shortcuts(app.install_dir, lambda lnk: targets.get(lnk, ""), start_menu, desktop)
+    assert found == [start_menu / "MikuVision.lnk", desktop]
+    targets[desktop] = r"D:\repo\MikuVision\.venv\Scripts\pythonw.exe"  # shortcut milik clone git user
+    assert app_shortcuts(app.install_dir, lambda lnk: targets[lnk], start_menu, desktop) == \
+        [start_menu / "MikuVision.lnk"]
+
+
+def _remove(app, plan, shortcuts=(), env=None):
+    deleted_entry, deleted_env = [], []
+    env = env or {}
+    problems = remove_installation(app, plan, shortcuts=list(shortcuts),
+                                   delete_entry=lambda: deleted_entry.append(True),
+                                   user_env=env.get, delete_user_env=deleted_env.extend)
+    return problems, bool(deleted_entry), deleted_env
+
+
+def test_uninstall_keeps_data_and_models_by_default(tmp_path):
+    app = fake_install(tmp_path)
+    lnk = tmp_path / "MikuVision.lnk"
+    lnk.write_bytes(b"lnk")
+    problems, entry_deleted, env_deleted = _remove(app, RemovalPlan(), [lnk])
+    assert problems == [] and entry_deleted and env_deleted == []
+    assert sorted(p.name for p in app.install_dir.iterdir()) == ["data"]
+    assert (app.install_dir / "data" / "skills" / "kopi.yaml").is_file()
+    assert (app.model_dir / "ollama" / "blobs" / "sha256-1").is_file()
+    assert not lnk.exists()
+
+
+def test_uninstall_everything_also_clears_model_variables(tmp_path):
+    app = fake_install(tmp_path)
+    env = {"OLLAMA_MODELS": str(app.model_dir / "ollama"), "HF_HOME": r"D:\hf_home_lain"}
+    problems, entry_deleted, env_deleted = _remove(app, RemovalPlan(data=True, models=True), env=env)
+    assert problems == [] and entry_deleted
+    assert not app.install_dir.exists() and not app.model_dir.exists()
+    assert env_deleted == ["OLLAMA_MODELS"]  # HF_HOME menunjuk ke tempat lain
+
+
+def test_models_in_default_locations_are_never_removed(tmp_path):
+    app = fake_install(tmp_path)
+    app.model_dir = None
+    problems, _, env_deleted = _remove(app, RemovalPlan(data=True, models=True))
+    assert problems == [] and env_deleted == []
+    assert (tmp_path / "models" / "ollama" / "blobs" / "sha256-1").is_file()
+
+
+def test_locked_files_keep_the_registry_entry_for_another_try(tmp_path, monkeypatch):
+    app = fake_install(tmp_path)
+    real = maintenance.remove_tree
+
+    def locked(path):
+        return f"{path}: sedang dipakai" if path.name == ".venv" else real(path)
+    monkeypatch.setattr(maintenance, "remove_tree", locked)
+    problems, entry_deleted, _ = _remove(app, RemovalPlan())
+    assert len(problems) == 1 and ".venv" in problems[0]
+    assert not entry_deleted and (app.install_dir / ".venv").exists()
+
+
+def test_running_processes_only_lists_programs_from_the_install_folder(tmp_path, monkeypatch):
+    install_dir = tmp_path / "MikuVision"
+
+    class Process:
+        def __init__(self, pid, name, exe):
+            self.info = {"pid": pid, "name": name, "exe": exe}
+    processes = [Process(1, "pythonw.exe", str(install_dir / ".venv" / "Scripts" / "pythonw.exe")),
+                 Process(2, "pythonw.exe", str(install_dir / ".tools" / "python" / "pythonw.exe")),
+                 Process(3, "python.exe", str(tmp_path / "lain" / "python.exe")),
+                 Process(4, "System", None)]
+    psutil = pytest.importorskip("psutil")
+    monkeypatch.setattr(psutil, "process_iter", lambda attrs: processes)
+    assert maintenance.running_processes(install_dir) == ["pythonw.exe"]

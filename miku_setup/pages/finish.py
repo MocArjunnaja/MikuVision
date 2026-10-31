@@ -1,12 +1,11 @@
 """Halaman 6: selesai, atau penjelasan gagal dengan Coba lagi dan Buka log."""
 
 import logging
-from tkinter import messagebox
 
 import customtkinter as ctk
 
 from ..launch import create_desktop_shortcut, launch
-from .base import ACCENT, ACCENT_HOVER, MUTED, STATUS_COLORS, Page, heading, paragraph
+from .base import ACCENT, ACCENT_HOVER, MUTED, STATUS_COLORS, Page, dialog, heading, paragraph
 from .install import open_folder
 
 log = logging.getLogger("miku_setup")
@@ -30,7 +29,8 @@ class FinishPage(Page):
         (self._success if self.setup.install_ok else self._failure)(self.body)
 
     def _success(self, body):
-        heading(body, "MikuVision siap")
+        heading(body, {"update": f"MikuVision diperbarui ke {self.setup.version}",
+                       "repair": "MikuVision sudah diperbaiki"}.get(self.setup.mode, "MikuVision siap"))
         paragraph(body, "Tekan Ctrl+Shift+M untuk mulai bicara dari aplikasi mana pun, atau seret maskot Miku.")
         if self.setup.warnings:
             paragraph(body, f"{len(self.setup.warnings)} peringatan selama instalasi, misalnya: "
@@ -80,5 +80,5 @@ class FinishPage(Page):
         for problem in problems:
             log.warning(problem)
         if problems:
-            messagebox.showwarning("MikuVision Setup", "\n\n".join(problems) +
-                                   "\n\nMikuVision tetap bisa dibuka dari Start Menu.", parent=self.wizard)
+            dialog(self.wizard, "MikuVision Setup",
+                   "\n\n".join(problems) + "\n\nMikuVision tetap bisa dibuka dari Start Menu.")

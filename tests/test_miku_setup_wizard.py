@@ -142,3 +142,95 @@ def test_dry_run_installs_nothing_in_make_runner(make_wizard):
     from miku_setup.runner import DryRunRunner
 
     assert isinstance(make_wizard().make_runner(None), DryRunRunner)
+
+
+@pytest.fixture
+def maintain_wizard(tmp_path):
+    """Setup dibuka lagi saat MikuVision 1.6.0 sudah terpasang (mode uji: tidak ada yang dihapus)."""
+    from miku_setup.components import Selection
+    from miku_setup.registry import InstalledApp
+    from miku_setup.state import SetupState
+    from miku_setup.wizard import Wizard
+
+    created = []
+
+    def make(latest="1.7.0"):
+        app = InstalledApp(tmp_path / "MikuVision", "1.6.0")
+        setup = SetupState(Selection(app.install_dir), tmp_path / "setup.log", dry_run=True, mode="maintain",
+                           installed=app)
+        wizard = Wizard(setup, check_functions=PASSING, dry_run_delay=0, fetch_latest=lambda: latest)
+        wizard.withdraw()
+        created.append(wizard)
+        return wizard
+
+    yield make
+    for wizard in created:
+        try:
+            wizard.destroy()
+        except Exception:
+            pass
+
+
+def test_maintenance_offers_the_newer_release_then_updates(maintain_wizard):
+    wizard = maintain_wizard()
+    page = wizard.pages[0]
+    assert [p.title for p in wizard.pages] == ["Pilih tindakan"]
+    pump(wizard, lambda: wizard.setup.latest_version == "1.7.0")
+    assert page.radios["update"].cget("text") == "Perbarui ke 1.7.0" and page.choice.get() == "update"
+    wizard.go_next()
+    assert [p.title for p in wizard.pages] == ["Pilih tindakan", "Unduh dan pasang", "Selesai"]
+    assert wizard.setup.mode == "update" and wizard.setup.desktop_shortcut is False
+    pump(wizard, lambda: wizard.index == 2, timeout=30)
+    assert wizard.setup.install_ok
+
+
+def test_maintenance_without_a_newer_release_suggests_repair(maintain_wizard):
+    wizard = maintain_wizard(latest="1.6.0")
+    page = wizard.pages[0]
+    pump(wizard, lambda: wizard.setup.latest_version == "1.6.0")
+    assert page.radios["update"].cget("state") == "disabled" and page.choice.get() == "repair"
+    wizard.go_next()
+    assert wizard.setup.mode == "repair"
+    pump(wizard, lambda: wizard.index == 2, timeout=30)
+    assert wizard.setup.install_ok
+
+
+def test_uninstall_flow_in_dry_run(maintain_wizard):
+    wizard = maintain_wizard()
+    wizard.pages[0].choice.set("uninstall")
+    wizard.go_next()
+    assert [p.title for p in wizard.pages] == ["Pilih tindakan", "Hapus", "Selesai"]
+    assert wizard.next_button.cget("text") == "Hapus"
+    wizard.pages[1].data.set(True)
+    wizard.go_next()
+    assert wizard.setup.removal.data is True and wizard.setup.removal.models is False
+    pump(wizard, lambda: wizard.pages[2].done)
+    assert wizard.next_button.cget("text") == "Tutup" and wizard.setup.removal_problems == []
+
+
+def test_going_back_and_choosing_again_rebuilds_the_steps(maintain_wizard):
+    wizard = maintain_wizard()
+    wizard.pages[0].choice.set("uninstall")
+    wizard.go_next()
+    wizard.go_back()
+    wizard.pages[0].choice.set("repair")
+    wizard.go_next()
+    assert [p.title for p in wizard.pages] == ["Pilih tindakan", "Unduh dan pasang", "Selesai"]
+    assert len(wizard.steps) == 3
+
+
+def test_dialogs_are_in_indonesian(make_wizard):
+    from miku_setup.pages.base import dialog
+
+    wizard = make_wizard()
+    seen = {}
+
+    def answer():
+        window = wizard.winfo_children()[-1]
+        buttons = [w for w in window.winfo_children()[-1].winfo_children()]
+        seen["labels"] = {b.cget("text") for b in buttons}
+        next(b for b in buttons if b.cget("text") == "Keluar").invoke()
+
+    wizard.after(300, answer)
+    assert dialog(wizard, "Keluar dari Setup?", "MikuVision belum dipasang.", ("Keluar", "Kembali")) == 0
+    assert seen["labels"] == {"Keluar", "Kembali"}
