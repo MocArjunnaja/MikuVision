@@ -6,6 +6,34 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-10-31): shortcut di Windows memberi tahu bila kombinasinya sudah dipakai
+
+Dari daftar cek Windows ([`docs/ROADMAP.md`](docs/ROADMAP.md) bagian 2): baris "Shortcut `Ctrl+Shift+M` (T1)" gagal di kriteria "pesan jelas bila kombinasi sudah dipakai aplikasi lain". Deteksi tekan sendiri lulus (6/6 saat Miku diam, 63–66 ms; `--trigger` 342–410 ms).
+
+### Diperbaiki
+- Windows: sebelum memasang hook `keyboard`, `KeyboardHotkey` mencoba `RegisterHotKey` lalu langsung `UnregisterHotKey` (ctypes, tetap library standar untuk `--trigger`). Bila gagal dengan `ERROR_HOTKEY_ALREADY_REGISTERED` (1409), Miku menampilkan pesan yang sama dengan Linux, "Shortcut Ctrl+Shift+M tidak dipasang: sudah dipakai aplikasi lain…", dan jalan tanpa shortcut. Sebelumnya Miku mengaku shortcut aktif, lalu satu tekan menjalankan Miku dan aplikasi lain sekaligus.
+  - Kombinasinya tidak dipegang Miku. Tekan tetap dideteksi hook `keyboard` seperti sebelumnya, jadi shortcut di dalam aplikasi tidak ditelan.
+  - Error `RegisterHotKey` lain bukan bukti bentrok: diabaikan, hook tetap dipasang.
+  - Mengganti `keyboard` seluruhnya dengan `RegisterHotKey` + message loop tidak dipilih. Kombinasinya akan ditelan dari semua aplikasi, dan deteksi tekan yang baru lulus di daftar cek harus diuji ulang.
+
+### Pengujian
+- `tests/test_hotkey.py` (+6 test, user32 palsu): kombinasi yang sudah dipakai menghasilkan pesan tanpa memasang hook, pengecekan melepas kombinasinya lagi, error lain tetap memasang hook, kode virtual-key angka dan F1/F24, pesan `ListenTriggers` di Windows. `conftest.py` menolak panggilan `RegisterHotKey` sungguhan dari test.
+- Manual di Windows 11 (31 Okt), dengan proses pembantu yang memegang `Ctrl+Shift+M` lewat `RegisterHotKey`:
+  - Pembantu jalan dulu, lalu `python miku.py`: setelah sapaan muncul `[Shortcut] Shortcut Ctrl+Shift+M tidak dipasang: sudah dipakai aplikasi lain. …`, dan petunjuk "HOW TO USE" hanya menyebut maskot.
+  - Tanpa pembantu: "Shortcut Ctrl+Shift+M: mulai bicara dari aplikasi mana pun."
+  - Miku jalan dulu, lalu pembantu: pembantu berhasil mendaftar (pengecekan tidak memegang kombinasinya), dan satu tekan lewat `keybd_event` sampai ke keduanya.
+
+### Dokumentasi
+- README Troubleshooting: shortcut di dalam aplikasi (misalnya `Ctrl+Shift+M` di Chrome) tidak bisa dideteksi, dan cara mengganti `WAKE_HOTKEY`.
+
+### Keterbatasan diketahui
+- Hanya bentrok saat Miku mulai yang terdeteksi. Aplikasi yang mendaftarkan kombinasi yang sama setelah itu tidak ketahuan, dan satu tekan menjalankan keduanya.
+- Shortcut di dalam aplikasi tidak lewat `RegisterHotKey`: di Chrome, `Ctrl+Shift+M` tetap membuka menu profil sekaligus membuat Miku mendengarkan.
+- Saran cadangan di pesan ("pasang `python miku.py --trigger` sebagai shortcut di pengaturan keyboard desktop") ditulis untuk Linux. Windows tidak punya pengaturan seperti itu.
+- Tekan saat Miku sedang memproses atau bicara tetap dibuang tanpa tanda, seperti sejak T1.
+
+---
+
 ## Belum dirilis (2026-10-31): "simpan ini sebagai skill" (PLAN_SKILLS S2)
 
 Rencana: S2 di [`docs/PLAN_SKILLS.md`](docs/PLAN_SKILLS.md). Keputusan 2 dari user: Miku boleh menyusun skill dari percakapan, dengan konfirmasi.
