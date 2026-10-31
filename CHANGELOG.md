@@ -6,6 +6,29 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-10-31): opsi installer untuk MikuVision Setup (PLAN_INSTALLER I1)
+
+Rencana: I1 di [`docs/PLAN_INSTALLER.md`](docs/PLAN_INSTALLER.md). Semua opsi bersifat tambahan; `install.bat` tanpa opsi berperilaku sama seperti sebelumnya.
+
+### Ditambahkan
+- `install.ps1 -Progress`: selain log biasa, satu baris `##MIKU {json}` per kejadian di stdout (`step` dengan nomor dan total langkah, `warn`, `error`, `done`), untuk wizard yang menjalankan installer tanpa jendela konsol. Jejak stack dan baris penutup error tidak dipancarkan, jadi `error` terakhir selalu penyebab kegagalannya.
+- `-ModelDir <folder>`: model Ollama di `<folder>\ollama` dan cache Hugging Face di `<folder>\huggingface`. `OLLAMA_MODELS` dan `HF_HOME` diatur sebagai variabel user sebelum Ollama dan Whisper dipakai; Ollama yang sedang jalan dimatikan lalu dinyalakan ulang, karena Ollama hanya membaca `OLLAMA_MODELS` saat start.
+- `-WithVision`: `ollama pull` model visi dari `VISION_MODEL` di `config.py`, sebagai langkah tersendiri.
+- `-RvcModel <pth> -RvcIndex <index>`: menyalin model RVC ke `models\miku_default_rvc\`, lalu `rvc-python` ikut dipasang. Index disalin dengan nama tetap yang dibaca `config.py`.
+- `-StartMenu`: shortcut juga di Start Menu (`Programs\MikuVision\MikuVision.lnk`). Berlaku walau `-SkipShortcut` (yang hanya melewati shortcut desktop).
+- Cadangan Ollama tanpa winget (Windows LTSC, sebagian laptop kantor): `OllamaSetup.exe` resmi (±1,7 GB) diunduh ke `.tools\`, tanda tangan digitalnya dicek (`Valid`, `CN=Ollama Inc.`), lalu dipasang diam-diam per-user (`/VERYSILENT`, Inno Setup).
+- Kode keluar: `0` selesai, `1` gagal yang sudah dijelaskan, `2` error tak terduga (sebelumnya keduanya `1`).
+
+### Diperbaiki
+- Driver NVIDIA 621 menulis `CUDA UMD Version: 13.5` di header `nvidia-smi`, sehingga installer melapor "Versi CUDA dari nvidia-smi tidak terbaca" (tetap memakai cu128, jadi hasilnya benar). Kedua format sekarang terbaca.
+- Instalasi pertama di Windows: uv gagal me-rename file yang baru diekstrak di cache karena masih dipindai antivirus (`Access is denied. (os error 5)`). Installer melaporkannya sebagai "fairseq butuh Visual Studio Build Tools" lalu lanjut tanpa RVC, padahal Build Tools sudah ada: perintah yang sama berhasil saat installer dijalankan ulang. Sekarang `uv pip install` dicoba sekali lagi bila errornya file terkunci, dan pesannya menyebut penyebab yang benar.
+
+### Diubah
+- Langkah instalasi disusun di `Get-InstallSteps` (total langkah untuk `-Progress`); setiap fungsi langkah memanggil `Write-Step` tepat sekali. Deteksi build PyTorch dicatat di bawah judul langkah PyTorch, bukan di atasnya. `install.ps1` bisa di-source oleh test tanpa menjalankan instalasi.
+
+### Pengujian
+- `tests/test_install_ps1.py` (27 test, Windows PowerShell 5.1 dan PowerShell 7): parsing script, file tetap ASCII (PowerShell 5.1 membaca script tanpa BOM sebagai ANSI), `-SelfCheck` memancarkan tiga baris `##MIKU` JSON yang valid dengan judul berhuruf Jepang, baris mesin hanya muncul dengan `-Progress`, daftar langkah per kombinasi opsi, satu `Write-Step` per langkah, penyalinan dan penolakan file RVC, `-ModelDir` (variabel user diganti pencatat, tidak diubah sungguhan), dua format header `nvidia-smi`, dan deteksi file terkunci dari potongan log nyata. Dua mutasi (hapus `Write-Step` dari satu langkah; kembalikan regex CUDA lama) masing-masing membuat test gagal.
+
 ## Belum dirilis (2026-10-31): "simpan ini sebagai skill" (PLAN_SKILLS S2)
 
 Rencana: S2 di [`docs/PLAN_SKILLS.md`](docs/PLAN_SKILLS.md). Keputusan 2 dari user: Miku boleh menyusun skill dari percakapan, dengan konfirmasi.
