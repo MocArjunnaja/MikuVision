@@ -26,19 +26,20 @@ Rencana: T1 di [`docs/PLAN_VISION_AGENT.md`](docs/PLAN_VISION_AGENT.md).
 - GUI: tekan sekali untuk mulai merekam, sekali lagi untuk selesai, karena tombol GUI berupa "tahan untuk bicara".
   - Callback shortcut hanya mengisi antrean pesan; widget Tk tetap diubah di main thread.
   - Status shortcut tampil di chat dan tercatat di `gui.log`.
-- Grab dan socket dilepas saat Miku keluar: Ctrl+C, menu maskot "Exit Miku", atau tombol ✕ di GUI.
+- Grab dan socket dilepas saat Miku keluar: Ctrl+C, menu maskot "Exit Miku", atau tombol ✕ di GUI. Menutup Miku tepat setelah `--trigger` tidak menggantung: koneksi yang membangunkan listener berjalan di thread sendiri.
 
 ### Pengujian
-- `tests/test_hotkey.py` (34 test):
+- `tests/test_hotkey.py` (35 test):
   - `parse_combo`;
   - backend X11 dengan Display palsu: 4 variasi grab, `BadAccess` melepas semua grab, Wayland dan tanpa DISPLAY tidak menyentuh X11;
   - backend Windows dengan `keyboard` palsu;
-  - `--trigger` lewat socket sungguhan: kunci salah ditolak, pesan lain diabaikan, error di callback tidak mematikan listener, socket basi diganti, Miku kedua ditolak, kunci ditulis byte demi byte;
+  - `--trigger` lewat socket sungguhan: kunci salah ditolak, pesan lain diabaikan, error di callback tidak mematikan listener, `stop()` tepat setelah satu pemicu tidak menggantung, socket basi diganti, Miku kedua ditolak, kunci ditulis byte demi byte;
   - debounce;
   - mode suara: shortcut tanpa sapaan, seret maskot tetap disapa, cleanup melepas shortcut;
   - GUI: callback hanya mengisi antrean, tekan-tekan memulai dan menghentikan rekaman.
   - `tests/conftest.py` melarang koneksi X11 sungguhan dan socket milik Miku yang sedang jalan.
-- `pytest`: 359 lulus; di Python sistem seperti CI 353 lulus, 6 dilewati.
+- `pytest`: 360 lulus; di Python sistem seperti CI 354 lulus, 6 dilewati.
+- `stop()` tepat setelah satu pemicu sempat menggantung (1 dari 10 putaran suite). Setelah diperbaiki: suite penuh 10/10 dan `test_hotkey.py` 30/30 tanpa hang; 200× pemicu lalu `stop()`: 200/200 diterima, `stop()` terlama 1 ms.
 - Uji sungguhan di Linux Mint (Cinnamon, X11), shortcut ditekan lewat `xdotool`:
 
   | Uji | Hasil |

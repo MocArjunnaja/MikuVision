@@ -238,6 +238,22 @@ def test_trigger_callback_error_does_not_kill_the_listener(listener):
     assert time.monotonic() - started < 2
 
 
+def test_stop_right_after_a_trigger_does_not_hang(listener):
+    """stop() tepat setelah satu pemicu: thread layanan sudah keluar sebelum accept() berikutnya."""
+    from multiprocessing.connection import Client
+
+    item = listener.start()
+    item._stop.set()
+    address, key_path = trigger_paths(listener.dir)
+    Client(address, authkey=key_path.read_bytes()).close()  # thread melihat _stop lalu keluar
+    item._thread.join(2.0)
+    assert not item._thread.is_alive()
+
+    started = time.monotonic()
+    item.stop()
+    assert time.monotonic() - started < 3
+
+
 def test_trigger_ignores_other_messages(listener):
     from multiprocessing.connection import Client
 

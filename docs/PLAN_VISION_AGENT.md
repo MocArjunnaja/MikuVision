@@ -122,7 +122,7 @@ Rekomendasi awal: coba A dulu. Kalau tool calling-nya turun, pakai B.
 - `miku.py --trigger`: 0,2–0,26 s, karena `core/hotkey.py` dimuat tanpa config.py dan package core.
 - Instance kedua mendapat pesan "sudah dipakai aplikasi lain".
 - Tidak ada grab, socket, atau model di VRAM yang tertinggal setelah keluar.
-- `pytest` 359 lulus.
+- `pytest` 360 lulus.
 
 Beda dari rancangan di bawah:
 - Shortcut di maskot langsung merekam tanpa sapaan 「はい、何でしょうか？」. Sapaan butuh ±1–2 s TTS + RVC, sehingga target ≤ 200 ms tidak tercapai dan awal ucapan user terpotong. Menyeret maskot tetap disapa.

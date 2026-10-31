@@ -314,8 +314,6 @@ class TriggerListener:
         return None
 
     def _serve(self):
-        # Thread ini tidak boleh mati sebelum stop(): stop() membangunkan accept() dengan satu
-        # koneksi, dan tanpa thread ini koneksi itu menunggu jawaban selamanya
         while not self._stop.is_set():
             try:
                 conn = self._listener.accept()
@@ -337,17 +335,22 @@ class TriggerListener:
                 except Exception as e:
                     print(f"[Trigger] Error: {e}")
 
-    def stop(self):
-        if self._listener is None:
-            return
+    def _wake(self):
         from multiprocessing.connection import Client
 
-        self._stop.set()
         try:
-            # accept() tidak bisa diinterupsi dari thread lain: bangunkan dengan satu koneksi
             Client(self._address, authkey=self._key).close()
         except Exception:
             pass
+
+    def stop(self):
+        if self._listener is None:
+            return
+        self._stop.set()
+        # accept() tidak bisa diinterupsi dari thread lain: bangunkan dengan satu koneksi, di thread
+        # sendiri. Bila thread layanan sudah keluar (stop() tepat setelah satu pemicu), koneksi itu
+        # menunggu jawaban autentikasi sampai listener ditutup di bawah, bukan menahan stop()
+        threading.Thread(target=self._wake, name="miku-trigger-wake", daemon=True).start()
         if self._thread:
             self._thread.join(timeout=2.0)
             self._thread = None
