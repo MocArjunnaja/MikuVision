@@ -15,6 +15,10 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
   - Konfirmasi dan `--yes` tetap sama: `sudo` tidak pernah dijalankan tanpa persetujuan.
 - `install.sh` bisa di-source tanpa menjalankan instalasi (untuk test).
 
+### Dokumentasi
+- `docs/ROADMAP.md`: urutan kerja berikutnya untuk Windows dan Linux, daftar cek di Windows (fitur sejak v1.3.0 yang belum pernah dijalankan di Windows), dan keputusan yang dibutuhkan dari user.
+- `PLAN_VISION_AGENT.md`: rencana rinci T1 (shortcut keyboard untuk mulai bicara): desain per OS, test, dan kriteria selesai.
+
 ### Pengujian
 - `tests/test_install_sh.py` (26 test): deteksi dari 11 file `os-release` palsu, cadangan `command -v`, pemetaan nama, dan alur `check_system` dengan `sudo` palsu. Total `pytest` 325 lulus; Python sistem 320 lulus, 5 dilewati.
 - Installer asli dijalankan sampai cek sistem pertama untuk memastikan `main` tetap jalan saat dipanggil langsung.

@@ -5,7 +5,7 @@
 **Status:**
 - Fase 0 Windows selesai (25 Okt 2026): [`experiments/vision_phase0/RESULTS.md`](../experiments/vision_phase0/RESULTS.md).
 - Fase 0 Linux selesai (31 Okt 2026): [`experiments/vision_linux/RESULTS.md`](../experiments/vision_linux/RESULTS.md). AT-SPI2 menggantikan UI Automation, `xdotool` menggerakkan mouse dan keyboard, dan shortcut global lewat XGrabKey sudah teruji.
-- Berikutnya: **T1** (shortcut keyboard untuk mulai bicara), lalu Fase 1 (hanya membaca layar).
+- Berikutnya: **T1** (shortcut keyboard untuk mulai bicara, rencana rinci di bagian 5), lalu Fase 1 (hanya membaca layar). Urutan semua rencana: [`ROADMAP.md`](ROADMAP.md).
 
 ---
 
@@ -113,9 +113,39 @@ Rekomendasi awal: coba A dulu. Kalau tool calling-nya turun, pakai B.
 ### Fase 0 Linux (selesai)
 - AT-SPI2 pada 5 jendela, Qwen-VL memilih elemen dan membaca layar, percobaan agent mouse/keyboard di Kalkulator dan Xed, shortcut global XGrabKey. Angka di [`experiments/vision_linux/RESULTS.md`](../experiments/vision_linux/RESULTS.md).
 
-### T1: Shortcut keyboard untuk mulai bicara
-- `core/hotkey.py`: XGrabKey (Linux X11) dan `keyboard` (Windows), plus `miku.py --trigger` sebagai cadangan.
-- Dipakai di mode suara (maskot) dan GUI. Tidak bergantung pada fase visi, jadi bisa dikerjakan lebih dulu.
+### T1: Shortcut keyboard untuk mulai bicara (berikutnya, ±1 hari)
+Tidak bergantung pada fase visi, jadi dikerjakan lebih dulu. Hasilnya: tekan `Ctrl+Shift+M` dari aplikasi mana pun, lalu Miku mendengarkan, sama seperti menyeret maskot.
+
+**Desain**
+
+| Bagian | Isi |
+|---|---|
+| `core/hotkey.py` | `GlobalHotkey(combo, on_press)` dengan `start()`/`stop()`, plus `parse_combo("ctrl+shift+m")` |
+| Backend Linux X11 | XGrabKey pada root window lewat `python-xlib` (sudah terpasang bersama pyautogui). Koneksi Display sendiri di thread terpisah. Grab 4 variasi NumLock/CapsLock. `BadAccess` (kombinasi sudah dipakai aplikasi lain) → pesan jelas, Miku tetap jalan tanpa shortcut |
+| Backend Windows | `keyboard.add_hotkey` (sudah dependency). Bila hook bermasalah, ganti ke `RegisterHotKey` lewat ctypes |
+| Wayland / tidak tersedia | Tanpa shortcut, dengan peringatan, lalu pakai cadangan di bawah |
+| Cadangan `python miku.py --trigger` | Mengirim "dengar" ke Miku yang sedang jalan lewat `multiprocessing.connection` (Unix socket di Linux, named pipe di Windows, dengan authkey). User memasangnya sebagai shortcut di pengaturan keyboard desktop; jalan juga di Wayland |
+| Mode suara (`miku.py`) | Shortcut → `_interaction_event.set()`, jalur yang sama dengan menyeret maskot. Maskot berganti ekspresi "mendengarkan" |
+| GUI (`gui.py`) | Shortcut → `message_queue` (bukan memanggil Tk dari thread lain, lihat crash Tk 9). Tekan pertama mulai merekam, tekan kedua selesai, karena tombol GUI berupa "tahan untuk bicara" |
+| Config | `WAKE_HOTKEY = "ctrl+shift+m"` (sudah ada, belum dipakai), `HOTKEY_ENABLED = True` |
+| Pengaman | Diabaikan saat Miku sedang memproses atau bicara; jeda 0,5 s antar-tekan; grab dilepas saat keluar, termasuk lewat Ctrl+C atau menu maskot |
+
+**Test**
+- Unit, tanpa grab sungguhan (dijaga conftest seperti `_run`/`_spawn`):
+  - `parse_combo` (modifier, huruf, kombinasi tidak valid);
+  - backend X11 dengan Display palsu: 4 variasi grab, `BadAccess` → pesan, `stop()` melepas grab;
+  - backend Windows dengan `keyboard` palsu;
+  - `--trigger` bolak-balik lewat `Listener` di thread;
+  - mode suara: callback shortcut memasang event;
+  - GUI: callback shortcut hanya mengisi `message_queue`.
+- Manual Linux: `python miku.py`, tekan shortcut 10×, ukur jeda sampai mulai merekam. Jalankan dua instance untuk melihat pesan `BadAccess`. Uji `--trigger` dari shortcut Cinnamon.
+- Manual Windows: sama, di daftar cek Windows ([`ROADMAP.md`](ROADMAP.md)).
+
+**Selesai bila**
+- 10/10 tekan memicu dengar;
+- jeda tekan → mulai merekam ≤ 200 ms;
+- tidak ada grab yang tertinggal setelah keluar;
+- `pytest` hijau di CI Ubuntu dan Windows.
 
 ### Fase 1: Miku bisa "membaca" layar (hanya baca)
 - Tool `describe_screen()` dan `find_on_screen(query)` → ringkasan dan daftar elemen yang cocok.

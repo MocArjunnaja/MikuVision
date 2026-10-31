@@ -2,7 +2,7 @@
 
 **Tujuan:** MikuVision jalan penuh di Linux dengan fitur setara Windows: suara dua arah, LLM lokal, aksi di komputer (buka/tutup aplikasi, volume, dokumen, pesan), dan maskot desktop. Windows tetap didukung dari kode yang sama.
 
-**Status:** Audit, Fase L0, Fase L1, dan perbaikan urutan muat VRAM selesai 29 Okt 2026 (bagian 2.5); Fase L2 dan L3 selesai 31 Okt 2026 (bagian 2.6 dan 2.7). Berikutnya: Fase L4 (benchmark). Urutan yang disarankan: L0 → L4 di dokumen ini, lalu agent visi Fase 1 ([`PLAN_VISION_AGENT.md`](PLAN_VISION_AGENT.md)) dengan backend Linux.
+**Status:** Audit, Fase L0, Fase L1, dan perbaikan urutan muat VRAM selesai 29 Okt 2026 (bagian 2.5); Fase L2 dan L3 selesai 31 Okt 2026 (bagian 2.6 dan 2.7); installer untuk dnf/pacman/zypper (L5 butir 1) juga 31 Okt. Berikutnya: Fase L4 (benchmark, perlu angka Windows juga). Urutan semua rencana, termasuk daftar cek di Windows: [`ROADMAP.md`](ROADMAP.md).
 
 ---
 
