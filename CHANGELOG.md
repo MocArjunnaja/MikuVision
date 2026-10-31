@@ -6,7 +6,33 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
-## Belum dirilis (2026-10-31): skill bernilai tetap selalu dijalankan, dan "X lalu Y" diselesaikan
+## v1.5.0 (2026-10-31): ringkasan rilis
+
+Maskot transparan di Linux, buka aplikasi apa pun, skill buatan user dan "simpan ini sebagai skill", shortcut `Ctrl+Shift+M`, Miku membaca layar, installer untuk lebih banyak distro dan opsi baru untuk installer Windows. Kode Windows yang berubah sejak v1.3.0 (selama ini hanya dites di CI) kini sudah dicoba langsung di Windows. Rinciannya ada di entri v1.5.0 di bawah, satu per bagian.
+
+| PR | Isi |
+|---|---|
+| [#22](https://github.com/MocArjunnaja/MikuVision/pull/22) | Maskot transparan di Linux (L3) |
+| [#23](https://github.com/MocArjunnaja/MikuVision/pull/23) | Buka aplikasi apa pun dari menu sistem, dan Miku mengingatnya |
+| [#24](https://github.com/MocArjunnaja/MikuVision/pull/24) | Skill buatan user (S1); spike agent visi di Linux |
+| [#25](https://github.com/MocArjunnaja/MikuVision/pull/25) | Installer untuk Fedora, Arch, dan openSUSE (L5) |
+| [#26](https://github.com/MocArjunnaja/MikuVision/pull/26) | Shortcut `Ctrl+Shift+M` dan `miku.py --trigger` (T1) |
+| [#27](https://github.com/MocArjunnaja/MikuVision/pull/27) | Miku membaca layar (agent visi Fase 1) |
+| [#28](https://github.com/MocArjunnaja/MikuVision/pull/28) | "Simpan ini sebagai skill" (S2) |
+| [#29](https://github.com/MocArjunnaja/MikuVision/pull/29), [#21](https://github.com/MocArjunnaja/MikuVision/pull/21) | README: langkah Linux, lalu diringkas (381 → 174 baris); rencana MikuVision Setup |
+| [#30](https://github.com/MocArjunnaja/MikuVision/pull/30) | Opsi baru `install.ps1` untuk installer berantarmuka (I1); dua perbaikan installer Windows |
+| [#31](https://github.com/MocArjunnaja/MikuVision/pull/31) | Windows: pesan bila shortcut sudah dipakai aplikasi lain |
+| [#32](https://github.com/MocArjunnaja/MikuVision/pull/32), [#33](https://github.com/MocArjunnaja/MikuVision/pull/33) | Skill menyimpan tugas yang baru selesai; skill bernilai tetap selalu dijalankan; "X lalu Y" diselesaikan |
+
+**Daftar cek Windows** ([`docs/ROADMAP.md`](docs/ROADMAP.md) bagian 2; Windows 11, RTX 4050, skala layar 125%): install ulang, pytest, volume/mute/media, buka/tutup aplikasi, folder/dokumen/WhatsApp, maskot, buka aplikasi apa pun + cache, dan shortcut lulus. Urutan muat VRAM dan membaca layar lulus dengan catatan waktu. Baris skill diterima untuk rilis ini dengan keterbatasan di bawah. 477 test lulus di Ubuntu dan Windows.
+
+**Keterbatasan yang diketahui**
+- Permintaan berurutan seperti "kecilkan volume ke 20 lalu putar lofi di youtube" masih hanya menjalankan bagian pertama di ±1 dari 3 percobaan (qwen3:4b), walau sudah diminta ulang. Skill yang disimpan sesudahnya ikut hanya berisi bagian itu; pratinjaunya memperlihatkan isinya sebelum disimpan.
+- Membaca layar di Windows: pemuatan model visi pertama ±30 s, sesudahnya ±13 s. "Tombol apa saja di jendela ini?" baru ada di Linux.
+- Bagian suara (bicara ke mikrofon) belum diuji oleh manusia di Windows untuk rilis ini; shortcut, maskot, dan mode teks diuji dengan input yang disimulasikan.
+- Linux tetap eksperimental: maskot, shortcut, dan klik butuh sesi X11; Fedora, Arch, dan openSUSE baru didukung installer, belum dicoba langsung.
+
+## v1.5.0 (2026-10-31): skill bernilai tetap selalu dijalankan, dan "X lalu Y" diselesaikan
 
 Dari uji ulang daftar cek Windows ([`docs/ROADMAP.md`](docs/ROADMAP.md) bagian 2) di `main` setelah #32: penyimpanan skill sudah benar 3/3, tetapi baris "Skill buatan user" masih gagal karena dua perilaku qwen3:4b. Di giliran "kecilkan volume ke 20 lalu putar lofi di youtube", model hanya mengatur volume (4/4 run). Saat "mode fokus dong", model menjawab "モード fokus に切り替えますね！" tanpa tool call (2/3 run).
 
@@ -40,7 +66,7 @@ Dari uji ulang daftar cek Windows ([`docs/ROADMAP.md`](docs/ROADMAP.md) bagian 2
 - Giliran tugas berurutan masih kadang hanya menjalankan bagian pertama (±1 dari 3 di urutan daftar cek). Skill yang disimpan sesudahnya setia pada yang berhasil, dan pratinjau `SKILL.md` memperlihatkannya sebelum disimpan.
 - Bila model tidak memanggil tool, langkah skill bernilai tetap dijalankan dengan nilai yang tersimpan, termasuk `query`; variasi yang hanya diucapkan ("mode fokus tapi jazz") dihormati hanya bila model sendiri memanggil tool-nya.
 
-## Belum dirilis (2026-10-31): "simpan ini sebagai skill" menyimpan tugas yang baru selesai
+## v1.5.0 (2026-10-31): "simpan ini sebagai skill" menyimpan tugas yang baru selesai
 
 Perbaikan S2 setelah baris "Skill buatan user" di checklist Windows ([`docs/ROADMAP.md`](docs/ROADMAP.md) bagian 2) gagal. Masalahnya bukan khusus Windows.
 
@@ -107,7 +133,7 @@ Perbaikan S2 setelah baris "Skill buatan user" di checklist Windows ([`docs/ROAD
 
 ---
 
-## Belum dirilis (2026-10-31): shortcut di Windows memberi tahu bila kombinasinya sudah dipakai
+## v1.5.0 (2026-10-31): shortcut di Windows memberi tahu bila kombinasinya sudah dipakai
 
 Dari daftar cek Windows ([`docs/ROADMAP.md`](docs/ROADMAP.md) bagian 2): baris "Shortcut `Ctrl+Shift+M` (T1)" gagal di kriteria "pesan jelas bila kombinasi sudah dipakai aplikasi lain". Deteksi tekan sendiri lulus (6/6 saat Miku diam, 63–66 ms; `--trigger` 342–410 ms).
 
@@ -135,7 +161,7 @@ Dari daftar cek Windows ([`docs/ROADMAP.md`](docs/ROADMAP.md) bagian 2): baris "
 
 ---
 
-## Belum dirilis (2026-10-31): opsi installer untuk MikuVision Setup (PLAN_INSTALLER I1)
+## v1.5.0 (2026-10-31): opsi installer untuk MikuVision Setup (PLAN_INSTALLER I1)
 
 Rencana: I1 di [`docs/PLAN_INSTALLER.md`](docs/PLAN_INSTALLER.md). Semua opsi bersifat tambahan; `install.bat` tanpa opsi berperilaku sama seperti sebelumnya.
 
@@ -161,7 +187,7 @@ Rencana: I1 di [`docs/PLAN_INSTALLER.md`](docs/PLAN_INSTALLER.md). Semua opsi be
 
 ---
 
-## Belum dirilis (2026-10-31): "simpan ini sebagai skill" (PLAN_SKILLS S2)
+## v1.5.0 (2026-10-31): "simpan ini sebagai skill" (PLAN_SKILLS S2)
 
 Rencana: S2 di [`docs/PLAN_SKILLS.md`](docs/PLAN_SKILLS.md). Keputusan 2 dari user: Miku boleh menyusun skill dari percakapan, dengan konfirmasi.
 
@@ -225,7 +251,7 @@ Rencana: S2 di [`docs/PLAN_SKILLS.md`](docs/PLAN_SKILLS.md). Keputusan 2 dari us
 
 ---
 
-## Belum dirilis (2026-10-31): Miku membaca layar (agent visi Fase 1)
+## v1.5.0 (2026-10-31): Miku membaca layar (agent visi Fase 1)
 
 Rencana: Fase 1 di [`docs/PLAN_VISION_AGENT.md`](docs/PLAN_VISION_AGENT.md). Hanya melihat; Miku belum mengklik atau mengetik.
 
@@ -283,7 +309,7 @@ Rencana: Fase 1 di [`docs/PLAN_VISION_AGENT.md`](docs/PLAN_VISION_AGENT.md). Han
 
 ---
 
-## Belum dirilis (2026-10-31): shortcut keyboard untuk mulai bicara (T1)
+## v1.5.0 (2026-10-31): shortcut keyboard untuk mulai bicara (T1)
 
 Rencana: T1 di [`docs/PLAN_VISION_AGENT.md`](docs/PLAN_VISION_AGENT.md).
 
@@ -337,7 +363,7 @@ Rencana: T1 di [`docs/PLAN_VISION_AGENT.md`](docs/PLAN_VISION_AGENT.md).
 
 ---
 
-## Belum dirilis (2026-10-31): installer untuk Fedora, Arch, dan openSUSE
+## v1.5.0 (2026-10-31): installer untuk Fedora, Arch, dan openSUSE
 
 ### Diubah
 - `install.sh` memasang paket sistem lewat `apt`, `dnf`, `pacman`, atau `zypper`, tergantung distro (dibaca dari `ID`/`ID_LIKE` di `/etc/os-release`, cadangan `command -v`). Sebelumnya hanya `apt`; di distro lain installer menyebut nama paket Debian dan berhenti.
@@ -360,7 +386,7 @@ Rencana: T1 di [`docs/PLAN_VISION_AGENT.md`](docs/PLAN_VISION_AGENT.md).
 
 ---
 
-## Belum dirilis (2026-10-31): skill buatan user, dan spike agent visi di Linux
+## v1.5.0 (2026-10-31): skill buatan user, dan spike agent visi di Linux
 
 Lanjutan [`docs/PLAN_SKILLS.md`](docs/PLAN_SKILLS.md) fase S1, dan Fase 0 Linux dari [`docs/PLAN_VISION_AGENT.md`](docs/PLAN_VISION_AGENT.md).
 
@@ -401,7 +427,7 @@ Lanjutan [`docs/PLAN_SKILLS.md`](docs/PLAN_SKILLS.md) fase S1, dan Fase 0 Linux 
 
 ---
 
-## Belum dirilis (2026-10-31): buka aplikasi apa pun dari menu sistem, dan Miku mengingatnya
+## v1.5.0 (2026-10-31): buka aplikasi apa pun dari menu sistem, dan Miku mengingatnya
 
 Pemicunya sesi GUI: "libreOffice o haite kudasai" → "Aplikasi 'LibreOffice' tidak dikenali", karena hanya aplikasi di katalog `config.py` yang bisa dibuka.
 
@@ -435,7 +461,7 @@ Pemicunya sesi GUI: "libreOffice o haite kudasai" → "Aplikasi 'LibreOffice' ti
 - Bagian Windows (`Get-StartApps`, `shell:AppsFolder`) baru dites dengan mock, belum dijalankan di Windows.
 - Aplikasi GNOME tanpa nama Jepang di file menunya hanya ditemukan bila LLM mengirim nama Inggrisnya (8/8 pada uji di atas).
 
-## Belum dirilis (2026-10-31): maskot desktop di Linux (Fase L3)
+## v1.5.0 (2026-10-31): maskot desktop di Linux (Fase L3)
 
 ### Ditambahkan
 - `core/avatar_x11.py`: maskot `python miku.py` di Linux (X11) setara Windows, lewat python-xlib (sudah terpasang bersama pyautogui, tanpa dependency baru).
