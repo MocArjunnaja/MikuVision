@@ -350,9 +350,12 @@ DEFAULT_CHARACTER = "miku"
 
 
 # ============ System Control Config ============
+# Windows. Pencocokan sebagian mengambil kunci pertama yang cocok, jadi nama spesifik
+# ("brave") harus di atas kata umum ("browser"): "Brave web browser" -> Brave.
 ALLOWED_APPS = {
     "chrome": "start chrome",
     "google chrome": "start chrome",
+    "brave": "start brave",
     "browser": "start chrome",
     "firefox": "start firefox",
     "edge": "start msedge",
@@ -376,6 +379,52 @@ ALLOWED_APPS = {
     "excel": "start excel",
     "powerpoint": "start powerpnt",
 }
+
+# Linux. Nama aplikasi berbeda antar distro, jadi tiap alias punya beberapa kandidat
+# dan yang pertama terpasang dipakai. Kandidat: perintah (tanpa shell), "flatpak:<id>",
+# "default-browser" (browser default dari xdg-settings), atau URL web sebagai cadangan.
+_LINUX_TEXT_EDITORS = ["gnome-text-editor", "xed", "gedit", "kate", "mousepad", "pluma"]
+_LINUX_CALCULATORS = ["gnome-calculator", "kcalc", "galculator", "mate-calc", "flatpak:org.gnome.Calculator"]
+_LINUX_FILE_MANAGERS = ["nemo", "nautilus", "dolphin", "thunar", "caja", "pcmanfm"]
+_LINUX_SETTINGS = ["cinnamon-settings", "gnome-control-center", "systemsettings",
+                   "xfce4-settings-manager", "mate-control-center"]
+_LINUX_TERMINALS = ["x-terminal-emulator", "gnome-terminal", "konsole", "xfce4-terminal", "mate-terminal"]
+_LINUX_CHROME = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser",
+                 "flatpak:com.google.Chrome", "flatpak:org.chromium.Chromium"]
+_LINUX_VSCODE = ["code", "codium", "flatpak:com.visualstudio.code"]
+
+LINUX_APPS: Dict[str, List[str]] = {
+    "notepad": _LINUX_TEXT_EDITORS,
+    "text editor": _LINUX_TEXT_EDITORS,
+    "calculator": _LINUX_CALCULATORS,
+    "kalkulator": _LINUX_CALCULATORS,
+    "file explorer": _LINUX_FILE_MANAGERS,
+    "explorer": _LINUX_FILE_MANAGERS,
+    "file manager": _LINUX_FILE_MANAGERS,
+    "settings": _LINUX_SETTINGS,
+    "control panel": _LINUX_SETTINGS,
+    "terminal": _LINUX_TERMINALS,
+    "command prompt": _LINUX_TERMINALS,
+    "powershell": _LINUX_TERMINALS,
+    "browser": ["default-browser", "firefox"] + _LINUX_CHROME,
+    "chrome": _LINUX_CHROME,
+    "google chrome": _LINUX_CHROME,
+    "firefox": ["firefox", "flatpak:org.mozilla.firefox"],
+    "brave": ["brave-browser", "brave", "flatpak:com.brave.Browser"],
+    "edge": ["microsoft-edge", "microsoft-edge-stable", "flatpak:com.microsoft.Edge"],
+    "vscode": _LINUX_VSCODE,
+    "visual studio code": _LINUX_VSCODE,
+    "word": ["libreoffice --writer"],
+    "excel": ["libreoffice --calc"],
+    "powerpoint": ["libreoffice --impress"],
+    "spotify": ["spotify", "flatpak:com.spotify.Client", "https://open.spotify.com"],
+    "discord": ["discord", "flatpak:com.discordapp.Discord", "https://discord.com/app"],
+    "telegram": ["telegram-desktop", "Telegram", "flatpak:org.telegram.desktop", "https://web.telegram.org"],
+    # Tidak ada WhatsApp Desktop resmi untuk Linux
+    "whatsapp": ["https://web.whatsapp.com"],
+}
+# Kata umum: dipakai hanya bila tidak ada nama aplikasi spesifik di permintaan
+LINUX_GENERIC_APPS = {"browser", "text editor", "file manager", "terminal", "settings"}
 
 COMMON_WEBSITES = {
     "google": "https://www.google.com",

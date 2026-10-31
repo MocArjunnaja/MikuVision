@@ -1,10 +1,10 @@
-import os
 import json
 import urllib.parse
-from pathlib import Path
 from config import DATA_DIR
+from core import desktop
 from core.tools import registry
 import time
+import webbrowser
 
 # Tanpa DISPLAY (SSH, CI) Xlib melempar KeyError saat import; makro pesan lalu gagal dengan pesan biasa
 try:
@@ -23,10 +23,20 @@ except ImportError:
     print("[MacroTools] Warning: python-pptx not installed. PPT macros will fail.")
 
 # Definisikan Output direktori agar file buatan AI tersimpan rapi
-# Relatif ke home user, supaya jalan di laptop mana pun
-OUTPUT_DIR = Path.home() / "Desktop" / "Miku_Documents"
+# Relatif ke Desktop user, supaya jalan di laptop mana pun (di Linux namanya bisa diterjemahkan)
+OUTPUT_DIR = desktop.user_dir("desktop") / "Miku_Documents"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 CONTACTS_DB_PATH = DATA_DIR / "contacts_db.json"
+
+
+def _open_saved(filepath) -> str:
+    """Buka file yang sudah tersimpan. Gagal membuka bukan berarti gagal membuat,
+    jadi hasilnya catatan untuk pesan sukses, bukan "Gagal..." (LLM bisa membuat ulang)."""
+    try:
+        desktop.current.open_path(str(filepath))
+        return ""
+    except OSError as e:
+        return f" (tidak bisa dibuka otomatis: {e})"
 
 class MacroTools:
     """Kumpulan Makro (High-Level Actions) untuk MikuVision"""
@@ -67,9 +77,9 @@ class MacroTools:
             doc.save(str(filepath))
             
             # Otomatis buka file jika ingin ditunjukkan ke user
-            os.startfile(str(filepath))
-            
-            return f"Dokumen Word berhasil dibuat dan disimpan di {filepath}"
+            note = _open_saved(filepath)
+
+            return f"Dokumen Word berhasil dibuat dan disimpan di {filepath}{note}"
         except Exception as e:
             return f"Gagal membuat dokumen Word: {e}"
 
@@ -134,8 +144,8 @@ class MacroTools:
             if changes_made:
                 doc.save(str(filepath))
                 # Buka file secara native di foreground agar user tahu sudah di-update
-                os.startfile(str(filepath))
-                return f"Berhasil mengedit dokumen '{filename}'. Teks sudah di-update di background."
+                note = _open_saved(filepath)
+                return f"Berhasil mengedit dokumen '{filename}'. Teks sudah di-update di background.{note}"
             else:
                 return f"Gagal: target_text '{target_text}' tidak ditemukan di dalam dokumen. Pastikan Anda sudah memanggil read_word_document sebelumnya."
         
@@ -160,10 +170,10 @@ class MacroTools:
             
             filepath = OUTPUT_DIR / filename
             prs.save(str(filepath))
-            
-            os.startfile(str(filepath))
-            
-            return f"Presentasi PowerPoint berhasil dibuat dan disimpan di {filepath}"
+
+            note = _open_saved(filepath)
+
+            return f"Presentasi PowerPoint berhasil dibuat dan disimpan di {filepath}{note}"
         except Exception as e:
             return f"Gagal membuat presentasi PowerPoint: {e}"
 
@@ -204,13 +214,25 @@ class MacroTools:
                     contact_name, target_phone = matches[0]
                     print(f"[MacroTools] Ditemukan partial match: {contact_name} -> {target_phone}")
             
+            # Linux: tidak ada WhatsApp Desktop resmi, jadi lewat WhatsApp Web. Halaman web
+            # dimuat lebih lama dan tidak bisa diketik dengan aman, jadi Enter ditekan user.
+            if desktop.current.name != "windows":
+                if not target_phone:
+                    return (f"Gagal: '{contact_name}' tidak ada di contacts_db.json. Di Linux pesan ke grup "
+                            "atau kontak tanpa nomor belum didukung (WhatsApp Web).")
+                url = (f"https://web.whatsapp.com/send?phone={target_phone}"
+                       f"&text={urllib.parse.quote(message)}")
+                webbrowser.open(url)
+                return (f"Draf pesan WhatsApp untuk {contact_name} ({target_phone}) sudah dibuka di "
+                        "WhatsApp Web. Pesan belum terkirim: tekan Enter di browser untuk mengirim.")
+
             if target_phone:
                 # JALUR A: Kontak Personal (Menggunakan URI Scheme Canggih)
                 print(f"[MacroTools] Nomor ditemukan: {target_phone}. Membuka WA Desktop...")
                 text_encoded = urllib.parse.quote(message)
-                
+
                 uri = f"whatsapp://send?phone={target_phone}&text={text_encoded}"
-                os.startfile(uri)
+                desktop.current.open_path(uri)
                 
                 time.sleep(4) # Tunggu WA Desktop selesai memuat draft
                 pyautogui.press('enter')
@@ -223,7 +245,7 @@ class MacroTools:
                 print(f"[MacroTools] '{contact_name}' tidak ada di buku telepon. Asumsi Grup WA. Beralih ke UI Automation...")
                 
                 # Buka WA Desktop saja (ke halaman utama)
-                os.startfile("whatsapp://")
+                desktop.current.open_path("whatsapp://")
                 time.sleep(3) # Tunggu animasi WA Windows selesai
                 
                 # Gunakan shortcut pencarian WA
@@ -270,8 +292,11 @@ class MacroTools:
             # Format: tg://resolve?domain=USERNAME&text=PESAN
             uri = f"tg://resolve?domain={target_username}&text={text_encoded}"
             
+            if not desktop.current.has_uri_handler("tg"):
+                return "Gagal: Telegram Desktop belum terpasang (tidak ada aplikasi untuk tautan tg://)."
+
             print(f"[MacroTools] Membuka URL Telegram: {uri}")
-            os.startfile(uri)
+            desktop.current.open_path(uri)
             
             time.sleep(3) # Kasih waktu buka aplikasi dan loading chat room
             

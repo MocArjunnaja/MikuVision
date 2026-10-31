@@ -3,6 +3,7 @@ Test setup: stub dependency berat (audio, GUI, Windows API) agar logika inti
 bisa dites tanpa hardware dan tanpa Ollama.
 """
 
+import importlib
 import sys
 import types
 from pathlib import Path
@@ -34,18 +35,40 @@ for _name in [
 if isinstance(sys.modules["torch"], MagicMock):
     sys.modules["torch"].Tensor = type("Tensor", (), {})
 
+# Paket suara/GUI/Office: dipakai bila terpasang (venv aplikasi), di-stub bila tidak (CI dengan
+# paket minimal). Logika yang dites tidak bergantung pada isinya; sounddevice di Linux juga
+# butuh libportaudio2 dari sistem.
+for _name in [
+    "sounddevice", "soundfile", "faster_whisper", "webrtcvad", "noisereduce",
+    "melo", "melo.api", "customtkinter", "pygame", "docx", "pptx",
+]:
+    try:
+        importlib.import_module(_name)
+    except Exception:
+        sys.modules[_name] = MagicMock()
+
 
 import pytest  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
-def _no_real_windows(monkeypatch):
-    """Test tidak boleh menemukan atau menutup jendela sungguhan di desktop."""
-    from core import system_control
-    # Logika tutup-jendela Windows tetap dites di Linux, dengan jendela palsu
-    monkeypatch.setattr(system_control, "WINDOW_CLOSE_AVAILABLE", True)
-    monkeypatch.setattr(system_control, "_windows_by_pid", lambda pids: {})
-    monkeypatch.setattr(system_control, "_post_close", lambda hwnd: None)
+def _no_real_desktop(monkeypatch):
+    """Test tidak boleh menemukan/menutup jendela sungguhan, mengubah volume, atau membuka aplikasi.
+
+    Backend Windows dan Linux sama-sama dites di OS mana pun, dengan jendela palsu.
+    Perintah desktop Linux (wpctl, wmctrl, xdg-open, ...) gagal keras kecuali test menggantinya.
+    """
+    from core.desktop import linux, windows
+    for backend in (linux.LinuxDesktop, windows.WindowsDesktop):
+        monkeypatch.setattr(backend, "windows_by_pid", lambda self, pids: {})
+        monkeypatch.setattr(backend, "close_window", lambda self, window: None)
+        monkeypatch.setattr(backend, "can_close_windows", property(lambda self: True))
+
+    def refuse(*args, **kwargs):
+        raise AssertionError(f"Test menjalankan perintah desktop sungguhan: {args}")
+
+    for name in ("_run", "_spawn", "_copy_to_clipboard"):
+        monkeypatch.setattr(linux, name, refuse)
 
 
 @pytest.fixture(autouse=True)

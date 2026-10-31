@@ -1,13 +1,14 @@
 """
-System Control Module - Kontrol Windows OS
+System Control Module - aksi di komputer (Windows dan Linux)
 Integrated with Automation Layer untuk YouTube, Spotify, Browser
+
+Aksi yang berbeda per OS (volume, buka/tutup aplikasi, buka folder, media, mengetik)
+ada di core/desktop/; modul ini memegang logika bersama: konfirmasi, pelacakan PID,
+dan cara menutup aplikasi dengan sopan.
 """
 
-import subprocess
 import webbrowser
 import os
-import re
-import shutil
 import sys
 from typing import Optional, Tuple, Dict, Any, List
 
@@ -30,78 +31,13 @@ except (ImportError, NotImplementedError):  # pygetwindow di Linux: NotImplement
     if sys.platform == "win32":
         print("[SystemControl] Warning: Some Windows modules not available")
 
-# Tanpa EnumWindows + WM_CLOSE (pywin32), close_application akan memperlakukan aplikasi
-# berjendela sebagai proses tanpa jendela dan mematikannya; perubahan yang belum disimpan hilang.
-try:
-    import win32gui  # noqa: F401  (cek ketersediaan)
-    WINDOW_CLOSE_AVAILABLE = True
-except ImportError:
-    WINDOW_CLOSE_AVAILABLE = False
-
-from config import ALLOWED_APPS, COMMON_WEBSITES
+from config import COMMON_WEBSITES
+from . import desktop as desktop_backend
 from .tools import registry
 from .confirmation import ConfirmCallback, describe_action, requires_confirmation
 
-# Nama proses (tanpa .exe) yang tidak boleh dimatikan lewat close_application
-PROTECTED_PROCESSES = {
-    "system", "smss", "csrss", "wininit", "winlogon", "services", "lsass",
-    "svchost", "dwm", "explorer", "python", "pythonw", "ollama",
-}
-
-# Alias nama aplikasi -> nama proses (tanpa .exe)
-PROCESS_ALIASES = {
-    "google chrome": "chrome",
-    "browser": "chrome",
-    "edge": "msedge",
-    "microsoft edge": "msedge",
-    "word": "winword",
-    "powerpoint": "powerpnt",
-    "vscode": "code",
-    "visual studio code": "code",
-    "kalkulator": "calculatorapp",
-    "calculator": "calculatorapp",
-}
-
-# Skema URI minimal 2 karakter, jadi drive letter "C:" tidak dianggap URI
-URI_SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]+:")
-
 # Waktu tunggu proses menutup diri sebelum dipaksa kill
 CLOSE_TIMEOUT_SEC = 5
-
-WM_CLOSE = 0x0010
-
-
-def _process_key(app_name: str) -> str:
-    """Nama aplikasi -> nama proses tanpa .exe (setelah alias)."""
-    key = app_name.lower().strip()
-    key = PROCESS_ALIASES.get(key, key)
-    return key[:-4] if key.endswith(".exe") else key
-
-
-def _windows_by_pid(pids: set) -> Dict[int, list]:
-    """Jendela top-level yang terlihat milik proses-proses tersebut: {pid: [hwnd]}."""
-    try:
-        import win32gui
-        import win32process
-    except ImportError:
-        return {}
-
-    found: Dict[int, list] = {}
-
-    def collect(hwnd, _):
-        if win32gui.IsWindowVisible(hwnd):
-            _, pid = win32process.GetWindowThreadProcessId(hwnd)
-            if pid in pids:
-                found.setdefault(pid, []).append(hwnd)
-        return True
-
-    win32gui.EnumWindows(collect, None)
-    return found
-
-
-def _post_close(hwnd: int):
-    import win32gui
-    win32gui.PostMessage(hwnd, WM_CLOSE, 0, 0)
 
 try:
     from .automation_layer import AutomationManager
@@ -113,20 +49,28 @@ except ImportError:
 
 class SystemControl:
     """
-    Handles Windows system operations and automation.
+    Handles desktop operations and automation on Windows and Linux.
     """
-    
+
     def __init__(
         self,
         spotify_client_id: str = "",
         spotify_client_secret: str = "",
         confirm_callback: Optional[ConfirmCallback] = None,
+        desktop=None,
     ):
         # Tanpa callback, aksi berisiko selalu ditolak (fail closed)
         self.confirm_callback = confirm_callback
-        self._volume_interface = None
-        self._init_audio()
-        
+        # Backend OS ini; test memberi backend lain (misalnya WindowsDesktop di Linux)
+        self.desktop = desktop or desktop_backend.current
+        self.desktop.init_audio()
+        warning = self.desktop.session_warning()
+        if warning:
+            print(f"[SystemControl] Warning: {warning}")
+        missing = self.desktop.missing_tools()
+        if missing:
+            print(f"[SystemControl] Tool desktop belum terpasang: {', '.join(missing)}")
+
         # Initialize automation layer
         if AUTOMATION_AVAILABLE:
             self.automation = AutomationManager(
@@ -137,41 +81,15 @@ class SystemControl:
         else:
             self.automation = None
 
-        # Proses yang dibuka lewat open_application: key proses -> [(pid, create_time)].
+        # Proses yang dibuka lewat open_application: key aplikasi -> [(pid, create_time)].
         # create_time mencegah salah kill jika PID sudah dipakai ulang proses lain.
         self._opened_apps: Dict[str, List[Tuple[int, float]]] = {}
-    
-    def _init_audio(self):
-        """Initialize audio interface"""
-        if not WINDOWS_AVAILABLE:
-            return
-            
-        try:
-            import comtypes
-            comtypes.CoInitialize()
-        except:
-            pass
-            
-        try:
-            from pycaw.pycaw import AudioUtilities
-            devices = AudioUtilities.GetSpeakers()
-            self._volume_interface = devices.EndpointVolume
-            print("[SystemControl] Audio initialized successfully")
-        except Exception as e:
-            print(f"[SystemControl] Audio init failed: {e}")
-            self._volume_interface = None
-    
+
     @registry.register("Check current system volume level (0-100). Returns integer.")
     def get_volume(self) -> int:
         """Get current system volume (0-100)"""
-        if self._volume_interface:
-            try:
-                volume = self._volume_interface.GetMasterVolumeLevelScalar()
-                return int(volume * 100)
-            except Exception as e:
-                print(f"[SystemControl] Error getting volume: {e}")
-        return -1
-    
+        return self.desktop.get_volume()
+
     @registry.register("Set system volume. Pass an integer between 0 and 100.")
     def set_volume(self, level: int) -> Tuple[bool, str]:
         """Set system volume"""
@@ -180,89 +98,39 @@ class SystemControl:
             level = int(level)
         except (ValueError, TypeError):
             return False, f"Invalid volume level: {level}"
-        
+
         level = max(0, min(100, level))
-        
-        if self._volume_interface:
-            try:
-                self._volume_interface.SetMasterVolumeLevelScalar(level / 100.0, None)
-                return True, f"Volume diatur ke {level}%"
-            except Exception as e:
-                return False, f"Error setting volume: {e}"
-        
-        return False, "Audio interface not available"
-    
+        return self.desktop.set_volume(level)
+
     @registry.register("Mute or unmute system audio. True to mute, False to unmute.")
     def mute(self, mute: bool = True) -> Tuple[bool, str]:
         """Mute/unmute system audio"""
-        if not self._volume_interface:
-            return False, "Audio interface not available"
-        
-        try:
-            self._volume_interface.SetMute(mute, None)
-            status = "dimute" if mute else "di-unmute"
-            return True, f"Audio {status}"
-        except Exception as e:
-            return False, f"Error: {e}"
-    
+        return self.desktop.set_mute(mute)
+
     def is_muted(self) -> bool:
         """Check if system is muted"""
-        if not self._volume_interface:
-            return False
-        try:
-            return bool(self._volume_interface.GetMute())
-        except:
-            return False
-    
-    @registry.register("Open a Windows application like Notepad, Calculator, WhatsApp. "
+        return self.desktop.is_muted()
+
+    @registry.register("Open a desktop application like Notepad, Calculator, a web browser "
+                       "(Chrome, Brave, Firefox), VS Code, Spotify, WhatsApp. "
                        "To create a Word document with content, use create_word_document instead.")
     def open_application(self, app_name: str) -> Tuple[bool, str]:
-        """Open an application by name"""
-        app_lower = app_name.lower().strip()
-        
-        command = ALLOWED_APPS.get(app_lower)
-        
-        if not command:
-            for key, cmd in ALLOWED_APPS.items():
-                if app_lower in key or key in app_lower:
-                    command = cmd
-                    break
-        
-        if not command:
-            return False, f"Aplikasi '{app_name}' tidak dikenali"
-        
-        target = command[len("start "):].strip() if command.startswith("start ") else command
-        print(f"[SystemControl] Launching: {target}")
+        """Open an application by name (whitelist per OS, see config.py)"""
+        success, message, pid = self.desktop.launch(app_name)
+        if success and pid:
+            self._track_process(app_name, pid)
+        return success, message
 
-        # Tanpa shell=True. Command berasal dari whitelist ALLOWED_APPS.
-        try:
-            if URI_SCHEME.match(target):
-                os.startfile(target)
-                return True, f"Membuka {app_name}..."
-
-            resolved = shutil.which(target)
-            if resolved and resolved.lower().endswith(".exe"):
-                proc = subprocess.Popen(
-                    [resolved],
-                    # Aplikasi konsol (cmd, powershell) butuh jendela sendiri
-                    creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
-                )
-                self._track_process(app_name, proc.pid)
-                return True, f"Membuka {app_name} (PID {proc.pid})..."
-
-            # Tidak ada di PATH (chrome, msedge, winword: terdaftar di App Paths)
-            # atau script .cmd (VS Code): ShellExecute, sama seperti perintah `start`
-            os.startfile(resolved or target)
-            return True, f"Membuka {app_name}..."
-        except OSError as e:
-            return False, f"Gagal membuka {app_name}: {e}"
+    def _app_key(self, app_name: str) -> str:
+        """Kunci pelacakan PID: nama proses utama aplikasi, sama untuk buka dan tutup."""
+        return min(self.desktop.process_names(app_name))
 
     def _track_process(self, app_name: str, pid: int):
         try:
             created = psutil.Process(pid).create_time()
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             return
-        self._opened_apps.setdefault(_process_key(app_name), []).append((pid, created))
+        self._opened_apps.setdefault(self._app_key(app_name), []).append((pid, created))
 
     def _tracked_processes(self, key: str) -> list:
         """Proses hasil open_application yang masih hidup dan PID-nya belum dipakai ulang."""
@@ -276,22 +144,26 @@ class SystemControl:
                 continue
         return procs
 
-    @staticmethod
-    def _close_processes(procs: list) -> Tuple[int, int]:
+    def _close_processes(self, procs: list) -> Tuple[int, int]:
         """
         Tutup proses dan kembalikan (jumlah tertutup, jumlah jendela masih terbuka).
 
-        Proses berjendela dikirimi WM_CLOSE, sama seperti user menekan tombol X,
-        sehingga aplikasi sempat menawarkan simpan dan tidak pernah di-kill paksa.
-        Hanya proses tanpa jendela yang di-terminate lalu di-kill setelah timeout.
+        Proses berjendela dikirimi perintah tutup jendela (WM_CLOSE di Windows,
+        _NET_CLOSE_WINDOW di Linux), sama seperti user menekan tombol X, sehingga
+        aplikasi sempat menawarkan simpan dan tidak pernah di-kill paksa.
+        Proses tanpa jendela di-terminate lalu di-kill setelah timeout, kecuali bila
+        ada proses lain dari aplikasi yang sama yang berjendela: proses pembantu
+        (tab browser, renderer) ikut selesai saat jendela utamanya ditutup.
         """
-        windows = _windows_by_pid({proc.pid for proc in procs})
+        windows = self.desktop.windows_by_pid({proc.pid for proc in procs})
         signaled = []
         for proc in procs:
             try:
                 if proc.pid in windows:
-                    for hwnd in windows[proc.pid]:
-                        _post_close(hwnd)
+                    for window in windows[proc.pid]:
+                        self.desktop.close_window(window)
+                elif windows:
+                    continue
                 else:
                     proc.terminate()
                 signaled.append(proc)
@@ -315,24 +187,23 @@ class SystemControl:
     @registry.register("Close an application by name")
     def close_application(self, app_name: str) -> Tuple[bool, str]:
         """Close an application by exact process name (no substring match)"""
-        target = _process_key(app_name)
-
-        if not target:
+        if not app_name or not app_name.strip():
             return False, "Nama aplikasi kosong"
-        if target in PROTECTED_PROCESSES:
-            return False, f"Proses '{target}' dilindungi dan tidak boleh ditutup"
-        if not WINDOW_CLOSE_AVAILABLE:
+        names = self.desktop.process_names(app_name)
+        protected = sorted(names & self.desktop.protected_processes)
+        if protected:
+            return False, f"Proses '{protected[0]}' dilindungi dan tidak boleh ditutup"
+        # Tanpa daftar jendela, aplikasi berjendela akan dianggap proses tanpa jendela
+        # lalu dimatikan; perubahan yang belum disimpan bisa hilang.
+        if not self.desktop.can_close_windows:
             return False, (
                 f"Menutup aplikasi belum didukung di sistem ini; tutup {app_name} "
                 "lewat tombol X di jendelanya"
             )
 
-        procs = {proc.pid: proc for proc in self._tracked_processes(target)}
+        procs = {proc.pid: proc for proc in self._tracked_processes(self._app_key(app_name))}
         for proc in psutil.process_iter(['name']):
-            proc_name = (proc.info['name'] or "").lower()
-            if proc_name.endswith(".exe"):
-                proc_name = proc_name[:-4]
-            if proc_name == target:
+            if self.desktop.process_key(proc.info['name']) in names:
                 procs.setdefault(proc.pid, proc)
 
         if not procs:
@@ -347,52 +218,40 @@ class SystemControl:
         if closed:
             return True, f"Menutup {app_name} ({closed} proses)"
         return False, f"Gagal menutup {app_name}"
-            
-    @registry.register("Open a specific local folder or directory path in Windows Explorer. E.g. 'Desktop', 'Downloads', atau nama folder spesifik.")
+
+    @registry.register("Open a specific local folder or directory path in the file manager. E.g. 'Desktop', 'Downloads', atau nama folder spesifik.")
     def open_folder(self, folder_name_or_path: str) -> Tuple[bool, str]:
-        """Open a directory/folder using Windows Explorer"""
-        import os
-        
+        """Open a directory/folder in the file manager (Explorer, Nemo, ...)"""
         path = folder_name_or_path.strip()
-        
-        # Mapping nama umum
-        common_dirs = {
-            "desktop": os.path.join(os.path.expanduser("~"), "Desktop"),
-            "downloads": os.path.join(os.path.expanduser("~"), "Downloads"),
-            "documents": os.path.join(os.path.expanduser("~"), "Documents"),
-            "pictures": os.path.join(os.path.expanduser("~"), "Pictures"),
-            "music": os.path.join(os.path.expanduser("~"), "Music"),
-            "videos": os.path.join(os.path.expanduser("~"), "Videos"),
-            "kuliah": os.path.join(os.path.expanduser("~"), "Documents", "Kuliah") # Fallback dummy
-        }
-        
-        if path.lower() in common_dirs:
-            target = common_dirs[path.lower()]
-            os.makedirs(target, exist_ok=True)
-            os.startfile(target)
-            return True, f"Membuka folder {path}..."
-            
-        # Jika bukan absolut path, asumsikan mencari di Documents atau Desktop
-        if not os.path.isabs(path):
-            candidates = [
-                os.path.join(os.path.expanduser("~"), "Desktop", path),
-                os.path.join(os.path.expanduser("~"), "Documents", path)
-            ]
-            for c in candidates:
-                if os.path.exists(c) and os.path.isdir(c):
-                    os.startfile(c)
-                    return True, f"Membuka folder {path} di sistem..."
-                    
-        if not os.path.isdir(path):
-            return False, f"Folder '{path}' tidak ditemukan"
+
+        # Nama umum; di Linux nama foldernya bisa diterjemahkan, jadi tanya backend
+        common_dirs = {name: str(self.desktop.user_dir(name))
+                       for name in ("desktop", "downloads", "documents", "pictures", "music", "videos")}
+        common_dirs["kuliah"] = os.path.join(common_dirs["documents"], "Kuliah")  # Fallback dummy
 
         try:
-            # Argumen list tanpa shell: path dari LLM tidak bisa menyisipkan perintah
-            subprocess.Popen(["explorer", path])
+            if path.lower() in common_dirs:
+                target = common_dirs[path.lower()]
+                os.makedirs(target, exist_ok=True)
+                self.desktop.open_path(target)
+                return True, f"Membuka folder {path}..."
+
+            # Jika bukan absolut path, asumsikan mencari di Desktop atau Documents
+            if not os.path.isabs(path):
+                for c in (os.path.join(common_dirs["desktop"], path), os.path.join(common_dirs["documents"], path)):
+                    if os.path.isdir(c):
+                        self.desktop.open_path(c)
+                        return True, f"Membuka folder {path} di sistem..."
+
+            if not os.path.isdir(path):
+                return False, f"Folder '{path}' tidak ditemukan"
+
+            # Path dari LLM hanya diteruskan sebagai satu argumen, tanpa shell
+            self.desktop.open_path(path)
             return True, f"Membuka {path}..."
         except OSError as e:
             return False, f"Gagal membuka folder: {e}"
-    
+
     def list_running_apps(self) -> list:
         """Get list of running applications"""
         apps = []
@@ -416,7 +275,16 @@ class SystemControl:
         
         if url.lower() in COMMON_WEBSITES:
             url = COMMON_WEBSITES[url.lower()]
-        
+
+        # Nama tanpa titik ("brave") bukan alamat web: LLM kadang memakai tool ini untuk
+        # membuka aplikasi, dan "https://brave" hanya membuka halaman yang tidak ada
+        if not url.startswith(('http://', 'https://')) and "." not in url and url.lower() != "localhost":
+            success, message = self.open_application(url)
+            if success:
+                return success, message
+            return False, (f"'{url_or_name}' bukan alamat web dan bukan aplikasi yang dikenal; "
+                           "pakai alamat lengkap (misalnya contoh.com) atau google_search")
+
         if not url.startswith(('http://', 'https://')):
             url = 'https://' + url
         
@@ -544,23 +412,18 @@ class SystemControl:
 
     @registry.register(name="media_control", description="Mengontrol pemutaran media pada komputer (bisa Play/Pause/Jeda musik Spotify maupun video YouTube). Isi parameter `action_type` dengan: 'play', 'pause', 'next' (berikutnya), atau 'prev' (sebelumnya).")
     def media_control(self, action_type: str) -> Tuple[bool, str]:
-        """Controls system media playback like a multimedia keyboard."""
-        try:
-            import pyautogui
-            action_type = action_type.lower()
-            if action_type in ["play", "pause", "play_pause", "playpause", "toggle"]:
-                pyautogui.press("playpause")
-                return True, "Play/Pause status media saat ini ditekan."
-            elif action_type in ["next", "berikutnya", "skip"]:
-                pyautogui.press("nexttrack")
-                return True, "Memutar lagu/video selanjutnya."
-            elif action_type in ["prev", "previous", "sebelumnya", "back"]:
-                pyautogui.press("prevtrack")
-                return True, "Kembali ke lagu/video sebelumnya."
-            else:
-                return False, f"Aksi '{action_type}' tidak dimengerti."
-        except Exception as e:
-            return False, f"Gagal menekan tombol media: {e}"
+        """Controls system media playback (tombol media di Windows, MPRIS/playerctl di Linux)."""
+        action_type = action_type.lower()
+        if action_type in ["play", "pause", "play_pause", "playpause", "toggle"]:
+            action, message = "play_pause", "Play/Pause status media saat ini ditekan."
+        elif action_type in ["next", "berikutnya", "skip"]:
+            action, message = "next", "Memutar lagu/video selanjutnya."
+        elif action_type in ["prev", "previous", "sebelumnya", "back"]:
+            action, message = "prev", "Kembali ke lagu/video sebelumnya."
+        else:
+            return False, f"Aksi '{action_type}' tidak dimengerti."
+        success, error = self.desktop.media(action)
+        return (True, message) if success else (False, error)
 
     def get_active_window(self) -> Optional[str]:
         """Get title of currently active window"""
@@ -593,9 +456,8 @@ class SystemControl:
             return False, "PyAutoGUI not available"
         
         try:
-            # Force fast typing, ignore AI hallucinated delays
-            pyautogui.typewrite(text, interval=0.02)
-            return True, f"Mengetik: {text[:30]}..."
+            # Kecepatan tetap (abaikan jeda dari LLM); di Linux teks non-ASCII lewat clipboard
+            return self.desktop.type_text(text)
         except Exception as e:
             return False, f"Error: {e}"
     
