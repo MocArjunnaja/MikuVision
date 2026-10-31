@@ -5,7 +5,8 @@
 **Status:**
 - Fase 0 Windows selesai (25 Okt 2026): [`experiments/vision_phase0/RESULTS.md`](../experiments/vision_phase0/RESULTS.md).
 - Fase 0 Linux selesai (31 Okt 2026): [`experiments/vision_linux/RESULTS.md`](../experiments/vision_linux/RESULTS.md). AT-SPI2 menggantikan UI Automation, `xdotool` menggerakkan mouse dan keyboard, dan shortcut global lewat XGrabKey sudah teruji.
-- Berikutnya: **T1** (shortcut keyboard untuk mulai bicara, rencana rinci di bagian 5), lalu Fase 1 (hanya membaca layar). Urutan semua rencana: [`ROADMAP.md`](ROADMAP.md).
+- T1 selesai di Linux (31 Okt 2026): `Ctrl+Shift+M` dan `miku.py --trigger` di maskot dan GUI, hasil di bagian 5. Bagian Windows menunggu daftar cek Windows.
+- Berikutnya: Fase 1 (hanya membaca layar). Urutan semua rencana: [`ROADMAP.md`](ROADMAP.md).
 
 ---
 
@@ -81,7 +82,7 @@ Dua cara memulai, keduanya berakhir di alur yang sama: dengar satu ucapan → ST
 
 | Pemicu | Cara kerja | Status |
 |---|---|---|
-| **Shortcut keyboard** (T1) | Default `Ctrl+Shift+M` (`WAKE_HOTKEY` di config, bisa diganti). Ditekan → Miku mendengarkan satu ucapan, sama seperti menyeret maskot. Linux X11: XGrabKey pada root window, tanpa root. Windows: library `keyboard` (sudah dependency). | Spike Linux: 5/5 diterima, jeda ±24 ms. `Super+M` tidak sampai (diambil Cinnamon), jadi hindari tombol Super. Bila kombinasi sudah dipakai aplikasi lain, X11 menolak grab dan Miku harus memberi tahu. |
+| **Shortcut keyboard** (T1) | Default `Ctrl+Shift+M` (`WAKE_HOTKEY` di config, bisa diganti). Ditekan → Miku langsung mendengarkan satu ucapan (tanpa sapaan seperti saat maskot diseret). Linux X11: XGrabKey pada root window, tanpa root. Windows: library `keyboard` (sudah dependency). | **Selesai di Linux** (`core/hotkey.py`): maskot 10/10, jeda median 30 ms; GUI 5/5. `Super+M` tidak sampai (diambil Cinnamon), jadi hindari tombol Super. Bila kombinasi sudah dipakai aplikasi lain, Miku memberi tahu dan jalan tanpa shortcut. |
 | **Cadangan universal** | `python miku.py --trigger` mengirim sinyal ke Miku yang sedang jalan lewat socket lokal. User memasangnya sebagai shortcut di pengaturan keyboard desktop. | Jalan di semua desktop, termasuk Wayland |
 | **"Oke Miku"** (T2) | GUI sudah punya mode wake phrase: potongan audio 2–3 s terus ditranskripsi Whisper. Untuk mode suara (maskot) perlu gerbang VAD dulu, supaya Whisper hanya jalan saat ada suara. Bila masih berat, ganti ke model wake word khusus (openWakeWord, CPU). | Target: ≥ 9/10 "Oke Miku" terdeteksi, ≤ 1 pemicu palsu per jam obrolan/musik, GPU diam saat tidak ada suara |
 
@@ -113,7 +114,21 @@ Rekomendasi awal: coba A dulu. Kalau tool calling-nya turun, pakai B.
 ### Fase 0 Linux (selesai)
 - AT-SPI2 pada 5 jendela, Qwen-VL memilih elemen dan membaca layar, percobaan agent mouse/keyboard di Kalkulator dan Xed, shortcut global XGrabKey. Angka di [`experiments/vision_linux/RESULTS.md`](../experiments/vision_linux/RESULTS.md).
 
-### T1: Shortcut keyboard untuk mulai bicara (berikutnya, ±1 hari)
+### T1: Shortcut keyboard untuk mulai bicara (selesai di Linux, 31 Okt 2026)
+
+**Hasil** (rincian di CHANGELOG):
+- Maskot: 10/10 tekan mulai merekam, jeda median 30 ms (maks 38 ms, termasuk proses `xdotool`).
+- GUI: 5/5 putaran mulai dan selesai merekam, jeda median 85 ms.
+- `miku.py --trigger`: 0,2–0,26 s, karena `core/hotkey.py` dimuat tanpa config.py dan package core.
+- Instance kedua mendapat pesan "sudah dipakai aplikasi lain".
+- Tidak ada grab, socket, atau model di VRAM yang tertinggal setelah keluar.
+- `pytest` 359 lulus.
+
+Beda dari rancangan di bawah:
+- Shortcut di maskot langsung merekam tanpa sapaan 「はい、何でしょうか？」. Sapaan butuh ±1–2 s TTS + RVC, sehingga target ≤ 200 ms tidak tercapai dan awal ucapan user terpotong. Menyeret maskot tetap disapa.
+- Belum dicoba: shortcut `--trigger` yang dipasang di pengaturan Cinnamon, dan seluruh bagian Windows (masuk daftar cek di [`ROADMAP.md`](ROADMAP.md)).
+
+Rancangan awal:
 Tidak bergantung pada fase visi, jadi dikerjakan lebih dulu. Hasilnya: tekan `Ctrl+Shift+M` dari aplikasi mana pun, lalu Miku mendengarkan, sama seperti menyeret maskot.
 
 **Desain**

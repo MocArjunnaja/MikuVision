@@ -6,6 +6,59 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-10-31): shortcut keyboard untuk mulai bicara (T1)
+
+Rencana: T1 di [`docs/PLAN_VISION_AGENT.md`](docs/PLAN_VISION_AGENT.md).
+
+### Ditambahkan
+- `core/hotkey.py`: `Ctrl+Shift+M` (`WAKE_HOTKEY` di `config.py`) membuat Miku mendengarkan, dari aplikasi mana pun.
+  - Linux X11: XGrabKey pada root window lewat python-xlib, tanpa root. Keempat variasi CapsLock/NumLock ikut di-grab.
+  - Windows: library `keyboard` (sudah dependency).
+  - Bila kombinasi sudah dipakai aplikasi lain, atau sesinya Wayland, Miku memberi tahu, menyarankan `--trigger`, dan tetap jalan tanpa shortcut.
+  - Kombinasi tanpa Ctrl, Alt, atau Super ditolak (kecuali F1–F24), supaya ketikan biasa tidak tertelan. `HOTKEY_ENABLED = False` mematikan shortcut.
+  - Tekan beruntun dalam 0,5 s (termasuk auto-repeat saat tombol ditahan) diabaikan. Tekan saat Miku sedang memproses atau bicara juga diabaikan.
+- `python miku.py --trigger` meminta Miku yang sedang jalan (maskot atau GUI) untuk mendengarkan. Perintah ini dipasang user sebagai shortcut di pengaturan keyboard desktop, dan jalan juga di Wayland.
+  - Lewat `multiprocessing.connection`: Unix socket di `$XDG_RUNTIME_DIR/mikuvision/`, named pipe di Windows.
+  - Kunci acak dibuat per sesi dan disimpan di file yang hanya bisa dibaca user (0600). Pesan dibaca sebagai byte (`recv_bytes`, tanpa pickle), dan hanya "listen" yang diterima.
+  - `core/hotkey.py` dimuat langsung dari file, tanpa `config.py` dan package `core` yang memuat torch dan Whisper (±20 s). Perintahnya selesai dalam 0,2–0,26 s.
+  - Socket yang tertinggal karena Miku crash diganti otomatis. Miku kedua tidak mengambil alih socket Miku pertama.
+- Mode suara (`miku.py`): shortcut langsung merekam, tanpa sapaan 「はい、何でしょうか？」 yang muncul saat maskot diseret. Sapaan itu butuh ±1–2 s TTS + RVC, dan selama itu ucapan user tidak terekam. Maskot berganti ekspresi "listening".
+- GUI: tekan sekali untuk mulai merekam, sekali lagi untuk selesai, karena tombol GUI berupa "tahan untuk bicara".
+  - Callback shortcut hanya mengisi antrean pesan; widget Tk tetap diubah di main thread.
+  - Status shortcut tampil di chat dan tercatat di `gui.log`.
+- Grab dan socket dilepas saat Miku keluar: Ctrl+C, menu maskot "Exit Miku", atau tombol ✕ di GUI.
+
+### Pengujian
+- `tests/test_hotkey.py` (34 test):
+  - `parse_combo`;
+  - backend X11 dengan Display palsu: 4 variasi grab, `BadAccess` melepas semua grab, Wayland dan tanpa DISPLAY tidak menyentuh X11;
+  - backend Windows dengan `keyboard` palsu;
+  - `--trigger` lewat socket sungguhan: kunci salah ditolak, pesan lain diabaikan, error di callback tidak mematikan listener, socket basi diganti, Miku kedua ditolak, kunci ditulis byte demi byte;
+  - debounce;
+  - mode suara: shortcut tanpa sapaan, seret maskot tetap disapa, cleanup melepas shortcut;
+  - GUI: callback hanya mengisi antrean, tekan-tekan memulai dan menghentikan rekaman.
+  - `tests/conftest.py` melarang koneksi X11 sungguhan dan socket milik Miku yang sedang jalan.
+- `pytest`: 359 lulus; di Python sistem seperti CI 353 lulus, 6 dilewati.
+- Uji sungguhan di Linux Mint (Cinnamon, X11), shortcut ditekan lewat `xdotool`:
+
+  | Uji | Hasil |
+  |---|---|
+  | `python miku.py`, 10 tekan | 10/10 mulai merekam, jeda median 30 ms (maks 38 ms, termasuk proses `xdotool`). Tekan saat Miku sedang merekam diabaikan |
+  | Instance kedua saat Miku jalan | "Shortcut Ctrl+Shift+M tidak dipasang: sudah dipakai aplikasi lain…" dan "`--trigger` tidak aktif: Miku lain sudah jalan" |
+  | `miku.py --trigger` saat Miku jalan / tidak jalan | Miku mendengarkan (0,26 s) / "Miku tidak sedang jalan…" (0,2 s) |
+  | Setelah Ctrl+C | Shortcut dan socket bisa dipasang ulang (tidak ada yang tertinggal); model dilepas dari VRAM |
+  | GUI, 5 putaran tekan-tekan | 5/5 mulai dan selesai merekam, jeda median 85 ms (antrean Tk dicek tiap 50 ms). Ditutup lewat ✕ tanpa sisa socket |
+
+  Mic menangkap derau di setiap siklus: 10× gagal dikenali, dan sekali "Terima kasih" yang dibalas Miku tanpa tool. Tidak ada aksi yang jalan.
+
+### Keterbatasan diketahui
+- Bagian Windows (`keyboard`, named pipe) baru dites dengan mock dan di CI; masuk daftar cek Windows di `docs/ROADMAP.md`.
+- `--trigger` baru dicoba dari terminal, belum dipasang sebagai shortcut di pengaturan keyboard Cinnamon.
+- Dari shortcut desktop (tanpa terminal), pesan "Miku tidak sedang jalan" tidak terlihat.
+- Wayland: tanpa shortcut global; hanya `--trigger`.
+
+---
+
 ## Belum dirilis (2026-10-31): installer untuk Fedora, Arch, dan openSUSE
 
 ### Diubah
