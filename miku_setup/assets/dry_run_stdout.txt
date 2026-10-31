@@ -1,0 +1,87 @@
+[15:31:01] [INFO] MikuVision installer - log: C:\Users\user\AppData\Local\Programs\MikuVision\logs\install-20261031-153101.log
+[15:31:01] [INFO] -SkipShortcut: shortcut desktop dilewati.
+[15:31:01] [INFO] 
+[15:31:01] [INFO] ==== Cek sistem ====
+##MIKU {"event":"step","index":1,"total":13,"title":"Cek sistem"}
+[15:31:01] [INFO] Windows 10.0.26300.0, PowerShell 5.1.26100.9711
+[15:31:01] [INFO] Folder aplikasi: C:\Users\user\AppData\Local\Programs\MikuVision
+[15:31:01] [INFO] Ruang kosong drive C: 53 GB
+[15:31:01] [INFO] Git: git version 2.49.0.windows.1
+[15:31:01] [INFO] 
+[15:31:01] [INFO] ==== Folder model ====
+##MIKU {"event":"step","index":2,"total":13,"title":"Folder model"}
+[15:31:02] [WARN] OLLAMA_MODELS sebelumnya C:\Users\user\.ollama\models. Isinya tidak dipindah; model yang belum ada di folder baru akan diunduh lagi.
+##MIKU {"event":"warn","message":"OLLAMA_MODELS sebelumnya C:\\Users\\user\\.ollama\\models. Isinya tidak dipindah; model yang belum ada di folder baru akan diunduh lagi."}
+[15:31:02] [OK] OLLAMA_MODELS = D:\MikuVision\models\ollama
+[15:31:02] [WARN] HF_HOME sebelumnya C:\Users\user\.cache\huggingface. Isinya tidak dipindah; model yang belum ada di folder baru akan diunduh lagi.
+##MIKU {"event":"warn","message":"HF_HOME sebelumnya C:\\Users\\user\\.cache\\huggingface. Isinya tidak dipindah; model yang belum ada di folder baru akan diunduh lagi."}
+[15:31:02] [OK] HF_HOME = D:\MikuVision\models\huggingface
+[15:31:02] [INFO] 
+[15:31:02] [INFO] ==== Model RVC ====
+##MIKU {"event":"step","index":3,"total":13,"title":"Model RVC"}
+[15:31:02] [OK] Disalin: D:\Unduhan\rvc\miku_default_rvc\weights\miku_default_rvc.pth -> C:\Users\user\AppData\Local\Programs\MikuVision\models\miku_default_rvc\weights\miku_default_rvc.pth
+[15:31:02] [OK] Disalin: D:\Unduhan\rvc\miku_default_rvc\logs\miku_default_rvc\added_IVF4457_Flat_nprobe_1_miku_default_rvc_v2.index -> C:\Users\user\AppData\Local\Programs\MikuVision\models\miku_default_rvc\logs\miku_default_rvc\added_IVF4457_Flat_nprobe_1_miku_default_rvc_v2.index
+[15:31:02] [INFO] 
+[15:31:02] [INFO] ==== uv 0.11.2 ====
+##MIKU {"event":"step","index":4,"total":13,"title":"uv 0.11.2"}
+[15:31:02] [INFO] Mengunduh https://github.com/astral-sh/uv/releases/download/0.11.2/uv-x86_64-pc-windows-msvc.zip
+[15:31:14] [OK] Terpasang: uv 0.11.2 (02036a8ba 2026-03-26 x86_64-pc-windows-msvc)
+[15:31:14] [INFO] 
+[15:31:14] [INFO] ==== Python 3.10 + virtualenv ====
+##MIKU {"event":"step","index":5,"total":13,"title":"Python 3.10 + virtualenv"}
+[15:31:14] [INFO] > uv.exe python install 3.10 --no-bin --no-registry
+[15:31:19] [INFO] > python.exe -m venv --without-pip C:\Users\user\AppData\Local\Programs\MikuVision\.venv
+[15:31:21] [INFO] 
+[15:31:21] [INFO] ==== PyTorch 2.11.0 + requirements.txt ====
+##MIKU {"event":"step","index":6,"total":13,"title":"PyTorch 2.11.0 + requirements.txt"}
+[15:31:23] [INFO] GPU: NVIDIA GeForce RTX 4050 Laptop GPU, 621.01
+[15:31:23] [INFO] Driver mendukung CUDA sampai 13.5
+[15:31:23] [INFO] Build PyTorch: 2.11.0+cu128
+[15:31:23] [INFO] Model RVC ditemukan (atau -WithRvc): rvc-python ikut dipasang.
+[15:31:23] [INFO] > uv.exe pip install --python C:\Users\user\AppData\Local\Programs\MikuVision\.venv\Scripts\python.exe -r C:\Users\user\AppData\Local\Programs\MikuVision\requirements.txt torch==2.11.0 torchaudio==2.11.0 --torch-backend cu128 rvc-python==0.1.5 --override C:\Users\user\AppData\Local\Programs\MikuVision\overrides-rvc.txt
+[15:31:43] [OK] torch 2.11.0+cu128 siap
+[15:31:43] [INFO] 
+[15:31:43] [INFO] ==== Kamus unidic (MeloTTS Jepang) ====
+##MIKU {"event":"step","index":7,"total":13,"title":"Kamus unidic (MeloTTS Jepang)"}
+[15:31:43] [INFO] Mengunduh kamus (sekitar 500 MB, sekali saja)...
+[15:31:43] [INFO] > python.exe -m unidic download
+[15:32:46] [OK] Kamus unidic siap
+[15:32:46] [INFO] 
+[15:32:46] [INFO] ==== Cek import modul ====
+##MIKU {"event":"step","index":8,"total":13,"title":"Cek import modul"}
+[15:32:46] [INFO] > python.exe -c import torch, faster_whisper, melo.api, customtkinter, pygame, ollama, sounddevice, webrtcvad; print('import OK')
+[15:33:17] [INFO] 
+[15:33:17] [INFO] ==== Ollama + model LLM ====
+##MIKU {"event":"step","index":9,"total":13,"title":"Ollama + model LLM"}
+[15:33:17] [INFO] Ollama: ollama version is 0.40.13
+[15:33:17] [INFO] Lokasi model Ollama (OLLAMA_MODELS): D:\MikuVision\models\ollama
+[15:33:17] [INFO] Ollama sedang jalan dengan lokasi model lama; dinyalakan ulang.
+[15:33:24] [INFO] Server Ollama belum jalan, menyalakan...
+[15:33:31] [INFO] Mengunduh model qwen3:4b-instruct (beberapa GB)...
+[15:33:31] [INFO] > ollama.exe pull qwen3:4b-instruct
+[15:35:39] [OK] Model qwen3:4b-instruct siap
+[15:35:39] [INFO] 
+[15:35:39] [INFO] ==== Model visi (membaca layar) ====
+##MIKU {"event":"step","index":10,"total":13,"title":"Model visi (membaca layar)"}
+[15:35:39] [INFO] Mengunduh model qwen3-vl:4b-instruct (beberapa GB)...
+[15:35:39] [INFO] > ollama.exe pull qwen3-vl:4b-instruct
+[15:38:40] [OK] Model qwen3-vl:4b-instruct siap
+[15:38:40] [INFO] 
+[15:38:40] [INFO] ==== Suara Miku (RVC, opsional) ====
+##MIKU {"event":"step","index":11,"total":13,"title":"Suara Miku (RVC, opsional)"}
+[15:38:40] [OK] Model RVC ditemukan dan rvc-python terpasang.
+[15:38:40] [INFO] 
+[15:38:40] [INFO] ==== Shortcut ====
+##MIKU {"event":"step","index":12,"total":13,"title":"Shortcut"}
+[15:38:41] [INFO] > python.exe -c import sys
+[15:38:48] [OK] Shortcut: C:\Users\user\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\MikuVision\MikuVision.lnk
+[15:38:48] [INFO] 
+[15:38:48] [INFO] ==== Verifikasi: miku.py --test ====
+##MIKU {"event":"step","index":13,"total":13,"title":"Verifikasi: miku.py --test"}
+[15:38:48] [INFO] Jalankan pertama kali mengunduh Whisper large-v3-turbo (sekitar 1,6 GB) bila belum ada di cache Hugging Face.
+[15:38:48] [INFO] Cache Hugging Face (HF_HOME): D:\MikuVision\models\huggingface
+[15:38:48] [INFO] > python.exe miku.py --test
+[15:41:59] [OK] miku.py --test lulus
+[15:41:59] [INFO] 
+[15:41:59] [OK] Instalasi selesai. Buka 'MikuVision' dari desktop, atau jalankan: .venv\Scripts\python.exe gui.py
+##MIKU {"event":"done","ok":true}

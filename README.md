@@ -157,7 +157,7 @@ Di Windows, langkah 1–3 bisa sekaligus: `install.bat -RvcModel <file.pth> -Rvc
 pytest
 ```
 
-Test tidak membutuhkan mikrofon, GPU, maupun Ollama, dan berjalan otomatis di GitHub Actions (Ubuntu dan Windows). Catatan perubahan dan angka pengujian ada di [CHANGELOG.md](CHANGELOG.md); urutan kerja berikutnya di [docs/ROADMAP.md](docs/ROADMAP.md); benchmark yang butuh GPU di `experiments/`.
+Test tidak membutuhkan mikrofon, GPU, maupun Ollama, dan berjalan otomatis di GitHub Actions (Ubuntu dan Windows). Installer berantarmuka yang sedang dibuat (`miku_setup/`, [docs/PLAN_INSTALLER.md](docs/PLAN_INSTALLER.md)) bisa dicoba tanpa memasang apa pun: `python -m miku_setup.main --dry-run`. Catatan perubahan dan angka pengujian ada di [CHANGELOG.md](CHANGELOG.md); urutan kerja berikutnya di [docs/ROADMAP.md](docs/ROADMAP.md); benchmark yang butuh GPU di `experiments/`.
 
 ## Lisensi & kredit
 

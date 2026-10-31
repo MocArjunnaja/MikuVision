@@ -22,7 +22,7 @@ Tidak ada. #21–#33 masuk `main` pada 31 Okt dan dirilis sebagai **v1.5.0** (ri
 | 8 | L4: benchmark Linux vs Windows | keduanya | LINUX L4 | Butuh angka Windows dari bagian 2 |
 | 9 | L5: uji di VM Fedora, Arch, Ubuntu | Linux | LINUX L5 | Installer sudah siap, belum dicoba di distro aslinya |
 | 10 | W1: Wayland | Linux | VISION, LINUX L5 | Menunggu keputusan 3 di bagian 3 |
-| 11 | **MikuVision Setup**: installer dengan antarmuka (`MikuVisionSetup.exe`), tanpa GitHub/terminal | Windows dulu, Linux menyusul | [PLAN_INSTALLER](PLAN_INSTALLER.md) | Untuk user yang repot lewat GitHub. Dikerjakan dari sesi Windows; I1 (opsi baru `install.ps1`) selesai 31 Okt, daftar cek Windows selesai; berikutnya I2 (kerangka wizard) |
+| 11 | **MikuVision Setup**: installer dengan antarmuka (`MikuVisionSetup.exe`), tanpa GitHub/terminal | Windows dulu, Linux menyusul | [PLAN_INSTALLER](PLAN_INSTALLER.md) | Untuk user yang repot lewat GitHub. Dikerjakan dari sesi Windows; I1 (opsi baru `install.ps1`) dan I2 (kerangka wizard, `python -m miku_setup.main --dry-run`) selesai 31 Okt; berikutnya I3 (unduh, runner `install.ps1`, progres) |
 | 12 | Cek pembaruan dari aplikasi: Miku memberi tahu bila ada rilis baru, satu klik ke Setup mode Perbarui | keduanya | [PLAN_INSTALLER bagian 6, fase I6](PLAN_INSTALLER.md) | Butuh `version.json` di rilis (I5) dan mode Perbarui (I4). Sekarang aplikasi bahkan belum punya nomor versi; menunggu keputusan 6 di bagian 3 |
 
 ## 2. Daftar cek di Windows
