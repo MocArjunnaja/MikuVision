@@ -6,6 +6,24 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-11-01): model RVC dari link di MikuVision Setup
+
+### Ditambahkan
+- Halaman 4, komponen **Suara khas Miku (RVC)**: pilih "File di komputer" (seperti sebelumnya) atau "Unduh dari link" (`miku_setup/rvc.py`).
+  - Link bisa satu `.zip` berisi `.pth` dan `.index`, atau dua link terpisah. Hanya `https`; link halaman Hugging Face (`/blob/`) diubah otomatis ke link unduhan (`/resolve/`).
+  - Isi zip dipilih otomatis: checkpoint latihan `G_*.pth`/`D_*.pth` dilewati, index `added_*` diutamakan. Bila masih ambigu, wizard menyebut nama filenya dan meminta "File di komputer".
+  - Diunduh setelah ekstrak kode ke `%LOCALAPPDATA%\MikuVision-setup\downloads\rvc\<hash link>\`, lalu diteruskan ke `install.ps1 -RvcModel/-RvcIndex`. "Coba lagi" memakai file yang sudah lengkap dan melanjutkan `.part`.
+  - Halaman web (`text/html`) dan file di atas 2 GB ditolak. Peringatan bahwa `.pth` bisa menjalankan kode tampil di bawah kolom link. Query link tidak ditulis ke log.
+  - Kebutuhan ruang ditambah ±1 GB perkiraan, dan dihitung ulang saat link diketik.
+- Repo tetap tidak menunjuk ke model RVC tertentu (README, "Lisensi & kredit").
+
+### Pengujian
+- 26 test baru di `tests/test_miku_setup_rvc.py`: normalisasi link, validasi, nama file aman, isi zip, unduh dua link dan zip, pemakaian ulang saat "Coba lagi", halaman web, batas ukuran, zip rusak, kebutuhan ruang, dan runner yang meneruskan file ke `-RvcModel/-RvcIndex`. Dua mutasi (pemeriksaan `text/html` dimatikan; checkpoint `G_`/`D_` tidak dilewati) masing-masing membuat test gagal. 582 test lulus di venv aplikasi (31 dilewati).
+- Halaman 4 dicoba di `--dry-run` (Windows 11, skala 125%): pilihan sumber, dua kolom link, dan peringatan muat di jendela 760×520. Link `.pth` tanpa `.index` menampilkan "Tempel juga link file .index", dan ruang C: naik dari 11,6 ke 12,6 GB setelah link `.zip` ditempel.
+- Belum diuji: unduhan dari link `https` sungguhan (test memakai server lokal `http`).
+
+---
+
 ## Belum dirilis (2026-11-01): MikuVision Setup memasang sungguhan (PLAN_INSTALLER I3)
 
 Rencana: I3 di [`docs/PLAN_INSTALLER.md`](docs/PLAN_INSTALLER.md). Tanpa `--dry-run`, wizard sekarang mengunduh rilis, menjalankan `install.ps1`, dan membuka MikuVision di akhir.

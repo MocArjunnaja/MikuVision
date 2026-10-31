@@ -74,7 +74,7 @@ Ukuran jendela 760×520. Kiri: daftar langkah. Kanan: isi halaman. Bawah: tombol
 | Inti: suara, GUI, aksi desktop (Python, PyTorch, Whisper, MeloTTS) | ya | 9,5 GB (6 GB tanpa GPU) | (bawaan) |
 | Otak Miku: Ollama + `qwen3:4b-instruct` | ya, kecuali Ollama dan modelnya sudah ada | 2,5 GB | (bawaan) |
 | Membaca layar: `qwen3-vl:4b-instruct` | tidak | 3,3 GB | `-WithVision` |
-| Suara khas Miku (RVC) | tidak; muncul tombol "Pilih file .pth…" dan "Pilih file .index…" | 0,6 GB | `-RvcModel <pth> -RvcIndex <index>` |
+| Suara khas Miku (RVC) | tidak; pilih "File di komputer" (tombol "Pilih file .pth…" dan "Pilih file .index…") atau "Unduh dari link" (link `.zip`, atau link `.pth` + `.index`) | 0,6 GB (+±1 GB perkiraan untuk link) | `-RvcModel <pth> -RvcIndex <index>`; file dari link diunduh dulu ke `%LOCALAPPDATA%\MikuVision-setup\downloads\rvc\` |
 
 Angka ukuran disimpan di satu tabel di `miku_setup/components.py` dan diperbarui tiap rilis bila berubah.
 
@@ -150,6 +150,12 @@ Aturan yang perlu dijaga:
 - **"x GB terunduh" melebihi data internet**, karena ukuran cache uv juga membesar saat wheel dibongkar dan paket dibangun. Pilihan nanti: ganti label menjadi ukuran data, atau hitung hanya file `.whl`/`.tar.gz`.
 - **Batal menutup wizard** setelah proses berhenti. Menjalankan Setup lagi melanjutkan dari langkah terakhir yang beres.
 - Tombol dialog konfirmasi (`messagebox.askyesno`) mengikuti bahasa Windows ("Yes"/"No"). Bila semua teks harus berbahasa Indonesia, dialognya perlu dibuat sendiri dengan customtkinter.
+
+**Model RVC dari link** (1 Nov 2026, permintaan user, `miku_setup/rvc.py`). Repo tetap tidak menunjuk ke model tertentu; link selalu ditempel user di halaman 4:
+- Satu link `.zip` berisi `.pth` dan `.index`, atau dua link terpisah. Hanya `https`. Link `/blob/` Hugging Face diubah ke `/resolve/`.
+- Di dalam zip: checkpoint latihan `G_*.pth`/`D_*.pth` dilewati, dan index `added_*` diutamakan. Bila masih ada lebih dari satu kandidat, wizard meminta user mengekstrak sendiri.
+- Tanpa SHA256 dari pembuat model, file hanya dicek: bukan halaman web (`text/html`), maksimal 2 GB. Peringatan bahwa `.pth` bisa menjalankan kode tampil di bawah kolom link.
+- Diunduh di runner setelah ekstrak kode, ke folder per link di `downloads\rvc\`, jadi "Coba lagi" memakai file yang sudah lengkap. Query link (bisa berisi token) tidak ditulis ke log.
 
 ## 6. Perawatan: Perbarui, Perbaiki, Hapus (fase I4)
 

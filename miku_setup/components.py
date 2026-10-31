@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from .checks import drive_of, huggingface_dir, model_present, ollama_models_dir
+from .rvc import link_problem
 
 GB = 1e9
 # Sama dengan OLLAMA_MODEL dan VISION_MODEL di config.py (dicek test). Exe setup tidak membawa config.py
@@ -29,6 +30,8 @@ LLM_GB = 2.5
 VISION_GB = 3.3
 # rvc-python + fairseq di .venv; file model RVC milik user dihitung terpisah
 RVC_APP_GB = 0.8
+# Model RVC dari link: ukurannya baru diketahui saat diunduh (.pth ±55 MB, index dan zip sampai ±1 GB)
+RVC_LINK_GB = 1.0
 
 
 @dataclass(frozen=True)
@@ -47,7 +50,7 @@ COMPONENTS: List[Component] = [
               required=True),
     Component("vision", "Membaca layar", f"Model {VISION_MODEL}: \"error apa ini?\", \"bacakan tulisan di layar\"",
               "±3,3 GB"),
-    Component("rvc", "Suara khas Miku (RVC)", "Model RVC milik Anda sendiri (file .pth dan .index)",
+    Component("rvc", "Suara khas Miku (RVC)", "Model RVC pilihan Anda: file .pth dan .index, atau link unduhannya",
               "±0,8 GB + file model"),
 ]
 
@@ -60,6 +63,13 @@ class Selection:
     components: Set[str] = field(default_factory=lambda: {"core", "brain"})
     rvc_model: str = ""
     rvc_index: str = ""
+    # Diisi bila model RVC diunduh dari link; rvc_model/rvc_index diisi runner setelah diunduh
+    rvc_model_url: str = ""
+    rvc_index_url: str = ""
+
+    @property
+    def rvc_from_link(self) -> bool:
+        return bool(self.rvc_model_url or self.rvc_index_url)
 
 
 def default_install_dir(environ: Optional[Dict[str, str]] = None) -> Path:
@@ -101,7 +111,9 @@ def space_needed(selection: Selection, gpu: bool, ollama_installed: bool,
         add(ollama_dir, VISION_GB)
     if "rvc" in selection.components:
         add(selection.install_dir, RVC_APP_GB)
-        for path in (selection.rvc_model, selection.rvc_index):
+        if selection.rvc_from_link:
+            add(selection.install_dir, RVC_LINK_GB)
+        for path in ([] if selection.rvc_from_link else (selection.rvc_model, selection.rvc_index)):
             try:
                 needs[drive_of(selection.install_dir)] += rvc_file_size(path)
             except OSError:
@@ -124,6 +136,8 @@ def validate_selection(selection: Selection, is_writable: Callable[[Path], bool]
             return f"{label} harus lengkap dengan drive, misalnya D:\\MikuVision"
         if not is_writable(Path(text)):
             return f"{label} tidak bisa ditulis: {text}. Pilih folder lain (bukan C:\\Program Files)"
+    if "rvc" in selection.components and selection.rvc_from_link:
+        return link_problem(selection.rvc_model_url, selection.rvc_index_url)
     if "rvc" in selection.components:
         for path, ext, label in ((selection.rvc_model, ".pth", "bobot"), (selection.rvc_index, ".index", "index")):
             if not path:

@@ -21,6 +21,7 @@ import time
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
+from . import rvc
 from .checks import format_gb
 from .components import Selection, install_args, model_locations
 from .download import RELEASE_URL, Cancelled, DownloadError, download, fetch_text, parse_sha256sums, \
@@ -175,6 +176,7 @@ class InstallRunner:
         try:
             zip_path = self._fetch()
             self._extract(zip_path)
+            self._fetch_rvc()
             self._install()
         except Cancelled:
             self._put("progress", {"event": "done", "ok": False, "cancelled": True})
@@ -212,6 +214,29 @@ class InstallRunner:
                             "fraction": 1.0})
         written = safe_extract(zip_path, self.selection.install_dir)
         self._put("log", f"[setup] {written} file diekstrak ke {self.selection.install_dir}")
+
+    def _fetch_rvc(self):
+        """Model RVC dari link user ke downloads/rvc; install.ps1 lalu menyalinnya lewat -RvcModel/-RvcIndex."""
+        selection = self.selection
+        if "rvc" not in selection.components or not selection.rvc_from_link:
+            return
+        last = [0.0]
+
+        def progress(name: str, done: int, total: int):
+            now = time.monotonic()
+            if now - last[0] >= 0.25 or (total and done >= total):
+                last[0] = now
+                detail = f"{format_gb(done)}" + (f" dari {format_gb(total)}" if total else "")
+                self._put("phase", {"title": f"Mengunduh model RVC {name} ({detail})",
+                                    "fraction": done / total if total else 0.0})
+
+        # Query link (bisa berisi token) tidak ditulis ke log
+        log.info("Model RVC dari link: %s", ", ".join(
+            rvc.file_name(url) for url in (selection.rvc_model_url, selection.rvc_index_url) if url))
+        model, index = rvc.fetch(selection.rvc_model_url, selection.rvc_index_url, self.downloads_dir, progress,
+                                 self._cancel)
+        selection.rvc_model, selection.rvc_index = str(model), str(index)
+        self._put("log", f"[setup] Model RVC: {model.name}, {index.name}")
 
     def _size_paths(self) -> List[Path]:
         """Folder yang membesar selama install.ps1 mengunduh: cache uv (PyTorch) dan blob model Ollama."""
