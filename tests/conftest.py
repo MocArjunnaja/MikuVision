@@ -147,6 +147,8 @@ class _ReleaseHandler(http.server.BaseHTTPRequestHandler):
         else:
             self.send_response(200)
         self.send_header("Content-Length", str(len(data) - start))
+        if self.path.lstrip("/") in server.types:
+            self.send_header("Content-Type", server.types[self.path.lstrip("/")])
         self.end_headers()
         self.wfile.write(data[start:])
 
@@ -156,9 +158,10 @@ class _ReleaseHandler(http.server.BaseHTTPRequestHandler):
 
 @pytest.fixture
 def release_server():
-    """Server HTTP lokal: .files {nama: byte}, .ranges, .requests [(path, Range)], .url (berakhiran /)."""
+    """Server HTTP lokal: .files {nama: byte}, .types {nama: Content-Type}, .ranges, .requests [(path, Range)],
+    .url (berakhiran /)."""
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _ReleaseHandler)
-    server.files, server.ranges, server.requests = {}, True, []
+    server.files, server.types, server.ranges, server.requests = {}, {}, True, []
     server.url = f"http://127.0.0.1:{server.server_port}/"
     threading.Thread(target=server.serve_forever, daemon=True).start()
     yield server

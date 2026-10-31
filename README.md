@@ -118,12 +118,12 @@ Tanpa RVC, Miku bicara memakai suara dasar MeloTTS Jepang. Untuk suara khas Miku
 2. Simpan index ke `models/miku_default_rvc/logs/miku_default_rvc/added_IVF4457_Flat_nprobe_1_miku_default_rvc_v2.index` (atau ubah `index_path` di `config.py`).
 3. Jalankan installer lagi. GUI lalu menampilkan **RVC: ready**.
 
-Di Windows, langkah 1–3 bisa sekaligus: `install.bat -RvcModel <file.pth> -RvcIndex <file.index>`.
+Di Windows, langkah 1–3 bisa sekaligus: `install.bat -RvcModel <file.pth> -RvcIndex <file.index>`. MikuVision Setup (installer berantarmuka, sedang dikembangkan) juga bisa mengunduh model dari link yang Anda tempel: satu link `.zip` berisi `.pth` dan `.index`, atau dua link terpisah. Link halaman Hugging Face (`/blob/`) diubah otomatis menjadi link unduhan (`/resolve/`).
 
 `rvc-python` butuh `fairseq`, yang dikompilasi saat instalasi: di Windows pasang [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (workload **Desktop development with C++**); di Linux installer menawarkan compiler-nya sendiri (`build-essential`, `gcc-c++ make`, atau `base-devel`). Bila gagal, aplikasi tetap jalan tanpa RVC.
 
 > [!WARNING]
-> Installer **tidak** mengunduh model RVC, dan repo ini tidak menunjuk ke model tertentu: hampir semua model RVC Miku yang beredar dilatih dari suara VOCALOID tanpa izin tertulis yang jelas (lihat [Lisensi & kredit](#lisensi--kredit)). File `.pth` juga file pickle yang bisa menjalankan kode saat dimuat. Hanya pakai model dari sumber yang Anda percayai, dan jangan unggah ulang model tersebut ke repo ini.
+> Installer tidak menyertakan model RVC dan hanya mengunduh dari link yang Anda tempel sendiri; repo ini tidak menunjuk ke model tertentu: hampir semua model RVC Miku yang beredar dilatih dari suara VOCALOID tanpa izin tertulis yang jelas (lihat [Lisensi & kredit](#lisensi--kredit)). File `.pth` juga file pickle yang bisa menjalankan kode saat dimuat. Hanya pakai model dari sumber yang Anda percayai, dan jangan unggah ulang model tersebut ke repo ini.
 
 ## Data & privasi
 

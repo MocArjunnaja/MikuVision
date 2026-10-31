@@ -83,11 +83,16 @@ def sha256_of(path: Path) -> str:
     return digest.hexdigest()
 
 
-def download(url: str, dest: Path, sha256: str, progress: Callable[[int, int], None] = lambda done, total: None,
-             cancel: Optional[threading.Event] = None) -> Path:
-    """Unduh url ke dest dan cocokkan SHA256. Dilanjutkan dari dest.part bila ada; dest yang sudah cocok dipakai."""
+def download(url: str, dest: Path, sha256: Optional[str],
+             progress: Callable[[int, int], None] = lambda done, total: None,
+             cancel: Optional[threading.Event] = None, max_bytes: Optional[int] = None) -> Path:
+    """Unduh url ke dest dan cocokkan SHA256. Dilanjutkan dari dest.part bila ada; dest yang sudah cocok dipakai.
+
+    sha256=None (file dari link user, tanpa SHA256SUMS): dest yang sudah lengkap dipakai apa adanya.
+    Halaman web (text/html) dan file di atas max_bytes ditolak.
+    """
     dest = Path(dest)
-    if dest.is_file() and sha256_of(dest) == sha256:
+    if dest.is_file() and (sha256 is None or sha256_of(dest) == sha256):
         progress(dest.stat().st_size, dest.stat().st_size)
         return dest
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -98,16 +103,22 @@ def download(url: str, dest: Path, sha256: str, progress: Callable[[int, int], N
     except urllib.error.HTTPError as e:
         if e.code == 416:  # .part sudah lengkap atau rusak: mulai lagi dari nol
             part.unlink()
-            return download(url, dest, sha256, progress, cancel)
+            return download(url, dest, sha256, progress, cancel, max_bytes)
         raise DownloadError(f"Gagal mengunduh {dest.name}: HTTP {e.code}") from e
     except (OSError, ValueError) as e:
         raise DownloadError(f"Gagal mengunduh {dest.name}: {getattr(e, 'reason', e)}") from e
 
     with response:
+        if "text/html" in (response.headers.get("Content-Type") or "").lower():
+            raise DownloadError(f"Link untuk {dest.name} membuka halaman web, bukan file. "
+                                "Salin link unduhan langsung ke filenya.")
         resumed = bool(start) and getattr(response, "status", None) == 206
         done = start if resumed else 0
         length = int(response.headers.get("Content-Length") or 0)
         total = done + length if length else 0
+        too_big = f"{dest.name} lebih besar dari {(max_bytes or 0) / 1e9:.0f} GB, jadi tidak diunduh"
+        if max_bytes and total > max_bytes:
+            raise DownloadError(too_big)
         try:
             with open(part, "ab" if resumed else "wb") as out:
                 while True:
@@ -118,11 +129,15 @@ def download(url: str, dest: Path, sha256: str, progress: Callable[[int, int], N
                         break
                     out.write(block)
                     done += len(block)
+                    if max_bytes and done > max_bytes:
+                        out.close()
+                        part.unlink()
+                        raise DownloadError(too_big)
                     progress(done, total)
         except OSError as e:
             raise DownloadError(f"Unduhan {dest.name} terputus: {e}. Coba lagi untuk melanjutkan.") from e
 
-    if sha256_of(part) != sha256:
+    if sha256 is not None and sha256_of(part) != sha256:
         part.unlink()
         raise DownloadError(f"File {dest.name} rusak (checksum tidak cocok). Coba lagi untuk mengunduh ulang.")
     part.replace(dest)

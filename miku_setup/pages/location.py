@@ -9,7 +9,7 @@ from typing import Dict, Optional
 
 import customtkinter as ctk
 
-from ..checks import FAIL, check_disk, drive_of, drive_root, huggingface_dir, ollama_models_dir
+from ..checks import FAIL, WARN, check_disk, drive_of, drive_root, huggingface_dir, ollama_models_dir
 from ..components import COMPONENTS, is_writable, space_needed, validate_selection
 from .base import ACCENT, ACCENT_HOVER, MUTED, STATUS_COLORS, Page, heading
 
@@ -76,21 +76,49 @@ class LocationPage(Page):
                 check.configure(state="disabled")
             ctk.CTkLabel(line, text=component.size_text, text_color=MUTED, anchor="w").pack(side="left")
             if component.key == "rvc":
-                self.rvc_row = ctk.CTkFrame(box, fg_color="transparent")
-                self.rvc_model = ctk.StringVar(value=selection.rvc_model)
-                self.rvc_index = ctk.StringVar(value=selection.rvc_index)
-                for var, ext, label in ((self.rvc_model, ".pth", "Pilih file .pth…"),
-                                        (self.rvc_index, ".index", "Pilih file .index…")):
-                    ctk.CTkButton(self.rvc_row, text=label, width=140, fg_color="transparent", border_width=1,
-                                  border_color=ACCENT, hover_color=ACCENT_HOVER,
-                                  command=lambda v=var, e=ext: self._pick_file(v, e)).pack(side="left", padx=(28, 0))
-                self.rvc_files = ctk.CTkLabel(self.rvc_row, text="", text_color=MUTED, anchor="w")
-                self.rvc_files.pack(side="left", padx=8)
+                self._create_rvc_row(box)
 
         self.space = ctk.CTkLabel(frame, text="", anchor="w", justify="left", wraplength=520)
         self.space.pack(fill="x", pady=(10, 0))
         for var in (self.install_dir, self.model_dir):
             var.trace_add("write", lambda *_: self._changed())
+
+    def _create_rvc_row(self, box):
+        """Model RVC: file di komputer, atau link unduhan milik user (repo tidak menunjuk ke model tertentu)."""
+        selection = self.setup.selection
+        self.rvc_row = ctk.CTkFrame(box, fg_color="transparent")
+        self.rvc_source = ctk.StringVar(value="link" if selection.rvc_from_link else "file")
+        sources = ctk.CTkFrame(self.rvc_row, fg_color="transparent")
+        sources.pack(fill="x", padx=(28, 0))
+        for value, text in (("file", "File di komputer"), ("link", "Unduh dari link")):
+            ctk.CTkRadioButton(sources, text=text, variable=self.rvc_source, value=value, fg_color=ACCENT,
+                               command=self._changed).pack(side="left", padx=(0, 16))
+
+        self.rvc_file_row = ctk.CTkFrame(self.rvc_row, fg_color="transparent")
+        self.rvc_model = ctk.StringVar(value=selection.rvc_model)
+        self.rvc_index = ctk.StringVar(value=selection.rvc_index)
+        for var, ext, label in ((self.rvc_model, ".pth", "Pilih file .pth…"),
+                                (self.rvc_index, ".index", "Pilih file .index…")):
+            ctk.CTkButton(self.rvc_file_row, text=label, width=140, fg_color="transparent", border_width=1,
+                          border_color=ACCENT, hover_color=ACCENT_HOVER,
+                          command=lambda v=var, e=ext: self._pick_file(v, e)).pack(side="left", padx=(28, 0))
+        self.rvc_files = ctk.CTkLabel(self.rvc_file_row, text="", text_color=MUTED, anchor="w")
+        self.rvc_files.pack(side="left", padx=8)
+
+        # Tanpa textvariable, karena placeholder customtkinter tidak tampil bila textvariable dipakai
+        self.rvc_link_row = ctk.CTkFrame(self.rvc_row, fg_color="transparent")
+        self.rvc_model_url = ctk.CTkEntry(self.rvc_link_row, placeholder_text="https://… link file .pth atau .zip")
+        self.rvc_index_url = ctk.CTkEntry(self.rvc_link_row,
+                                          placeholder_text="https://… link file .index (kosongkan bila pakai .zip)")
+        for entry, value in ((self.rvc_model_url, selection.rvc_model_url),
+                             (self.rvc_index_url, selection.rvc_index_url)):
+            if value:
+                entry.insert(0, value)
+            entry.bind("<KeyRelease>", lambda _event: self._changed())
+            entry.pack(fill="x", padx=(28, 0), pady=(2, 0))
+        ctk.CTkLabel(self.rvc_link_row, text="⚠ File .pth bisa menjalankan kode saat dimuat. Tempel hanya link dari "
+                     "sumber yang Anda percayai, dan ikuti lisensi pembuat modelnya.", text_color=STATUS_COLORS[WARN],
+                     anchor="w", justify="left", wraplength=480).pack(fill="x", padx=(28, 0), pady=(2, 0))
 
     def _browse_button(self, parent, command):
         return ctk.CTkButton(parent, text="Ganti…", width=70, fg_color="transparent", border_width=1,
@@ -119,13 +147,23 @@ class LocationPage(Page):
         selection.install_dir = Path(self.install_dir.get().strip())
         selection.model_dir = Path(self.model_dir.get().strip()) if self.model_mode.get() == "custom" else None
         selection.components = {key for key, var in self.chosen.items() if var.get()}
-        selection.rvc_model, selection.rvc_index = self.rvc_model.get(), self.rvc_index.get()
+        if self.rvc_source.get() == "link":
+            selection.rvc_model, selection.rvc_index = "", ""
+            selection.rvc_model_url = self.rvc_model_url.get().strip()
+            selection.rvc_index_url = self.rvc_index_url.get().strip()
+        else:
+            selection.rvc_model, selection.rvc_index = self.rvc_model.get(), self.rvc_index.get()
+            selection.rvc_model_url, selection.rvc_index_url = "", ""
 
     def _changed(self):
         self._sync()
         selection = self.setup.selection
         if "rvc" in selection.components:
             self.rvc_row.pack(fill="x", padx=12, pady=(0, 6))
+            link = self.rvc_source.get() == "link"
+            self.rvc_file_row.pack_forget()
+            self.rvc_link_row.pack_forget()
+            (self.rvc_link_row if link else self.rvc_file_row).pack(fill="x", pady=(4, 0))
             names = [Path(p).name for p in (selection.rvc_model, selection.rvc_index) if p]
             self.rvc_files.configure(text=", ".join(names) or "belum dipilih")
         else:
