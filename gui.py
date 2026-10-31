@@ -60,6 +60,17 @@ ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
 
+# Tk di Linux tidak bisa menggambar emoji berwarna (Noto Color Emoji berupa font bitmap),
+# jadi emoji tampil sebagai kotak. Di Linux emoji (dan spasi sesudahnya) dibuang dari teks GUI.
+_EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF\u2139\uFE0F\u200D]+ ?")
+
+
+def _tk_text(text: str) -> str:
+    if sys.platform == "win32":
+        return text
+    return _EMOJI.sub("", text)
+
+
 class MikuSpriteAnimator:
     """Render animated Miku sprite in the GUI based on emotion state."""
 
@@ -305,7 +316,7 @@ class MikuGUIv4(ctk.CTk):
         # RVC status
         self.rvc_status_label = ctk.CTkLabel(
             self.avatar_frame,
-            text="🔵 RVC: initializing...",
+            text=_tk_text("🔵 RVC: initializing..."),
             font=ctk.CTkFont(size=11),
             text_color=("gray50", "gray50")
         )
@@ -314,7 +325,7 @@ class MikuGUIv4(ctk.CTk):
         # Status
         self.status_label = ctk.CTkLabel(
             self.left_panel,
-            text="⚫ Initializing...",
+            text=_tk_text("⚫ Initializing..."),
             font=ctk.CTkFont(size=12)
         )
         self.status_label.pack(pady=5)
@@ -331,7 +342,7 @@ class MikuGUIv4(ctk.CTk):
         # Voice button
         self.voice_btn = ctk.CTkButton(
             self.left_panel,
-            text="🎤 Hold to Speak",
+            text=_tk_text("🎤 Hold to Speak"),
             font=ctk.CTkFont(size=14, weight="bold"),
             fg_color=self.current_character.theme_color,
             hover_color=self._darken_color(self.current_character.theme_color),
@@ -344,7 +355,7 @@ class MikuGUIv4(ctk.CTk):
 
         self.wake_btn = ctk.CTkButton(
             self.left_panel,
-            text="🗣 Wake Phrase: OFF",
+            text=_tk_text("🗣 Wake Phrase: OFF"),
             font=ctk.CTkFont(size=12, weight="bold"),
             fg_color="transparent",
             border_width=1,
@@ -368,14 +379,14 @@ class MikuGUIv4(ctk.CTk):
 
         header_title = ctk.CTkLabel(
             self.chat_header,
-            text="💬 Chat",
+            text=_tk_text("💬 Chat"),
             font=ctk.CTkFont(size=14, weight="bold")
         )
         header_title.grid(row=0, column=0, sticky="w")
 
         clear_btn = ctk.CTkButton(
             self.chat_header,
-            text="🗑️ Clear",
+            text=_tk_text("🗑️ Clear"),
             width=70,
             height=28,
             font=ctk.CTkFont(size=11),
@@ -555,13 +566,13 @@ class MikuGUIv4(ctk.CTk):
 
         self.wake_word_mode = not self.wake_word_mode
         if self.wake_word_mode:
-            self.wake_btn.configure(text="🗣 Wake Phrase: ON")
+            self.wake_btn.configure(text=_tk_text("🗣 Wake Phrase: ON"))
             self._update_status("🟢 Wake mode aktif (ucap: Oke Miku)")
             self._wake_stop_event.clear()
             self._wake_thread = threading.Thread(target=self._wake_word_worker, daemon=True)
             self._wake_thread.start()
         else:
-            self.wake_btn.configure(text="🗣 Wake Phrase: OFF")
+            self.wake_btn.configure(text=_tk_text("🗣 Wake Phrase: OFF"))
             self._wake_stop_event.set()
             self._update_status("🟢 Ready")
 
@@ -630,13 +641,13 @@ class MikuGUIv4(ctk.CTk):
                 msg_type, data = self.message_queue.get_nowait()
 
                 if msg_type == "status":
-                    self.status_label.configure(text=data)
+                    self.status_label.configure(text=_tk_text(data))
 
                 elif msg_type == "usage":
-                    self.usage_label.configure(text=data)
+                    self.usage_label.configure(text=_tk_text(data))
 
                 elif msg_type == "rvc_status":
-                    self.rvc_status_label.configure(text=data)
+                    self.rvc_status_label.configure(text=_tk_text(data))
 
                 elif msg_type == "chat":
                     sender, message, emoji = data
@@ -649,7 +660,7 @@ class MikuGUIv4(ctk.CTk):
                     else:
                         prefix = f"{emoji} {sender}: " if emoji else f"{sender}: "
 
-                    self.chat_display.insert("end", f"\n{prefix}{message}\n")
+                    self.chat_display.insert("end", f"\n{_tk_text(prefix)}{_tk_text(message)}\n")
                     self.chat_display.configure(state="disabled")
                     self.chat_display.see("end")
 
@@ -746,7 +757,7 @@ class MikuGUIv4(ctk.CTk):
             return
 
         self.is_listening = True
-        self.voice_btn.configure(text="🔴 Listening...", fg_color="#FF4444")
+        self.voice_btn.configure(text=_tk_text("🔴 Listening..."), fg_color="#FF4444")
         self._update_status("🎤 Listening...")
         self._update_avatar("thinking")
         self.voice_input.start_listening()
@@ -756,7 +767,7 @@ class MikuGUIv4(ctk.CTk):
             return
 
         color = self.current_character.theme_color
-        self.voice_btn.configure(text="🎤 Hold to Speak", fg_color=color)
+        self.voice_btn.configure(text=_tk_text("🎤 Hold to Speak"), fg_color=color)
 
         thread = threading.Thread(target=self._process_voice)
         thread.daemon = True
