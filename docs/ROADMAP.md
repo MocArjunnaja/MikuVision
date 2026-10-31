@@ -42,6 +42,14 @@ Setelah semuanya merge dan daftar cek Windows (bagian 2) lulus: rilis **v1.5.0**
 
 Dijalankan setelah boot ke Windows, di folder repo yang sama (`D:`). Lakukan setelah #22–#25 merge, atau checkout `feat/skill-from-chat` yang sudah memuat semuanya (termasuk T1, Fase 1, dan S2).
 
+**Hasil 31 Okt** (Windows 11, RTX 4050, skala layar 125%; rincian dan log di CHANGELOG #30–#32 dan entri skill bernilai tetap):
+- Lulus: install ulang, pytest, volume/mute/media, buka/tutup katalog, folder/dokumen/WhatsApp, maskot, buka aplikasi apa pun + cache, shortcut (setelah #31: bentrok dengan aplikasi lain kini diberi tahu).
+- Lulus dengan catatan:
+  - urutan muat VRAM: 100% GPU, panggilan LLM pertama 1,3 s, tapi giliran pertama 3,9 s bila model perlu diminta ulang memanggil tool;
+  - membaca layar: teks terbaca persis di skala 125%, tukar model ±13 s, pemuatan pertama ±30 s.
+- Skill buatan user: penyimpanan benar setelah #32, dan "mode fokus dong" menjalankan semua langkah skill bernilai tetap. Giliran "kecilkan volume ke 20 lalu putar lofi di youtube" masih hanya mengatur volume di ±1 dari 3 run (qwen3:4b), sehingga skill yang tersimpan pun hanya berisi volume. Perlu keputusan: anggap lulus untuk v1.5.0 dengan keterbatasan tercatat, atau tunggu.
+- Belum diuji: bicara sungguhan ke mikrofon, dan sebagian angka L4.
+
 **Persiapan**
 1. `git pull`, lalu jalankan ulang `install.ps1` (langkah yang sudah beres dilewati).
 2. `pytest`: hasilnya harus sama dengan CI Windows.

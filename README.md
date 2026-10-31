@@ -94,7 +94,7 @@ Mendengar suara Anda, berpikir dengan LLM lokal, menjalankan aksi di komputer, l
 
 **Routine:** salin `routines.example.yaml` ke `data/routines.yaml` lalu ubah isinya; jalankan dengan ucapan ("jalankan mode belajar", "勉強モードにして") atau `/routine mode belajar`.
 
-**Skill buatan sendiri:** setelah Miku berhasil menyelesaikan sebuah tugas, bilang "simpan ini sebagai skill, namanya mode fokus" (atau 「これをスキルとして保存して」). Miku menyusun `SKILL.md` dari tool yang tadi berhasil beserta nilainya, menunjukkan isinya, dan menyimpannya ke `data/skills/` setelah Anda setuju. Lain kali cukup "mode fokus dong". Skill juga bisa ditulis sendiri (`/skill new <nama>`, contoh di folder `skills/`); skill hanya memakai tool yang sudah ada.
+**Skill buatan sendiri:** setelah Miku berhasil menyelesaikan sebuah tugas, bilang "simpan ini sebagai skill, namanya mode fokus" (atau 「これをスキルとして保存して」). Miku menyusun `SKILL.md` dari tool yang tadi berhasil beserta nilainya, menunjukkan isinya, dan menyimpannya ke `data/skills/` setelah Anda setuju. Lain kali cukup "mode fokus dong": langkah yang nilainya tetap (volume, folder, aplikasi, lagu yang dicari) dijalankan langsung walau model hanya menjawab, sedangkan isi dokumen atau pesan selalu diambil dari permintaan Anda saat itu. Skill juga bisa ditulis sendiri (`/skill new <nama>`, contoh di folder `skills/`); skill hanya memakai tool yang sudah ada.
 
 **Slash command** (mode teks dan GUI, tanpa LLM): `/help`, `/memory`, `/forget <key>`, `/routines`, `/routine <nama>`, `/skills`, `/skill <nama>`, `/skill new <nama>`, `/skill forget <nama>`, `/apps`, `/sessions`, `/resume [id]`, `/usage`, `/clear`.
 

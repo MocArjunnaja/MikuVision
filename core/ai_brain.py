@@ -104,6 +104,23 @@ MISSED_TOOL_NUDGE = (
     "If the next user message asks for a computer action, you MUST respond with the matching "
     "tool call right away. Do not just say you will do it or that it is done."
 )
+REQUEST_NEXT_STEP = (
+    "The user's last message asks for several actions: \"{request}\". Already done: {done}. "
+    "Probably not done yet: {remaining}. Call the tool for each action that is not done yet, now. "
+    "If they are all done already, reply with one short sentence and no tool call."
+)
+
+# "jangan putar lofi", "mode fokus nggak usah": langkah skill tidak dijalankan tanpa model
+_NEGATION = re.compile(
+    r"\b(jangan|tidak usah|gak usah|ga usah|nggak usah|enggak usah|tak usah|batal|batalkan"
+    r"|don'?t|do not|cancel)\b|やめ|しないで|いらない",
+    re.IGNORECASE,
+)
+# Bagian permintaan berurutan: "kecilkan volume ke 20 lalu putar lofi", "音量を20にして、ローファイを流して"
+_SEQUENCE_SPLIT = re.compile(
+    r"\b(?:lalu|terus|kemudian|habis itu|setelah itu|dan|and then|then|and)\b|[、,;]|それから|そして",
+    re.IGNORECASE,
+)
 
 
 # Permintaan aksi dari user: "電卓を閉じて", "音量を30にして", "buka notepad", "open chrome"
@@ -135,6 +152,11 @@ def _japanese_ratio(text: str) -> float:
 
 def _claims_action(text: str) -> bool:
     return bool(_ACTION_CLAIM_JA.search(text) or _ACTION_CLAIM_ID.search(text))
+
+
+def _action_parts(text: str) -> List[str]:
+    """Bagian permintaan yang masing-masing meminta satu aksi ("kecilkan volume ke 20", "putar lofi")."""
+    return [part for part in _SEQUENCE_SPLIT.split(text or "") if _requests_action(part)]
 
 
 def _requests_action(text: str) -> bool:
@@ -250,6 +272,9 @@ class AIBrain:
         self.turn_user_skills: List[user_skills.UserSkill] = []
         # Skill yang gilirannya berakhir dengan pertanyaan, dibawa ke giliran berikutnya
         self._pending_user_skills: List[user_skills.UserSkill] = []
+        # Ucapan user giliran ini, dan apakah sisa permintaan berurutan sudah diminta sekali
+        self._turn_input = ""
+        self._request_continued = False
     
     def set_character(self, character_name: str) -> bool:
         """
@@ -558,6 +583,8 @@ class AIBrain:
             return "Error: AI belum diinisialisasi", [], "neutral"
 
         self.turn_usage = LLMUsage()
+        self._turn_input = user_input
+        self._request_continued = False
         self._select_turn_skills(user_input)
         try:
             messages = self._build_messages(user_input)
@@ -596,6 +623,12 @@ class AIBrain:
                         response_msg, function_calls, clean_response = retry_msg, retry_calls, retry_clean
                         response_text = _strip_thinking(retry_msg.get('content', '') or '')
                         break
+
+            # "mode fokus dong": kata "mode" juga memicu skill routine, lalu model memanggil run_routine
+            # dengan nama skill user. Routine yang tidak ada pasti gagal dan menghentikan langkah skill
+            if self.turn_user_skills:
+                function_calls = [c for c in function_calls if c["action"] != "run_routine"
+                                  or routines.find_routine(str((c.get("params") or {}).get("name", "")))]
 
             self._match_document_language(function_calls, user_input)
             self._pending_user_skills = list(self.turn_user_skills) if skill_asks and not function_calls else []
@@ -651,30 +684,88 @@ class AIBrain:
         biasanya hanya memanggil satu tool per balasan (set_volume lalu berhenti), jadi
         selama skill buatan user aktif dan masih ada tool-nya yang belum dipakai, tanya lagi.
         """
+        fixed = self._fixed_skill_calls()
+        if fixed is not None:
+            # Semua nilai sudah tertulis di SKILL.md: tidak perlu menunggu model memanggil tool-nya.
+            # Model 4B sering hanya menjawab "モード fokus に切り替えますね！" tanpa tool call.
+            calls = [c for c in fixed if c["action"] not in done]
+            self._record_calls(calls)
+            return calls
         remaining = [t for t in tool_names(self.turn_user_skills) if t not in done]
         if not remaining or not self.client:
             return []
+        return self._ask_next_calls(SKILL_NEXT_STEP.format(tools=", ".join(remaining)), remaining)
+
+    def _fixed_skill_calls(self) -> Optional[List[Dict]]:
+        """Langkah skill aktif yang semua nilainya tetap, atau None bila model yang harus memutuskan:
+        skill dengan isian dari user, lebih dari satu skill aktif, atau user menyangkal ("jangan …")."""
+        if len(self.turn_user_skills) != 1 or _NEGATION.search(self._turn_input):
+            return None
+        return self.turn_user_skills[0].fixed_calls
+
+    def next_request_calls(self, done: List[Tuple[str, Dict]]) -> List[Dict]:
+        """
+        Sisa permintaan berurutan tanpa skill ("kecilkan volume ke 20 lalu putar lofi di youtube").
+        Model 4B sering hanya memanggil tool untuk bagian pertama. Bila bagian yang meminta aksi
+        lebih banyak dari tool yang sudah jalan, model diminta lagi untuk sisanya: dengan tool giliran
+        ini, lalu sekali lagi tanpa tool yang sudah dipakai (model sering hanya mengulang set_volume).
+        """
+        if self._request_continued or self.turn_user_skills or not self.client:
+            return []
+        parts = _action_parts(self._turn_input)
+        if len(parts) <= len(done):
+            return []
+        self._request_continued = True
+        done_text = ", ".join(f"{action}({json.dumps(params, ensure_ascii=False, default=str)})"
+                              for action, params in done)
+        # Model biasanya mengerjakan bagian pertama dulu; sisanya disebut supaya tidak ditebak
+        remaining = ", ".join(f"\"{part.strip()}\"" for part in parts[len(done):])
+        instruction = REQUEST_NEXT_STEP.format(request=self._turn_input, done=done_text, remaining=remaining)
+        # Tool call yang persis sama dengan yang sudah jalan tidak diulang
+        executed = {(action, json.dumps(params, sort_keys=True, default=str)) for action, params in done}
+        tools = self.turn_tool_names or [t["function"]["name"] for t in registry.get_all_tools_schema()]
+        unused = [t for t in tools if t not in {action for action, _ in done}]
+        for offered in (tools, unused):
+            if not offered:
+                break
+            calls = [c for c in self._ask_next_calls(instruction, offered, record=False)
+                     if (c["action"], json.dumps(c.get("params"), sort_keys=True, default=str)) not in executed]
+            if calls:
+                self._record_calls(calls)
+                return calls
+        return []
+
+    def _ask_next_calls(self, instruction: str, tools: Optional[List[str]], record: bool = True) -> List[Dict]:
+        """Satu panggilan model setelah hasil tool dicatat, hanya dengan tool yang boleh dipakai."""
         context = self.memory.get_context_for_prompt() if self.memory else self.conversation_history
         messages = ([{"role": "system", "content": self._build_system_prompt()}] + context
-                    + [{"role": "system", "content": SKILL_NEXT_STEP.format(tools=", ".join(remaining))}])
+                    + [{"role": "system", "content": instruction}])
         routed = self.turn_tool_names
-        self.turn_tool_names = remaining
+        self.turn_tool_names = tools
         try:
             response_msg = self._chat(messages, temperature=0.2).get("message", {})
         except Exception as e:
-            print(f"[AIBrain] Langkah skill berikutnya gagal: {e}")
+            print(f"[AIBrain] Langkah berikutnya gagal: {e}")
             return []
         finally:
             self.turn_tool_names = routed
-        calls = [c for c in self._parse_function_calls(response_msg)[0] if c["action"] in remaining]
-        if calls:
-            tool_meta = {"tool_calls": [{"function": {"name": c["action"], "arguments": c.get("params") or {}}}
-                                        for c in calls]}
-            if self.memory:
-                self.memory.add_message("assistant", "", metadata=tool_meta)
-            else:
-                self.conversation_history.append({"role": "assistant", "content": "", **tool_meta})
+        calls = self._parse_function_calls(response_msg)[0]
+        if tools is not None:
+            calls = [c for c in calls if c["action"] in tools]
+        if record:
+            self._record_calls(calls)
         return calls
+
+    def _record_calls(self, calls: List[Dict]):
+        """Catat tool call tambahan di riwayat, sebelum hasilnya dicatat oleh record_tool_results."""
+        if not calls:
+            return
+        tool_meta = {"tool_calls": [{"function": {"name": c["action"], "arguments": c.get("params") or {}}}
+                                    for c in calls]}
+        if self.memory:
+            self.memory.add_message("assistant", "", metadata=tool_meta)
+        else:
+            self.conversation_history.append({"role": "assistant", "content": "", **tool_meta})
 
     def generate_json(self, prompt: str, schema: Dict[str, Any], max_tokens: int = 600) -> Dict[str, Any]:
         """Satu panggilan tanpa tool dengan keluaran JSON sesuai schema (structured output Ollama).

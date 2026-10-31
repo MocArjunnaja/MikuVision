@@ -185,9 +185,30 @@ def test_fixed_values_stay_fixed_even_if_the_llm_marks_them_and_hints_are_short(
     result = save_from_chat(FakeBrain(messages=history, draft=draft), "simpan ini sebagai skill", lambda s: True)
 
     lines = result.skill.instructions.splitlines()
-    assert lines[1] == ("2. Panggil youtube_search: query = dari permintaan user saat ini "
-                        "(nama penyanyi atau judul lagu yang diminta user, termasuk)")
+    # Query yang ditandai isian menyimpan nilai tadi sebagai bawaan, jadi skill tidak perlu bertanya
+    assert lines[0].startswith("1. Jangan bertanya dulu")
+    assert lines[1] == ('2. Panggil youtube_search: query = "yorushika" (atau dari permintaan user saat ini '
+                        "bila disebut: nama penyanyi atau judul lagu yang diminta user, termasuk)")
     assert lines[2] == '3. Panggil open_folder: folder_name_or_path = "Downloads"'
+    assert result.skill.fixed_calls == [
+        {"action": "youtube_search", "params": {"query": "yorushika"}},
+        {"action": "open_folder", "params": {"folder_name_or_path": "Downloads"}}]
+
+
+def test_one_time_content_never_becomes_a_default():
+    draft = dict(FakeBrain().draft)
+    history = [
+        _message("user", "buatkan dokumen word daftar belanja: telur, susu"),
+        _message("assistant", "", tool_calls=[{"function": {"name": "create_word_document",
+                                                            "arguments": {"filename": "a", "content": "telur, susu"}}}]),
+        _message("tool", "SUKSES - Dokumen dibuat", tool_name="create_word_document"),
+    ]
+    draft.update(steps=[{"call": 1, "from_user": ["content"], "hint": "daftar barang"}])
+
+    result = save_from_chat(FakeBrain(messages=history, draft=draft), "jadikan skill", lambda s: True)
+
+    assert "telur" not in result.skill.instructions
+    assert result.skill.fixed_calls is None and result.skill.may_ask
 
 
 def test_wrong_step_numbers_fall_back_to_every_call_in_order():
