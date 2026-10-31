@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, Optional
 
 from core import long_term_memory
 from core.ai_brain import AIBrain
+from core.desktop.app_search import normalize
 from core.routines import load_routines
 from core.skills import SKILLS
 
@@ -21,7 +22,9 @@ HELP_TEXT = """Perintah:
   /routines             daftar routine
   /routine <nama>       jalankan routine
   /sessions             5 sesi terakhir
-  /resume [session_id]  lanjutkan sesi (default: terakhir)"""
+  /resume [session_id]  lanjutkan sesi (default: terakhir)
+  /apps                 aplikasi yang sudah Miku pelajari dari menu sistem
+  /apps forget <nama>   lupakan satu aplikasi (bila Miku membuka yang salah)"""
 
 
 def handle_command(text: str, brain: AIBrain, system_control: Any) -> Optional[str]:
@@ -103,9 +106,26 @@ def _resume(brain, system_control, arg) -> str:
     return brain.resume_session(arg or None)[1]
 
 
+def _apps(brain, system_control, arg) -> str:
+    cache = system_control.apps.cache
+    action, _, name = arg.partition(" ")
+    if action.lower() == "forget":
+        if not name.strip():
+            return "Pakai: /apps forget <nama>"
+        if cache.drop(normalize(name)):
+            return f"Miku lupa '{name.strip()}'; lain kali dicari lagi di menu aplikasi."
+        return f"'{name.strip()}' tidak ada di daftar aplikasi yang dipelajari."
+    items = cache.items()
+    if not items:
+        return "Belum ada aplikasi yang dipelajari. Minta Miku membuka aplikasi apa pun yang ada di menu."
+    return "Aplikasi yang sudah Miku pelajari:\n" + "\n".join(
+        f"  - {query} -> {record.get('name', '?')}" for query, record in items
+    )
+
+
 Handler = Callable[[AIBrain, Any, str], str]
 COMMANDS: Dict[str, Handler] = {
     "help": _help, "clear": _clear, "usage": _usage, "memory": _memory, "forget": _forget,
     "skills": _skills, "routines": _routines, "routine": _routine, "sessions": _sessions,
-    "resume": _resume,
+    "resume": _resume, "apps": _apps,
 }

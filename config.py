@@ -21,6 +21,8 @@ MEMORY_PROMPT_MAX_FACTS = 15
 # Routine: contoh bawaan (ikut repo) + milik user (tidak ikut git, menimpa contoh)
 ROUTINES_EXAMPLE_FILE = BASE_DIR / "routines.example.yaml"
 ROUTINES_FILE = DATA_DIR / "routines.yaml"
+# Aplikasi yang ditemukan di menu sistem dan berhasil dibuka (lihat core/desktop/app_search.py)
+APP_CACHE_FILE = DATA_DIR / "app_cache.json"
 # Kirim hanya skema tool dari skill yang relevan (lihat core/skills.py)
 SKILL_ROUTING = True
 

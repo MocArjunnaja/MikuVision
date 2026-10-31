@@ -6,6 +6,40 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-10-31): buka aplikasi apa pun dari menu sistem, dan Miku mengingatnya
+
+Pemicunya sesi GUI: "libreOffice o haite kudasai" → "Aplikasi 'LibreOffice' tidak dikenali", karena hanya aplikasi di katalog `config.py` yang bisa dibuka.
+
+### Ditambahkan
+- `core/desktop/app_search.py`: `open_application` kini mencari di menu aplikasi sistem bila nama tidak ada di katalog atau aplikasinya tidak terpasang.
+  - Urutan: katalog alias → **cache** aplikasi yang sudah dipelajari → menu sistem → nama-nama yang paling mirip.
+  - Linux: file `.desktop` dari folder XDG, flatpak, dan snap, sama dengan yang dibaca menu aplikasi. Entri tersembunyi, khusus desktop lain, atau yang programnya tidak ada dilewati. Dibuka dengan `gtk-launch`.
+  - Windows: `Get-StartApps` (termasuk aplikasi Store), cadangan shortcut Start Menu. Dibuka dengan `shell:AppsFolder`.
+  - Cocok dengan nama, nama terjemahan (Indonesia/Jepang), kata kunci, dan salah ketik ("librofice" → LibreOffice). Bila beberapa aplikasi sama cocoknya (misalnya "writer"), tidak ada yang dibuka dan Miku menanyakan yang mana.
+  - Aplikasi berisi kata "uninstall" di namanya tidak pernah dibuka lewat pencarian.
+- **Cache** `data/app_cache.json`: aplikasi yang ditemukan di menu dan benar-benar berhasil dibuka disimpan, dipisah per OS (folder `data/` bisa dipakai bersama Windows saat dual-boot). Bila aplikasinya sudah dihapus, entri dilupakan dan dicari ulang. Nama prosesnya ikut disimpan, sehingga "tutup LibreOffice" juga jalan.
+- Slash command `/apps` (daftar aplikasi yang dipelajari) dan `/apps forget <nama>`.
+- 30 test (`tests/test_app_search.py`).
+
+### Diubah
+- Deskripsi tool `open_application`: aplikasi terpasang apa pun, dan nama dikirim dalam bahasa Inggris/nama di menu (「カレンダー」 → "Calendar"), karena aplikasi GNOME tidak menyimpan nama Jepang di file menunya.
+- Menutup aplikasi yang jendelanya sudah tertutup tapi prosesnya lanjut di latar (layanan GApplication GNOME, aplikasi di system tray) kini dilaporkan "Menutup …", bukan "masih terbuka". Prosesnya tetap tidak di-kill.
+
+### Diperbaiki
+- Brave di Linux: program `brave-browser-stable` dipetakan ke proses `brave`.
+
+### Pengujian
+- `pytest`: 259 lulus; di Python sistem seperti CI 254 lulus, 5 dilewati.
+- Di Linux Mint (101 aplikasi di menu, dibaca dalam 90 ms):
+  - LibreOffice: ditemukan di menu dan dibuka (0,16 s), ditutup, lalu dibuka lagi dari cache (0,07 s).
+  - Calendar: dibuka dari menu, lalu ditutup dengan benar walau prosesnya lanjut di latar.
+  - "Photoshop" (tidak terpasang): "tidak dikenali", tanpa membuka apa pun.
+- Tool calling: 8/8 permintaan aplikasi JP/ID ("libreOffice o haite kudasai", 「カレンダーを開いて」, 「電卓を開いて」, "buka kalender", …), dan 10/10 perintah umum dari pengujian L2.
+
+### Keterbatasan diketahui
+- Bagian Windows (`Get-StartApps`, `shell:AppsFolder`) baru dites dengan mock, belum dijalankan di Windows.
+- Aplikasi GNOME tanpa nama Jepang di file menunya hanya ditemukan bila LLM mengirim nama Inggrisnya (8/8 pada uji di atas).
+
 ## Belum dirilis (2026-10-31): maskot desktop di Linux (Fase L3)
 
 ### Ditambahkan

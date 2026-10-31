@@ -63,12 +63,22 @@ def _no_real_desktop(monkeypatch):
         monkeypatch.setattr(backend, "windows_by_pid", lambda self, pids: {})
         monkeypatch.setattr(backend, "close_window", lambda self, window: None)
         monkeypatch.setattr(backend, "can_close_windows", property(lambda self: True))
+        # Menu aplikasi sistem kosong; test yang butuh mengisinya sendiri
+        monkeypatch.setattr(backend, "list_installed_apps", lambda self: [])
 
     def refuse(*args, **kwargs):
         raise AssertionError(f"Test menjalankan perintah desktop sungguhan: {args}")
 
-    for name in ("_run", "_spawn", "_copy_to_clipboard"):
+    for name in ("_run", "_spawn", "_start", "_copy_to_clipboard"):
         monkeypatch.setattr(linux, name, refuse)
+    monkeypatch.setattr(windows, "_start_apps", refuse)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_app_cache(monkeypatch, tmp_path):
+    """Test tidak boleh membaca/menulis cache aplikasi asli di data/."""
+    from core import system_control
+    monkeypatch.setattr(system_control, "APP_CACHE_FILE", tmp_path / "app_cache.json")
 
 
 @pytest.fixture(autouse=True)
