@@ -6,9 +6,15 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
-## Belum dirilis (2026-10-31): aksi komputer di Linux (Fase L2)
+## v1.4.0 (2026-10-31): aksi komputer di Linux (Fase L2) dan ekspresi Miku baru
+
+[#18](https://github.com/MocArjunnaja/MikuVision/pull/18) (frame emosi) dan [#19](https://github.com/MocArjunnaja/MikuVision/pull/19) (Fase L2). Rencana Linux: `docs/PLAN_LINUX.md`.
 
 ### Ditambahkan
+- **Frame emosi Miku** untuk sedih, kesal, malu, bingung, dan berpikir. Sebelumnya kelima emosi ini meminjam frame dari animasi lain yang perasaannya berbeda (sedih memakai frame menari yang tersenyum, kesal memakai pose terkena pukulan).
+  - `tools/make_emote_frames.py` membuat 11 frame dari frame asli Miku: beberapa piksel wajah diubah (alis, mulut, rona pipi), lalu diberi tanda emote (air mata, 💢, keringat, "?", "..."). Hasilnya ditulis ke sel kosong 106-116 sprite sheet; frame asli tidak berubah, dan script bisa dijalankan ulang (`--preview` tanpa menulis).
+  - sedih 106-107 (air mata menetes), kesal 108-109 (💢 berdenyut), malu 110-111 (rona pipi, mulut bergelombang, keringat), bingung 112-113 ("?" naik-turun), berpikir 114-116 ("." → ".." → "...").
+  - Test baru memastikan sheet sama dengan keluaran script dan `config.py` memakai frame baru.
 - `core/desktop/`: aksi yang berbeda per OS dalam satu antarmuka, dipilih otomatis. Tool di `core/system_control.py` dan `core/macro_tools.py` tidak lagi memanggil `os.startfile`, pycaw, atau win32 langsung.
   - `windows.py`: kode Windows lama dipindah tanpa perubahan perilaku (App Paths/ShellExecute, pycaw, `WM_CLOSE`).
   - `linux.py`, semua tanpa sudo:
@@ -34,7 +40,9 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 - Linux: folder dokumen Miku memakai Desktop dari `xdg-user-dir` (namanya bisa diterjemahkan).
 
 ### Pengujian
-- `pytest`: 216 lulus di venv dan di Python sistem tanpa paket suara/GUI (seperti CI).
+- `pytest`: 219 lulus setelah #18 dan #19 digabung, di venv dan di Python sistem tanpa paket suara/GUI. CI lulus di Ubuntu dan Windows.
+- `install.sh` dijalankan ulang di atas v1.4.0: 59 s, `miku.py --test` lulus.
+- GUI: "bisa ubah volume ke 30%?" → `set_volume(30)`, volume sistem menjadi 30% (di v1.3.0: "Audio interface not available"). Pesan sedih menampilkan frame sedih yang baru.
 - Uji sungguhan di Linux Mint lewat tool Miku:
 
   | Uji | Hasil |
@@ -48,7 +56,7 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 - Audit GUI: 12 fungsi yang jalan di thread lain tidak menyentuh widget Tk langsung.
 
 ### Keterbatasan diketahui
-- Belum dijalankan di Windows; perilaku Windows dijaga oleh test lama yang kini memakai backend Windows.
+- Aplikasinya belum dijalankan di Windows. Perilaku Windows dijaga oleh test lama yang kini memakai backend Windows, dan test itu lulus di CI Windows.
 - `type_text`/`press_key`/`hotkey` di Linux baru dicek lewat unit test.
 - Maskot desktop (`miku.py`) belum transparan di Linux (Fase L3).
 
