@@ -11,6 +11,7 @@ from core.ai_brain import AIBrain
 from core.desktop.app_search import normalize
 from core.routines import load_routines
 from core.skills import SKILLS
+from core.user_skills import find_user_skill, load_user_skills
 
 HELP_TEXT = """Perintah:
   /help                 daftar perintah
@@ -18,7 +19,8 @@ HELP_TEXT = """Perintah:
   /usage                pemakaian token sesi ini
   /memory               fakta yang Miku ingat
   /forget <key>         hapus satu fakta
-  /skills               kelompok kemampuan Miku
+  /skills               kemampuan Miku (bawaan + skill buatan user)
+  /skill <nama>         isi satu skill buatan user (petunjuk, pemicu, tool)
   /routines             daftar routine
   /routine <nama>       jalankan routine
   /sessions             5 sesi terakhir
@@ -68,9 +70,29 @@ def _forget(brain, system_control, arg) -> str:
 
 
 def _skills(brain, system_control, arg) -> str:
-    return "Kemampuan Miku:\n" + "\n".join(
-        f"  - {s.name}: {s.description} ({', '.join(s.tools)})" for s in SKILLS
-    )
+    lines = ["Kemampuan Miku:"]
+    lines += [f"  - {s.name}: {s.description} ({', '.join(s.tools)})" for s in SKILLS]
+    learned, errors = load_user_skills()
+    lines.append("Skill buatan user:" if learned else
+                 "Belum ada skill buatan user. Tulis data/skills/<nama>/SKILL.md (contoh: folder skills/).")
+    lines += [f"  - {s.name}: {s.description} (pemicu: {', '.join(s.triggers)})" for s in learned.values()]
+    if errors:
+        lines.append("Tidak dimuat:")
+        lines += [f"  - {e}" for e in errors]
+    return "\n".join(lines)
+
+
+def _skill(brain, system_control, arg) -> str:
+    if not arg:
+        return "Pakai: /skill <nama>. Lihat /skills."
+    skill = find_user_skill(arg, load_user_skills()[0])
+    if skill is None:
+        return f"Skill '{arg}' tidak ditemukan. Lihat /skills."
+    return (f"Skill '{skill.name}' ({skill.path})\n"
+            f"  {skill.description}\n"
+            f"  Pemicu: {', '.join(skill.triggers)}\n"
+            f"  Tool: {', '.join(skill.tools)}\n"
+            f"{skill.instructions}")
 
 
 def _routines(brain, system_control, arg) -> str:
@@ -126,6 +148,6 @@ def _apps(brain, system_control, arg) -> str:
 Handler = Callable[[AIBrain, Any, str], str]
 COMMANDS: Dict[str, Handler] = {
     "help": _help, "clear": _clear, "usage": _usage, "memory": _memory, "forget": _forget,
-    "skills": _skills, "routines": _routines, "routine": _routine, "sessions": _sessions,
+    "skills": _skills, "skill": _skill, "routines": _routines, "routine": _routine, "sessions": _sessions,
     "resume": _resume, "apps": _apps,
 }

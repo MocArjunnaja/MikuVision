@@ -86,3 +86,10 @@ def _isolated_long_term_memory(monkeypatch, tmp_path):
     """Test tidak boleh membaca/menulis memori jangka panjang asli di data/."""
     from core import long_term_memory
     monkeypatch.setattr(long_term_memory, "store", long_term_memory.LongTermMemory(tmp_path / "ltm.json"))
+
+
+@pytest.fixture(autouse=True)
+def _isolated_user_skills(monkeypatch, tmp_path):
+    """Test hanya melihat contoh skill di repo, bukan skill milik user di data/skills/."""
+    from core import user_skills
+    monkeypatch.setattr(user_skills, "USER_SKILLS_DIR", tmp_path / "user_skills")

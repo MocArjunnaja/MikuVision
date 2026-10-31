@@ -2,7 +2,7 @@
 
 **Tujuan:** user bisa menambah kemampuan Miku tanpa mengubah kode: cukup satu file teks berisi petunjuk, daftar tool, dan pemicu. Miku memuatnya hanya saat relevan, lalu tetap berpikir sendiri: mengisi parameter dari ucapan user, bertanya bila ada yang kurang, dan menyesuaikan dengan situasi.
 
-**Status:** rencana, belum dimulai (31 Okt 2026).
+**Status:** S1 selesai (31 Okt 2026, bagian 8). Berikutnya: S2 ("simpan ini sebagai skill").
 
 ---
 
@@ -46,7 +46,7 @@ tools: [create_word_document, open_folder]
    - menulis file sendiri;
    - mengucapkan "simpan ini sebagai skill" setelah sebuah percakapan berhasil: Miku menyusun `SKILL.md`, menunjukkannya dulu, lalu menyimpan setelah user setuju;
    - `/skill new <nama>`.
-5. **Slash command:** `/skills` (sudah ada) ikut menampilkan skill user; `/skill <nama>` menjalankan; `/skill forget <nama>` menghapus.
+5. **Slash command:** `/skills` ikut menampilkan skill user dan file yang gagal dimuat; `/skill <nama>` menampilkan isi skill (S1); `/skill forget <nama>` menghapus (S2).
 6. **Batas untuk model 4B dengan konteks 8k:** petunjuk satu skill maksimal ±400 token, dan maksimal 2 skill user aktif per giliran.
 
 ## 4. Tahapan
@@ -76,6 +76,36 @@ tools: [create_word_document, open_folder]
 
 ## 7. Keputusan yang dibutuhkan dari user
 
-1. Format file Markdown + front matter seperti contoh di atas, oke?
-2. Boleh Miku membuat skill sendiri dari percakapan ("simpan ini sebagai skill"), dengan konfirmasi dulu?
-3. Skill pertama apa yang paling ingin dibuat?
+1. Format file Markdown + front matter seperti contoh di atas, oke? (S1 memakai format ini)
+2. Boleh Miku membuat skill sendiri dari percakapan ("simpan ini sebagai skill"), dengan konfirmasi dulu? (S2)
+3. Skill pertama apa yang paling ingin dibuat? (S1 membawa dua contoh: laporan harian dan musik mood)
+
+## 8. Hasil S1 (31 Okt 2026)
+
+**Yang dibuat**
+- `core/user_skills.py`: membaca `skills/*/SKILL.md` (contoh, ikut repo) dan `data/skills/*/SKILL.md` (milik user, menimpa contoh bernama sama). File ditolak bila tanpa `name`/`tools`/petunjuk, memakai tool yang tidak terdaftar atau `run_routine`, atau petunjuknya lebih dari ±400 token. Alasannya tampil di `/skills`.
+- Pemicu dicocokkan setelah huruf dikecilkan dan tanda baca dibuang; nama skill selalu ikut menjadi pemicu. Awal kata harus pas, akhiran boleh ("laporan hariannya"). Maksimal 2 skill aktif, pemicu terpanjang didahulukan.
+- `AIBrain`: skill aktif menambah skema tool-nya ke skill bawaan yang cocok. Bila hanya skill user yang cocok, yang dikirim cukup tool skill itu + memori, bukan semua tool. Petunjuk skill aktif masuk system prompt; skill lain hanya disebut nama dan deskripsinya.
+- Contoh: `skills/laporan-harian` (`create_word_document`, `open_folder`) dan `skills/musik-mood` (`set_volume`, `youtube_search`).
+
+**Yang ditemukan saat uji LLM**
+| Masalah | Perbaikan |
+|---|---|
+| qwen3:4b hanya memanggil satu tool per balasan (`set_volume`, lalu berhenti): musik mood 0/10 | `run_turn` meminta langkah skill berikutnya selama masih ada tool skill yang belum dipakai dan tool sebelumnya berhasil (maks. 3 langkah). Giliran tanpa skill user tidak berubah |
+| Skill yang menyuruh bertanya dulu dipaksa memanggil tool oleh retry "missed tool" | Retry dilewati bila petunjuk skill menyuruh bertanya (`tanyakan`, `ask`, `聞`), balasannya berupa pertanyaan, dan user belum memberi detail |
+| Jawaban user atas pertanyaan skill ("tadi belajar fisika") tidak memuat pemicu | Skill yang gilirannya berakhir dengan pertanyaan tetap aktif satu giliran lagi |
+| 「作業用BGMかけて」, 「流して」 tidak dianggap permintaan aksi | `かけて` dan `流して` ditambahkan ke pola permintaan aksi |
+
+**Angka** (`experiments/skills/bench_skills.py`, qwen3:4b-instruct, 3 percobaan per ucapan; giliran lewat `run_turn`, tool tidak dieksekusi)
+
+| Metrik | Target | Hasil |
+|---|---|---|
+| Skill yang tepat terpilih | ≥ 9/10 | 60/60 |
+| Laporan harian: tool dan isi benar, atau bertanya bila kegiatan belum disebut | ≥ 9/10 | 29/30 |
+| Musik mood: `set_volume` + `youtube_search` dengan volume dan query sesuai tabel skill | ≥ 9/10 | 29/30 (23/30 sebelum skill diberi "jangan bertanya dulu") |
+| Perintah umum (10 JP/ID): tidak mengaktifkan skill user | 0 salah aktif | 30/30 tidak aktif |
+| Perintah umum: tool benar | sama dengan tanpa skill | 27/30 dengan skill, 25/30 tanpa skill |
+| Token prompt (median) | naik ≤ 300 | 1.664 vs 1.610 (+54) |
+| Aksi berisiko tanpa konfirmasi | 0 | 0; gerbang konfirmasi tidak bisa dilewati skill |
+
+`次の曲にして` gagal di kedua versi (model bertanya "lagu apa?"), jadi itu kelemahan lama, bukan efek skill. Satu catatan dari hasil ini: skill yang gagal bisa diperbaiki dengan mengubah `SKILL.md` saja, tanpa mengubah kode.

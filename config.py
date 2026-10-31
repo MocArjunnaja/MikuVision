@@ -25,6 +25,13 @@ ROUTINES_FILE = DATA_DIR / "routines.yaml"
 APP_CACHE_FILE = DATA_DIR / "app_cache.json"
 # Kirim hanya skema tool dari skill yang relevan (lihat core/skills.py)
 SKILL_ROUTING = True
+# Skill buatan user: <folder>/<nama>/SKILL.md. Contoh ikut repo; milik user menimpa
+# contoh dengan nama sama (lihat core/user_skills.py dan docs/PLAN_SKILLS.md)
+SKILLS_EXAMPLE_DIR = BASE_DIR / "skills"
+USER_SKILLS_DIR = DATA_DIR / "skills"
+# Batas untuk model 4B dengan konteks 8k
+USER_SKILL_MAX_TOKENS = 400
+USER_SKILL_MAX_ACTIVE = 2
 
 # Sprite-sheet UI assets for the GUI
 MIKU_SPRITE_SHEET = AVATAR_DIR / "miku_smart_sheet.png"

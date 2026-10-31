@@ -22,6 +22,7 @@ from core.emotion import EmotionDetector
 from core.tools import registry
 from core import long_term_memory  # mendaftarkan tool remember/recall_memory/forget
 from core import routines  # mendaftarkan tool run_routine/list_routines
+from core import user_skills
 from core.skills import select_skills, tool_names
 
 # Function call prompts per language
@@ -94,6 +95,10 @@ MISSED_TOOL_RETRY = (
     "You described a computer action but did not call a tool. If the user's last message "
     "asks for an action, call the matching tool now. Otherwise answer normally."
 )
+SKILL_NEXT_STEP = (
+    "Continue the active skill. If one of its steps that needs a tool is not done yet, call that tool "
+    "now (one of: {tools}). If every step is done, reply with one short sentence and no tool call."
+)
 MISSED_TOOL_NUDGE = (
     "If the next user message asks for a computer action, you MUST respond with the matching "
     "tool call right away. Do not just say you will do it or that it is done."
@@ -103,7 +108,7 @@ MISSED_TOOL_NUDGE = (
 # Permintaan aksi dari user: "電卓を閉じて", "音量を30にして", "buka notepad", "open chrome"
 _ACTION_REQUEST = re.compile(
     r"(開いて|開けて|閉じて|消して|止めて|下げて|上げて|検索して|探して|再生して|起動して|にして|ミュート"
-    r"|覚えて|覚えと|忘れて|作って|作成して|書いて)"
+    r"|覚えて|覚えと|忘れて|作って|作成して|書いて|かけて|流して)"
     r"|\b(buka|tutup|kecilkan|besarkan|naikkan|turunkan|cari|carikan|putar|matikan|nyalakan|mute|unmute"
     r"|ingat|ingatkan|lupakan|buat|buatkan|bikin|bikinkan|tulis|tuliskan"
     r"|open|close|search|play|pause|mute|remember|forget|create|write)\b",
@@ -133,6 +138,10 @@ def _claims_action(text: str) -> bool:
 
 def _requests_action(text: str) -> bool:
     return bool(_ACTION_REQUEST.search(text))
+
+
+def _asks_question(text: str) -> bool:
+    return "?" in text or "？" in text
 
 
 def _strip_thinking(text: str) -> str:
@@ -235,6 +244,11 @@ class AIBrain:
 
         # Tool yang dikirim pada giliran ini (None = semua tool); dipilih per skill
         self.turn_tool_names: Optional[List[str]] = None
+        # Skill buatan user (SKILL.md): semua yang termuat, dan yang aktif giliran ini
+        self.learned_skills: List[user_skills.UserSkill] = []
+        self.turn_user_skills: List[user_skills.UserSkill] = []
+        # Skill yang gilirannya berakhir dengan pertanyaan, dibawa ke giliran berikutnya
+        self._pending_user_skills: List[user_skills.UserSkill] = []
     
     def set_character(self, character_name: str) -> bool:
         """
@@ -364,6 +378,8 @@ class AIBrain:
 {memory_prompt}
 
 {self._routines_prompt()}
+
+{user_skills.as_prompt(self.learned_skills, self.turn_user_skills)}
 """
 
     def _match_document_language(self, function_calls: List[Dict], user_input: str):
@@ -394,6 +410,21 @@ class AIBrain:
             if translated.strip() and _japanese_ratio(translated) < 0.3:
                 params["content"] = translated.strip()
                 call["params"] = params
+
+    def _select_turn_skills(self, user_input: str):
+        """Pilih skill bawaan + skill buatan user untuk giliran ini."""
+        self.learned_skills = list(user_skills.load_user_skills()[0].values())
+        self.turn_user_skills = user_skills.select_user_skills(user_input, self.learned_skills)
+        if not self.turn_user_skills:
+            # Jawaban atas pertanyaan skill ("tadi belajar fisika") biasanya tanpa pemicu
+            pending = {s.name for s in self._pending_user_skills}
+            self.turn_user_skills = [s for s in self.learned_skills if s.name in pending]
+        self._pending_user_skills = []
+        if not SKILL_ROUTING:
+            self.turn_tool_names = None
+            return
+        builtin = select_skills(user_input, fallback_all=not self.turn_user_skills)
+        self.turn_tool_names = tool_names([*builtin, *self.turn_user_skills])
 
     def _routines_prompt(self) -> str:
         """Daftar routine, hanya bila skill routine dikirim giliran ini (hemat token)."""
@@ -526,7 +557,7 @@ class AIBrain:
             return "Error: AI belum diinisialisasi", [], "neutral"
 
         self.turn_usage = LLMUsage()
-        self.turn_tool_names = tool_names(select_skills(user_input)) if SKILL_ROUTING else None
+        self._select_turn_skills(user_input)
         try:
             messages = self._build_messages(user_input)
             response = self._chat(messages)
@@ -541,7 +572,13 @@ class AIBrain:
 
             # Model kecil kadang hanya berjanji ("メモ帳を開きますね！", "閉じたよ！") tanpa
             # memanggil tool. Coba sekali lagi bila user meminta aksi atau model mengklaimnya.
-            if not function_calls and (_requests_action(user_input) or _claims_action(clean_response)):
+            # Skill yang petunjuknya menyuruh bertanya dulu ("kegiatanmu hari ini apa saja?") tidak
+            # dipaksa memanggil tool, kecuali user sudah memberi detail atau balasannya berjanji ("日報を作りますね！")
+            skill_asks = (any(s.may_ask and not user_skills.details_given(s, user_input)
+                              for s in self.turn_user_skills)
+                          and _asks_question(clean_response) and not _claims_action(clean_response))
+            if not function_calls and not skill_asks and (
+                    _requests_action(user_input) or _claims_action(clean_response)):
                 # Dua strategi, berhenti di yang pertama berhasil. Hasil benchmark: (1) unggul
                 # di perintah tunggal, (2) unggul di tengah percakapan yang sudah memuat tool call.
                 retry_attempts = (
@@ -560,6 +597,7 @@ class AIBrain:
                         break
 
             self._match_document_language(function_calls, user_input)
+            self._pending_user_skills = list(self.turn_user_skills) if skill_asks and not function_calls else []
 
             # Detect emotion
             emotion, clean_response = self.emotion_detector.detect_emotion(clean_response)
@@ -601,6 +639,37 @@ class AIBrain:
 
         except Exception as e:
             return f"Error: {e}", [], "confused"
+    def next_skill_calls(self, done: List[str]) -> List[Dict]:
+        """
+        Tool call untuk langkah skill berikutnya, setelah hasil tool dicatat. Model 4B
+        biasanya hanya memanggil satu tool per balasan (set_volume lalu berhenti), jadi
+        selama skill buatan user aktif dan masih ada tool-nya yang belum dipakai, tanya lagi.
+        """
+        remaining = [t for t in tool_names(self.turn_user_skills) if t not in done]
+        if not remaining or not self.client:
+            return []
+        context = self.memory.get_context_for_prompt() if self.memory else self.conversation_history
+        messages = ([{"role": "system", "content": self._build_system_prompt()}] + context
+                    + [{"role": "system", "content": SKILL_NEXT_STEP.format(tools=", ".join(remaining))}])
+        routed = self.turn_tool_names
+        self.turn_tool_names = remaining
+        try:
+            response_msg = self._chat(messages, temperature=0.2).get("message", {})
+        except Exception as e:
+            print(f"[AIBrain] Langkah skill berikutnya gagal: {e}")
+            return []
+        finally:
+            self.turn_tool_names = routed
+        calls = [c for c in self._parse_function_calls(response_msg)[0] if c["action"] in remaining]
+        if calls:
+            tool_meta = {"tool_calls": [{"function": {"name": c["action"], "arguments": c.get("params") or {}}}
+                                        for c in calls]}
+            if self.memory:
+                self.memory.add_message("assistant", "", metadata=tool_meta)
+            else:
+                self.conversation_history.append({"role": "assistant", "content": "", **tool_meta})
+        return calls
+
     def record_tool_results(self, results: List[Tuple[str, str]]):
         """Simpan hasil eksekusi tool [(action, pesan_hasil)] sebagai pesan role 'tool'."""
         for action, text in results:
@@ -689,6 +758,7 @@ class AIBrain:
             self.memory.clear()
         else:
             self.conversation_history = []
+        self._pending_user_skills = []
         self.emotion_detector.reset()
         print("[AIBrain] Conversation history cleared")
     

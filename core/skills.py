@@ -65,14 +65,17 @@ SKILLS: Tuple[Skill, ...] = (
 ALWAYS_ON: Tuple[str, ...] = ("memory",)
 
 
-def select_skills(text: str, skills: Sequence[Skill] = SKILLS) -> List[Skill]:
+def select_skills(text: str, skills: Sequence[Skill] = SKILLS, fallback_all: bool = True) -> List[Skill]:
     """
     Skill yang relevan untuk teks user. Bila tidak ada pemicu yang cocok
     (obrolan biasa atau kalimat tak terduga), semua skill dikirim supaya
-    tidak ada kemampuan yang hilang.
+    tidak ada kemampuan yang hilang. fallback_all=False dipakai bila skill
+    buatan user sudah cocok: cukup skill ALWAYS_ON ditambah tool skill itu.
     """
     matched = [s for s in skills if s.triggers.search(text or "")]
     if not [s for s in matched if s.id not in ALWAYS_ON]:
+        if not fallback_all:
+            return [s for s in skills if s.id in ALWAYS_ON]
         return list(skills)
     always = [s for s in skills if s.id in ALWAYS_ON and s not in matched]
     return always + matched

@@ -11,6 +11,9 @@ from typing import Any, Callable, Dict, List, Optional
 from core.ai_brain import AIBrain
 from core.turn_log import TurnLogger
 
+# Langkah tambahan maksimal per giliran untuk skill buatan user dengan beberapa tool
+MAX_SKILL_STEPS = 3
+
 
 @dataclass
 class ToolResult:
@@ -50,17 +53,25 @@ def run_turn(
 
     results: List[ToolResult] = []
     if calls and system_control:
-        for call in calls:
-            action, params = call.get("action", ""), call.get("params") or {}
-            success, message = system_control.execute_action(action, params)
-            result = ToolResult(action, params, success, message)
-            results.append(result)
-            if on_tool_result:
-                on_tool_result(result)
-
-        brain.record_tool_results(
-            [(r.action, f"{'SUKSES' if r.success else 'GAGAL'} - {r.message}") for r in results]
-        )
+        for _ in range(1 + MAX_SKILL_STEPS):
+            batch: List[ToolResult] = []
+            for call in calls:
+                action, params = call.get("action", ""), call.get("params") or {}
+                success, message = system_control.execute_action(action, params)
+                result = ToolResult(action, params, success, message)
+                batch.append(result)
+                if on_tool_result:
+                    on_tool_result(result)
+            results.extend(batch)
+            brain.record_tool_results(
+                [(r.action, f"{'SUKSES' if r.success else 'GAGAL'} - {r.message}") for r in batch]
+            )
+            # Lanjut ke langkah skill berikutnya hanya bila semua tool barusan berhasil
+            if not all(r.success for r in batch):
+                break
+            calls = brain.next_skill_calls([r.action for r in results])
+            if not calls:
+                break
         if report_results:
             reply, emotion = brain.think_observation()
 

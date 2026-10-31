@@ -194,14 +194,31 @@ Maskot desktop (`python miku.py`) di Linux sekarang setara Windows, tanpa depend
 - Hasil di `experiments/linux_eval/RESULTS.md` dan CHANGELOG, berdampingan dengan angka Windows.
 
 ### Sesudahnya: agent visi Fase 1 lintas OS
-- Spike Fase 0 versi Linux: cakupan AT-SPI2 (pengganti UI Automation) di Nemo, Cinnamon Settings, Kalkulator, LibreOffice, Firefox, dan Brave (browser Chromium butuh `--force-renderer-accessibility`).
+- Spike Fase 0 versi Linux selesai 31 Okt 2026 (Kalkulator, Xed, Nemo, Pengaturan Suara Cinnamon, System Monitor): [`experiments/vision_linux/RESULTS.md`](../experiments/vision_linux/RESULTS.md). LibreOffice, Firefox, dan Brave (browser Chromium butuh `--force-renderer-accessibility`) belum diuji.
 - OCR: RapidOCR (ONNX, CPU) bisa dipakai di dua OS, menggantikan Windows OCR yang hanya ada di Windows.
-- Screenshot `mss` dan model `qwen3-vl:4b-instruct` sama dengan rencana Windows.
+- Screenshot `PIL.ImageGrab` dan model `qwen3-vl:4b-instruct` sama dengan rencana Windows.
+
+### L5: Distro dan desktop lain
+Yang menentukan bukan distronya, tetapi **X11 atau Wayland** dan paket sistem yang tersedia.
+
+| Bagian | Bergantung pada | Distro lain (sesi X11) | Sesi Wayland |
+|---|---|---|---|
+| Cari & buka aplikasi | File `.desktop` standar freedesktop (XDG, flatpak, snap), `gtk-launch`, cadangan `gio launch` | Jalan di GNOME, KDE, XFCE, Cinnamon, MATE | Jalan |
+| Volume | `wpctl` (PipeWire) atau `pactl` (PulseAudio) | Jalan di distro modern; sistem ALSA murni tidak didukung | Jalan |
+| Media, buka file/folder | `playerctl` (MPRIS), `xdg-open`, `xdg-user-dir` | Jalan | Jalan |
+| Tutup jendela | `wmctrl` (EWMH) | Jalan | Hanya jendela XWayland |
+| Mengetik, tombol, mouse | `pyautogui` / `xdotool` (XTest) | Jalan | Tidak jalan |
+| Shortcut global, maskot transparan | XGrabKey, ekstensi SHAPE | Jalan | Tidak jalan / tidak dijamin |
+| Installer | Memasang paket otomatis hanya lewat `apt` | Fedora/Arch/openSUSE: installer menyebut nama paket Debian, user memasang sendiri | Sama |
+
+Pekerjaan:
+1. Installer mengenali `dnf`, `pacman`, dan `zypper`, dengan pemetaan nama paket (`libportaudio2` → `portaudio`, `build-essential` → `gcc-c++`/`base-devel`, dst.).
+2. Uji di VM: Ubuntu 24.04 (sesi Xorg), Fedora KDE (X11), Arch XFCE.
+3. Backend Wayland (W1, di [`PLAN_VISION_AGENT.md`](PLAN_VISION_AGENT.md)): portal RemoteDesktop/ScreenCast/GlobalShortcuts atau `ydotool`. GNOME terbaru tidak lagi menyediakan sesi X11, jadi ini perlu bila ingin mendukung Ubuntu/Fedora GNOME terbaru.
 
 ### Backlog
 - Ruang VRAM: uji `OLLAMA_FLASH_ATTENTION=1` + `OLLAMA_KV_CACHE_TYPE=q8_0` di service Ollama (KV cache 1152 → ±576 MiB) dan ukur ulang tool calling.
 - Pindah dari Python 3.10 (EOL): cari implementasi RVC tanpa `fairseq`.
-- Dukungan Wayland (screenshot lewat portal, input sintetis).
 - Rilis GitHub dengan petunjuk Linux.
 
 ## 6. Evaluasi
