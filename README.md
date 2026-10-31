@@ -234,10 +234,17 @@ Miku membalas dalam bahasa Jepang, tapi isi dokumen yang dibuatnya mengikuti bah
 | `/help` | Daftar perintah |
 | `/memory`, `/forget <key>` | Lihat / hapus memori jangka panjang |
 | `/routines`, `/routine <nama>` | Daftar / jalankan routine |
-| `/skills` | Kelompok kemampuan Miku |
+| `/skills` | Kelompok kemampuan Miku dan skill buatan Anda |
+| `/skill <nama>`, `/skill new <nama>`, `/skill forget <nama>` | Isi satu skill / template skill baru / hapus skill (dengan konfirmasi) |
 | `/sessions`, `/resume [id]` | Sesi tersimpan / lanjutkan sesi |
 | `/usage` | Pemakaian token sesi ini |
 | `/clear` | Hapus riwayat sesi ini |
+
+**Skill buatan sendiri.** Setelah Miku berhasil menyelesaikan sebuah tugas, bilang "simpan ini sebagai skill, namanya mode fokus" (atau 「これをスキルとして保存して」).
+- Miku menyusun `SKILL.md` dari tool yang tadi benar-benar berhasil, beserta nilainya: volume, query, folder. Isi yang berubah setiap kali, seperti isi dokumen, diambil dari permintaan Anda berikutnya.
+- Sebelum disimpan ke `data/skills/`, Miku menunjukkan isinya dan meminta konfirmasi.
+- Lain kali cukup bilang "mode fokus dong".
+- Skill juga bisa ditulis sendiri (`/skill new <nama>`, contoh di folder `skills/`). Skill hanya memakai tool yang sudah ada, dan aksi berisiko tetap meminta konfirmasi.
 
 **Skill on-demand:** 25 tool dikelompokkan menjadi 9 skill (`core/skills.py`). Hanya skill yang cocok dengan permintaan yang dikirim ke LLM, sehingga prompt turun dari ±3.400 ke ±1.550 token tanpa menurunkan akurasi. Matikan dengan `SKILL_ROUTING = False` di `config.py`.
 

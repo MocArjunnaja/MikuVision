@@ -6,7 +6,7 @@ Dipakai mode teks (miku.py --text) dan kolom input GUI.
 
 from typing import Any, Callable, Dict, Optional
 
-from core import long_term_memory
+from core import long_term_memory, skill_builder
 from core.ai_brain import AIBrain
 from core.desktop.app_search import normalize
 from core.routines import load_routines
@@ -21,6 +21,9 @@ HELP_TEXT = """Perintah:
   /forget <key>         hapus satu fakta
   /skills               kemampuan Miku (bawaan + skill buatan user)
   /skill <nama>         isi satu skill buatan user (petunjuk, pemicu, tool)
+  /skill new <nama>     template skill baru di data/skills/ untuk diisi sendiri
+  /skill forget <nama>  hapus skill buatan user (dengan konfirmasi)
+  (atau bilang "simpan ini sebagai skill" setelah Miku menyelesaikan tugas)
   /routines             daftar routine
   /routine <nama>       jalankan routine
   /sessions             5 sesi terakhir
@@ -74,7 +77,8 @@ def _skills(brain, system_control, arg) -> str:
     lines += [f"  - {s.name}: {s.description} ({', '.join(s.tools)})" for s in SKILLS]
     learned, errors = load_user_skills()
     lines.append("Skill buatan user:" if learned else
-                 "Belum ada skill buatan user. Tulis data/skills/<nama>/SKILL.md (contoh: folder skills/).")
+                 "Belum ada skill buatan user. Bilang 'simpan ini sebagai skill' setelah Miku menyelesaikan "
+                 "tugas, atau tulis data/skills/<nama>/SKILL.md (contoh: folder skills/).")
     lines += [f"  - {s.name}: {s.description} (pemicu: {', '.join(s.triggers)})" for s in learned.values()]
     if errors:
         lines.append("Tidak dimuat:")
@@ -84,7 +88,12 @@ def _skills(brain, system_control, arg) -> str:
 
 def _skill(brain, system_control, arg) -> str:
     if not arg:
-        return "Pakai: /skill <nama>. Lihat /skills."
+        return "Pakai: /skill <nama>, /skill new <nama>, atau /skill forget <nama>. Lihat /skills."
+    action, _, name = arg.partition(" ")
+    if action.lower() == "new":
+        return skill_builder.new_template(name)
+    if action.lower() == "forget":
+        return skill_builder.forget(name, getattr(system_control, "confirm_callback", None))
     skill = find_user_skill(arg, load_user_skills()[0])
     if skill is None:
         return f"Skill '{arg}' tidak ditemukan. Lihat /skills."

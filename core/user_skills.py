@@ -75,6 +75,11 @@ def parse_skill(path: Path) -> Tuple[Optional[UserSkill], Optional[str]]:
         text = path.read_text(encoding="utf-8")
     except OSError as e:
         return None, f"tidak bisa dibaca: {e}"
+    return parse_skill_text(text, path)
+
+
+def parse_skill_text(text: str, path: Path) -> Tuple[Optional[UserSkill], Optional[str]]:
+    """Seperti parse_skill, untuk isi SKILL.md yang belum ditulis ke disk (draf dari percakapan)."""
     match = _FRONT_MATTER.match(text.lstrip("﻿"))
     if not match:
         return None, "tidak diawali front matter '---'"
