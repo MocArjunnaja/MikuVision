@@ -6,6 +6,29 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-10-31): installer untuk Fedora, Arch, dan openSUSE
+
+### Diubah
+- `install.sh` memasang paket sistem lewat `apt`, `dnf`, `pacman`, atau `zypper`, tergantung distro (dibaca dari `ID`/`ID_LIKE` di `/etc/os-release`, cadangan `command -v`). Sebelumnya hanya `apt`; di distro lain installer menyebut nama paket Debian dan berhenti.
+  - Nama paket dipetakan per distro dan dicek di repo resminya: PortAudio = `portaudio` di Fedora/Arch, `libportaudio2` di Debian/openSUSE; compiler C++ untuk RVC = `gcc-c++ make` atau `base-devel`.
+  - Peringatan, pertanyaan konfirmasi, dan saran compiler saat RVC gagal memakai nama paket distro itu.
+  - Konfirmasi dan `--yes` tetap sama: `sudo` tidak pernah dijalankan tanpa persetujuan.
+- `install.sh` bisa di-source tanpa menjalankan instalasi (untuk test).
+
+### Dokumentasi
+- `docs/ROADMAP.md`: urutan kerja berikutnya untuk Windows dan Linux, daftar cek di Windows (fitur sejak v1.3.0 yang belum pernah dijalankan di Windows), dan keputusan yang dibutuhkan dari user.
+- `PLAN_VISION_AGENT.md`: rencana rinci T1 (shortcut keyboard untuk mulai bicara): desain per OS, test, dan kriteria selesai.
+
+### Pengujian
+- `tests/test_install_sh.py` (26 test): deteksi dari 11 file `os-release` palsu, cadangan `command -v`, pemetaan nama, dan alur `check_system` dengan `sudo` palsu. Total `pytest` 325 lulus; Python sistem 320 lulus, 5 dilewati.
+- Installer asli dijalankan sampai cek sistem pertama untuk memastikan `main` tetap jalan saat dipanggil langsung.
+
+### Keterbatasan diketahui
+- Belum diuji di VM Fedora/Arch/openSUSE sungguhan.
+- RHEL/Rocky: `xdotool`, `wmctrl`, `playerctl`, dan `xclip` tersedia lewat EPEL; repo bawaannya kemungkinan tidak memuatnya.
+
+---
+
 ## Belum dirilis (2026-10-31): skill buatan user, dan spike agent visi di Linux
 
 Lanjutan [`docs/PLAN_SKILLS.md`](docs/PLAN_SKILLS.md) fase S1, dan Fase 0 Linux dari [`docs/PLAN_VISION_AGENT.md`](docs/PLAN_VISION_AGENT.md).

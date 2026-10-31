@@ -2,7 +2,7 @@
 
 **Tujuan:** user bisa menambah kemampuan Miku tanpa mengubah kode: cukup satu file teks berisi petunjuk, daftar tool, dan pemicu. Miku memuatnya hanya saat relevan, lalu tetap berpikir sendiri: mengisi parameter dari ucapan user, bertanya bila ada yang kurang, dan menyesuaikan dengan situasi.
 
-**Status:** S1 selesai (31 Okt 2026, bagian 8). Berikutnya: S2 ("simpan ini sebagai skill").
+**Status:** S1 selesai (31 Okt 2026, bagian 8). Berikutnya: S2 ("simpan ini sebagai skill"); urutannya terhadap rencana lain ada di [`ROADMAP.md`](ROADMAP.md).
 
 ---
 

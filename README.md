@@ -161,7 +161,7 @@ Teruji di Linux Mint 22.3 (Cinnamon, X11) dengan RTX 4050. Suara dua arah, LLM, 
    ```bash
    ./install.sh
    ```
-   Installer menanyakan dulu sebelum memakai `sudo`: paket `apt` (git, libportaudio2, xdotool, wmctrl, playerctl, xclip) dan Ollama dari skrip resminya. Opsi sama seperti versi Windows: `--yes`, `--cpu`, `--with-rvc`, `--skip-ollama`, `--skip-shortcut`, `--skip-test`, `--python-version 3.x`.
+   Installer menanyakan dulu sebelum memakai `sudo`: paket sistem lewat `apt`, `dnf`, `pacman`, atau `zypper` (git, PortAudio, xdotool, wmctrl, playerctl, xclip) dan Ollama dari skrip resminya. Opsi sama seperti versi Windows: `--yes`, `--cpu`, `--with-rvc`, `--skip-ollama`, `--skip-shortcut`, `--skip-test`, `--python-version 3.x`.
 3. Buka **MikuVision** dari menu aplikasi atau Desktop, atau jalankan `./run.sh`.
 
 <details>
@@ -169,6 +169,7 @@ Teruji di Linux Mint 22.3 (Cinnamon, X11) dengan RTX 4050. Suara dua arah, LLM, 
 
 - **Lokasi env:** bila folder repo ada di partisi Windows (NTFS/FAT, misalnya dual-boot), uv, Python 3.10, dan venv disimpan di `~/.local/share/mikuvision/` karena venv di NTFS lambat. Di partisi Linux biasa: `.tools/` dan `.venv/` di folder repo. Lokasi lain: `MIKU_VENV=/path/venv`.
 - **Sesi X11** dibutuhkan untuk aksi keyboard/mouse; di Wayland installer memberi peringatan.
+- **Distro lain:** installer mengenali keluarga Debian/Ubuntu (apt), Fedora/RHEL (dnf), Arch/Manjaro (pacman), dan openSUSE (zypper), lalu memakai nama paket distro itu. Distro selain itu: pasang paket di atas sendiri. Yang baru diuji langsung hanya Linux Mint; rinciannya di [docs/PLAN_LINUX.md](docs/PLAN_LINUX.md) bagian L5.
 - **Ollama** jalan sebagai service systemd; modelnya di `/usr/share/ollama/.ollama/models`.
 - **Cache Hugging Face** (Whisper, MeloTTS): `~/.cache/huggingface`, atau atur `HF_HOME`.
 - **Ruang disk:** ±11 GB env + cache uv, ±2 GB cache Hugging Face, ±2,5 GB model LLM.

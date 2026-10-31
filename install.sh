@@ -2,7 +2,8 @@
 # Installer satu-langkah MikuVision untuk Linux (setara install.ps1).
 #
 # Menyiapkan:
-#   1. Paket sistem lewat apt (ditanya dulu): git, libportaudio2, dan tool desktop
+#   1. Paket sistem lewat apt, dnf, pacman, atau zypper (ditanya dulu): git, PortAudio,
+#      dan tool desktop
 #   2. uv (versi dipatok, checksum diverifikasi)
 #   3. Python terisolasi + virtualenv
 #   4. PyTorch (CUDA bila ada GPU NVIDIA, CPU bila tidak) + requirements.txt
@@ -20,7 +21,7 @@
 # Log lengkap ada di logs/install-<waktu>.log.
 #
 # Pemakaian: ./install.sh [opsi]
-#   --yes              Jawab "ya" otomatis (apt dan Ollama)
+#   --yes              Jawab "ya" otomatis (paket sistem dan Ollama)
 #   --cpu              Paksa PyTorch versi CPU walaupun ada GPU NVIDIA
 #   --with-rvc         Pasang rvc-python walau model RVC belum ada
 #   --skip-ollama      Lewati Ollama dan pull model (verifikasi ikut dilewati)
@@ -144,6 +145,53 @@ confirm() {
 # Tanpa -q: grep -q berhenti lebih awal, ldconfig kena SIGPIPE, dan pipefail menganggapnya gagal
 have_lib() { ldconfig -p 2>/dev/null | grep "$1" >/dev/null; }
 
+# Package manager distro ini (apt, dnf, pacman, zypper), atau kosong bila tidak dikenal.
+# ID lalu ID_LIKE di os-release: Linux Mint -> "ubuntu debian", Manjaro -> "arch".
+pkg_manager() {
+    local file="${1:-/etc/os-release}" ids="" id cmd
+    [ -r "$file" ] && ids="$(. "$file" && echo "${ID:-} ${ID_LIKE:-}")"
+    for id in $ids; do
+        case "$id" in
+            debian|ubuntu) echo apt; return ;;
+            fedora|rhel|centos) echo dnf; return ;;
+            arch) echo pacman; return ;;
+            suse|opensuse|opensuse-*|sles) echo zypper; return ;;
+        esac
+    done
+    for cmd in apt-get dnf pacman zypper; do
+        if command -v "$cmd" >/dev/null; then
+            [ "$cmd" = apt-get ] && cmd=apt
+            echo "$cmd"
+            return
+        fi
+    done
+}
+
+# Nama paket Debian -> nama paket di package manager $1 (dicek di repo Fedora 42, Arch,
+# openSUSE Tumbleweed/Leap 15.6). Nama yang tidak dipetakan sama di semua distro.
+pkg_names() {
+    local pm="$1" name; shift
+    for name in "$@"; do
+        case "$pm:$name" in
+            dnf:libportaudio2|pacman:libportaudio2) echo portaudio ;;
+            dnf:build-essential|zypper:build-essential) echo gcc-c++ make ;;
+            pacman:build-essential) echo base-devel ;;
+            *) echo "$name" ;;
+        esac
+    done
+}
+
+# Perintah pasang paket untuk package manager $1 (tanpa nama paket)
+pkg_install_cmd() {
+    case "$1" in
+        apt) echo "sudo apt-get install -y" ;;
+        dnf) echo "sudo dnf install -y" ;;
+        # Tanpa -y (sinkron database): -Sy tanpa -u bisa membuat sistem setengah ter-upgrade
+        pacman) echo "sudo pacman -S --needed --noconfirm" ;;
+        zypper) echo "sudo zypper --non-interactive install" ;;
+    esac
+}
+
 # ver_ge A B: A >= B
 ver_ge() { [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n1)" = "$2" ]; }
 
@@ -158,6 +206,8 @@ rvc_model_present() {
 }
 
 # ---------------------------------------------------------------- langkah
+PKG_MANAGER=""   # diisi check_system: apt, dnf, pacman, zypper, atau kosong
+
 check_system() {
     step "Cek sistem"
     [ "$(uname -m)" = "x86_64" ] || die "Butuh Linux x86_64 (terdeteksi $(uname -m))."
@@ -182,6 +232,14 @@ check_system() {
         confirm "Lanjutkan walau ruang disk mungkin kurang?" || die "Dibatalkan: ruang disk kurang."
     fi
 
+    PKG_MANAGER="$(pkg_manager)"
+    if [ -n "$PKG_MANAGER" ] && command -v "${PKG_MANAGER/apt/apt-get}" >/dev/null; then
+        log INFO "Package manager: $PKG_MANAGER"
+    else
+        log WARN "Package manager tidak dikenali (didukung: apt, dnf, pacman, zypper); paket sistem harus dipasang sendiri."
+        PKG_MANAGER=""
+    fi
+
     local required=() optional=()
     command -v git >/dev/null || required+=(git)            # MeloTTS diunduh dari GitHub
     command -v curl >/dev/null || required+=(curl)
@@ -197,13 +255,18 @@ check_system() {
     fi
 
     if [ ${#required[@]} -gt 0 ] || [ ${#optional[@]} -gt 0 ]; then
-        [ ${#required[@]} -gt 0 ] && log WARN "Paket wajib belum ada: ${required[*]}"
-        [ ${#optional[@]} -gt 0 ] && log WARN "Paket disarankan belum ada: ${optional[*]}"
-        local all=("${required[@]}" "${optional[@]}")
-        if command -v apt-get >/dev/null && confirm "Pasang sekarang lewat apt (sudo apt-get install ${all[*]})?"; then
-            run sudo apt-get install -y "${all[@]}" || die "apt-get gagal memasang ${all[*]}."
-        elif [ ${#required[@]} -gt 0 ]; then
-            die "Paket wajib belum terpasang: ${required[*]}. Pasang lewat package manager lalu jalankan installer lagi."
+        # Daftar di atas memakai nama Debian; terjemahkan ke nama di distro ini
+        local need=() want=() cmd=()
+        read -r -a need <<<"$(pkg_names "$PKG_MANAGER" "${required[@]}" | tr '\n' ' ')"
+        read -r -a want <<<"$(pkg_names "$PKG_MANAGER" "${optional[@]}" | tr '\n' ' ')"
+        read -r -a cmd <<<"$(pkg_install_cmd "$PKG_MANAGER")"
+        local all=("${need[@]}" "${want[@]}")
+        [ ${#need[@]} -gt 0 ] && log WARN "Paket wajib belum ada: ${need[*]}"
+        [ ${#want[@]} -gt 0 ] && log WARN "Paket disarankan belum ada: ${want[*]}"
+        if [ ${#cmd[@]} -gt 0 ] && confirm "Pasang sekarang lewat $PKG_MANAGER (${cmd[*]} ${all[*]})?"; then
+            run "${cmd[@]}" "${all[@]}" || die "$PKG_MANAGER gagal memasang ${all[*]}."
+        elif [ ${#need[@]} -gt 0 ]; then
+            die "Paket wajib belum terpasang: ${need[*]}. Pasang lewat package manager lalu jalankan installer lagi."
         else
             log WARN "Dilewati. Sebagian aksi desktop atau RVC mungkin tidak jalan."
         fi
@@ -319,7 +382,7 @@ install_python_packages() {
         if run "$UV" "${args[@]}" "rvc-python==$RVC_PYTHON_VERSION" --override "$ROOT/overrides-rvc.txt"; then
             RVC_INSTALLED=1
         else
-            log WARN "rvc-python gagal dipasang. fairseq harus dikompilasi dan butuh compiler C++ (sudo apt install build-essential). Lanjut tanpa RVC."
+            log WARN "rvc-python gagal dipasang. fairseq harus dikompilasi dan butuh compiler C++ ($(pkg_install_cmd "${PKG_MANAGER:-apt}") $(pkg_names "${PKG_MANAGER:-apt}" build-essential | tr '\n' ' ')). Lanjut tanpa RVC."
         fi
     fi
     if [ "$RVC_INSTALLED" -eq 0 ]; then
@@ -488,26 +551,33 @@ run_self_test() {
 }
 
 # ---------------------------------------------------------------- main
-mkdir -p "$LOG_DIR"
-: >"$LOG_FILE"
-log INFO "$APP_NAME installer - log: $LOG_FILE"
+main() {
+    mkdir -p "$LOG_DIR"
+    : >"$LOG_FILE"
+    log INFO "$APP_NAME installer - log: $LOG_FILE"
 
-check_system
-install_uv
-install_python_env
-torch_backend
-install_python_packages "$BACKEND"
-install_unidic
-check_imports
-if [ "$SKIP_OLLAMA" -eq 1 ]; then log WARN "--skip-ollama: Ollama dilewati."; else install_ollama_model; fi
-show_rvc_status
-if [ "$SKIP_SHORTCUT" -eq 1 ]; then log INFO "--skip-shortcut: peluncur dilewati."; else create_launcher; fi
-if [ "$SKIP_TEST" -eq 1 ] || [ "$SKIP_OLLAMA" -eq 1 ]; then
-    log WARN "Verifikasi miku.py --test dilewati."
-else
-    run_self_test
+    check_system
+    install_uv
+    install_python_env
+    torch_backend
+    install_python_packages "$BACKEND"
+    install_unidic
+    check_imports
+    if [ "$SKIP_OLLAMA" -eq 1 ]; then log WARN "--skip-ollama: Ollama dilewati."; else install_ollama_model; fi
+    show_rvc_status
+    if [ "$SKIP_SHORTCUT" -eq 1 ]; then log INFO "--skip-shortcut: peluncur dilewati."; else create_launcher; fi
+    if [ "$SKIP_TEST" -eq 1 ] || [ "$SKIP_OLLAMA" -eq 1 ]; then
+        log WARN "Verifikasi miku.py --test dilewati."
+    else
+        run_self_test
+    fi
+
+    log INFO ""
+    log OK "Instalasi selesai. Buka '$APP_NAME' dari menu aplikasi, atau jalankan: ./run.sh"
+    exit 0
+}
+
+# Bisa di-source (test memakai pkg_manager/pkg_names) tanpa menjalankan instalasi
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    main
 fi
-
-log INFO ""
-log OK "Instalasi selesai. Buka '$APP_NAME' dari menu aplikasi, atau jalankan: ./run.sh"
-exit 0
