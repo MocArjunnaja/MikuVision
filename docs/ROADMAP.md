@@ -1,12 +1,12 @@
 # Peta Jalan MikuVision
 
-**Diperbarui:** 31 Okt 2026. Halaman ini hanya berisi urutan kerja untuk Windows dan Linux. Rinciannya ada di rencana masing-masing: [PLAN_LINUX](PLAN_LINUX.md), [PLAN_SKILLS](PLAN_SKILLS.md), [PLAN_VISION_AGENT](PLAN_VISION_AGENT.md).
+**Diperbarui:** 1 Nov 2026. Halaman ini hanya berisi urutan kerja untuk Windows dan Linux. Rinciannya ada di rencana masing-masing: [PLAN_LINUX](PLAN_LINUX.md), [PLAN_SKILLS](PLAN_SKILLS.md), [PLAN_VISION_AGENT](PLAN_VISION_AGENT.md).
 
 ---
 
 ## 0. Menunggu merge
 
-Tidak ada. #21–#33 masuk `main` pada 31 Okt dan dirilis sebagai **v1.5.0** (ringkasan di CHANGELOG).
+Tidak ada. #21–#33 dirilis sebagai **v1.5.0** (31 Okt); #35–#38 (MikuVision Setup) dirilis sebagai **v1.6.0** (1 Nov). Ringkasan di CHANGELOG.
 
 ## 1. Urutan berikutnya
 
