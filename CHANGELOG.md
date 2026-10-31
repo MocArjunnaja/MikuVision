@@ -6,7 +6,30 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
-## Belum dirilis (2026-11-01): MikuVisionSetup.exe, "Apps & features", Perbarui/Perbaiki/Hapus (PLAN_INSTALLER I4 dan I5)
+## v1.6.0 (2026-11-01): ringkasan rilis
+
+**MikuVision Setup**: installer berantarmuka untuk Windows. Unduh `MikuVisionSetup.exe` dari rilis ini, klik Lanjut, dan Miku terpasang tanpa git atau terminal. Setup yang dibuka lagi (atau Modify di "Apps & features") menawarkan Perbarui, Perbaiki, dan Hapus. Aplikasi MikuVision sendiri tidak berubah sejak v1.5.0; `install.bat`/`install.sh` tetap jalan seperti biasa. Rinciannya ada di entri v1.6.0 di bawah, satu per bagian.
+
+| PR | Isi |
+|---|---|
+| [#35](https://github.com/MocArjunnaja/MikuVision/pull/35) | Kerangka wizard: 6 halaman, cek sistem nyata, `--dry-run` (I2) |
+| [#36](https://github.com/MocArjunnaja/MikuVision/pull/36) | Unduh rilis, jalankan `install.ps1` dengan progres, batal lalu lanjut (I3) |
+| [#37](https://github.com/MocArjunnaja/MikuVision/pull/37) | Model RVC dari link yang ditempel user |
+| [#38](https://github.com/MocArjunnaja/MikuVision/pull/38) | `MikuVisionSetup.exe`, entri "Apps & features", Perbarui/Perbaiki/Hapus, workflow rilis (I4, I5) |
+
+**Uji di Windows** (Windows 11, RTX 4050, skala layar 125%): dengan exe dan rilis uji yang dibuat seperti workflow, pasang → Perbarui → Perbaiki → Hapus → pasang lagi semuanya lulus; pasang dari nol 10 menit. Batal di tengah PyTorch lalu jalankan lagi melanjutkan dari langkah terakhir. 609 test lulus di Ubuntu dan Windows.
+
+**Keterbatasan yang diketahui**
+- Exe belum ditandatangani: SmartScreen menampilkan "Windows protected your PC" (More info → Run anyway). Sebagian antivirus bisa menandai exe PyInstaller.
+- Belum diuji di VM Windows bersih (tanpa Python, git, dan Ollama), tanpa GPU NVIDIA, atau dengan nama user non-ASCII.
+- Batal saat wheel `torch` sedang diunduh membuat wheel itu diunduh ulang dari nol (uv tidak melanjutkan unduhan parsial).
+- "x GB terunduh" menghitung semua unduhan di komputer selama instalasi, jadi angkanya perkiraan.
+- Setup baru untuk Windows; Linux tetap memakai `install.sh` (fase IL menyusul).
+- Klik tombol Hapus di salinan Setup di Temp belum diuji langsung (fungsi di baliknya sudah).
+
+---
+
+## v1.6.0 (2026-11-01): MikuVisionSetup.exe, "Apps & features", Perbarui/Perbaiki/Hapus (PLAN_INSTALLER I4 dan I5)
 
 Rencana: I4 dan I5 di [`docs/PLAN_INSTALLER.md`](docs/PLAN_INSTALLER.md). Setup sekarang satu file exe, tercatat di Windows, dan bisa merawat instalasinya sendiri.
 
@@ -41,7 +64,7 @@ Rencana: I4 dan I5 di [`docs/PLAN_INSTALLER.md`](docs/PLAN_INSTALLER.md). Setup 
 
 ---
 
-## Belum dirilis (2026-11-01): model RVC dari link di MikuVision Setup
+## v1.6.0 (2026-11-01): model RVC dari link di MikuVision Setup
 
 ### Ditambahkan
 - Halaman 4, komponen **Suara khas Miku (RVC)**: pilih "File di komputer" (seperti sebelumnya) atau "Unduh dari link" (`miku_setup/rvc.py`).
@@ -59,7 +82,7 @@ Rencana: I4 dan I5 di [`docs/PLAN_INSTALLER.md`](docs/PLAN_INSTALLER.md). Setup 
 
 ---
 
-## Belum dirilis (2026-11-01): MikuVision Setup memasang sungguhan (PLAN_INSTALLER I3)
+## v1.6.0 (2026-11-01): MikuVision Setup memasang sungguhan (PLAN_INSTALLER I3)
 
 Rencana: I3 di [`docs/PLAN_INSTALLER.md`](docs/PLAN_INSTALLER.md). Tanpa `--dry-run`, wizard sekarang mengunduh rilis, menjalankan `install.ps1`, dan membuka MikuVision di akhir.
 
@@ -98,7 +121,7 @@ Rencana: I3 di [`docs/PLAN_INSTALLER.md`](docs/PLAN_INSTALLER.md). Tanpa `--dry-
 
 ---
 
-## Belum dirilis (2026-10-31): kerangka MikuVision Setup (PLAN_INSTALLER I2)
+## v1.6.0 (2026-10-31): kerangka MikuVision Setup (PLAN_INSTALLER I2)
 
 Rencana: I2 di [`docs/PLAN_INSTALLER.md`](docs/PLAN_INSTALLER.md). Installer berantarmuka untuk user yang tidak memakai GitHub atau terminal; fase ini kerangka wizard-nya, tanpa memasang apa pun.
 
