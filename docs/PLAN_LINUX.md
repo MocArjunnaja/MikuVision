@@ -209,10 +209,14 @@ Yang menentukan bukan distronya, tetapi **X11 atau Wayland** dan paket sistem ya
 | Tutup jendela | `wmctrl` (EWMH) | Jalan | Hanya jendela XWayland |
 | Mengetik, tombol, mouse | `pyautogui` / `xdotool` (XTest) | Jalan | Tidak jalan |
 | Shortcut global, maskot transparan | XGrabKey, ekstensi SHAPE | Jalan | Tidak jalan / tidak dijamin |
-| Installer | Memasang paket otomatis hanya lewat `apt` | Fedora/Arch/openSUSE: installer menyebut nama paket Debian, user memasang sendiri | Sama |
+| Installer | `apt`, `dnf`, `pacman`, `zypper`, dengan nama paket per distro (L5 butir 1, selesai) | Jalan; distro lain di luar empat keluarga ini: pasang paket sendiri | Sama |
 
 Pekerjaan:
-1. Installer mengenali `dnf`, `pacman`, dan `zypper`, dengan pemetaan nama paket (`libportaudio2` → `portaudio`, `build-essential` → `gcc-c++`/`base-devel`, dst.).
+1. ~~Installer mengenali `dnf`, `pacman`, dan `zypper`, dengan pemetaan nama paket~~ (selesai 31 Okt 2026):
+   - `pkg_manager` membaca `ID`/`ID_LIKE` di `/etc/os-release`, dengan cadangan `command -v`.
+   - Nama paket dicek di repo Fedora 42, Arch, dan openSUSE Tumbleweed/Leap 15.6: `libportaudio2` → `portaudio` (dnf, pacman); `build-essential` → `gcc-c++ make` (dnf, zypper) atau `base-devel` (pacman). Paket lain bernama sama.
+   - pacman memakai `-S --needed` tanpa `-y`, supaya tidak terjadi upgrade setengah jalan.
+   - Diuji dengan `os-release` palsu (Ubuntu, Mint, Pop!_OS, Debian, Fedora, Rocky, Arch, Manjaro, EndeavourOS, openSUSE) dan `sudo` palsu (`tests/test_install_sh.py`), belum di VM distro aslinya.
 2. Uji di VM: Ubuntu 24.04 (sesi Xorg), Fedora KDE (X11), Arch XFCE.
 3. Backend Wayland (W1, di [`PLAN_VISION_AGENT.md`](PLAN_VISION_AGENT.md)): portal RemoteDesktop/ScreenCast/GlobalShortcuts atau `ydotool`. GNOME terbaru tidak lagi menyediakan sesi X11, jadi ini perlu bila ingin mendukung Ubuntu/Fedora GNOME terbaru.
 
