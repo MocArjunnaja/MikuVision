@@ -25,6 +25,8 @@ _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 MODEL_ENV_VARS = ("OLLAMA_MODELS", "HF_HOME")
 # Isi InstallDir yang disimpan bila user tidak mencentang "Hapus percakapan, memori, dan skill"
 USER_DATA = "data"
+# Sama dengan Test-RvcModelPresent di install.ps1; folder kosongnya ikut di zip rilis (.gitkeep)
+RVC_WEIGHTS = Path("models") / "miku_default_rvc" / "weights" / "miku_default_rvc.pth"
 
 
 @dataclass
@@ -60,13 +62,20 @@ def running_processes(install_dir: Path) -> List[str]:
 
 
 def folder_size(path: Path) -> int:
+    """Byte di folder; file yang di-hardlink (cache uv ke .venv) dihitung sekali."""
     total = 0
+    seen = set()
     for root, _dirs, files in os.walk(path):
         for name in files:
             try:
-                total += os.lstat(os.path.join(root, name)).st_size
+                info = os.lstat(os.path.join(root, name))
             except OSError:
                 continue
+            if info.st_nlink > 1:
+                if (info.st_dev, info.st_ino) in seen:
+                    continue
+                seen.add((info.st_dev, info.st_ino))
+            total += info.st_size
     return total
 
 
@@ -74,7 +83,7 @@ def register_install(selection: Selection, version: str,
                      write: Callable[[InstalledApp, int], None] = registry.write_entry) -> Optional[str]:
     """Catat instalasi di "Apps & features" setelah install.ps1 berhasil; alasan bila gagal, selain itu None."""
     components = set(selection.components)
-    if selection.rvc_model or (Path(selection.install_dir) / "models" / "miku_default_rvc").is_dir():
+    if selection.rvc_model or (Path(selection.install_dir) / RVC_WEIGHTS).is_file():
         components.add("rvc")
     app = InstalledApp(Path(selection.install_dir), version, selection.model_dir, components)
     try:

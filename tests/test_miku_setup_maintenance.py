@@ -1,5 +1,6 @@
 """MikuVision Setup fase I4: entri "Apps & features", Perbarui/Perbaiki, dan Hapus."""
 
+import os
 import sys
 import uuid
 from pathlib import Path
@@ -18,7 +19,8 @@ windows_only = pytest.mark.skipif(sys.platform != "win32", reason="registry Wind
 def fake_install(root: Path) -> InstalledApp:
     install_dir = root / "MikuVision"
     for name in ("install.ps1", "gui.py", ".venv/Scripts/pythonw.exe", ".tools/mikuvision.ico",
-                 "data/memory.json", "data/skills/kopi.yaml", "models/miku_default_rvc/weights/miku.pth"):
+                 "data/memory.json", "data/skills/kopi.yaml",
+                 "models/miku_default_rvc/weights/miku_default_rvc.pth"):
         path = install_dir / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"x" * 1000)
@@ -103,6 +105,26 @@ def test_register_install_records_rvc_already_in_models(tmp_path):
     entry, size_kb = written[0]
     assert entry.components == {"core", "brain", "rvc"} and entry.version == "1.6.0"
     assert size_kb == 7000 // 1024  # 7 file × 1000 byte
+
+
+def test_empty_rvc_folder_from_the_release_zip_is_not_rvc(tmp_path):
+    install_dir = tmp_path / "MikuVision"
+    (install_dir / "models" / "miku_default_rvc" / "weights").mkdir(parents=True)
+    (install_dir / "models" / "miku_default_rvc" / "weights" / ".gitkeep").write_bytes(b"")
+    written = []
+    register_install(Selection(install_dir), "1.6.0", write=lambda entry, size: written.append(entry))
+    assert written[0].components == {"core", "brain"}
+
+
+def test_hardlinked_files_count_once(tmp_path):
+    cache = tmp_path / ".tools" / "uv-cache" / "torch.pyd"
+    cache.parent.mkdir(parents=True)
+    cache.write_bytes(b"x" * 5000)
+    venv = tmp_path / ".venv" / "torch.pyd"
+    venv.parent.mkdir()
+    os.link(cache, venv)
+    (tmp_path / "gui.py").write_bytes(b"y" * 100)
+    assert maintenance.folder_size(tmp_path) == 5100
 
 
 def test_register_install_failure_is_only_a_warning(tmp_path):
