@@ -6,6 +6,70 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-10-31): "simpan ini sebagai skill" (PLAN_SKILLS S2)
+
+Rencana: S2 di [`docs/PLAN_SKILLS.md`](docs/PLAN_SKILLS.md). Keputusan 2 dari user: Miku boleh menyusun skill dari percakapan, dengan konfirmasi.
+
+### Ditambahkan
+- **"Simpan ini sebagai skill"** (`core/skill_builder.py`). Bisa diucapkan setelah Miku menyelesaikan tugas: "simpan ini sebagai skill, namanya mode fokus", 「これをスキルとして保存して」, "save this as a skill".
+  - **Dipicu oleh kalimatnya, bukan oleh LLM**: harus ada "skill"/"スキル" bersama kata kerja simpan, jadi permintaan ini tidak pernah tersasar ke tool lain. Kalimat seperti "buatkan dokumen tentang skill komunikasi" tidak terpicu. Dari 42 ucapan di benchmark yang ada, tidak satu pun terpicu.
+  - **Langkahnya disusun oleh kode dari tool call yang tadi berhasil**, lengkap dengan nilainya (`Panggil set_volume: level = 20`), jadi tidak ada tool karangan. LLM (satu panggilan, JSON schema) hanya memilih nama, deskripsi, pemicu, tool call mana yang termasuk tugas, dan parameter mana yang diambil dari ucapan user setiap kali.
+  - **Isi sekali pakai tidak pernah tersalin.** Isi dokumen, pesan, judul, dan teks > 60 huruf selalu diambil dari permintaan berikutnya. Nama file diganti nama skill. Volume, folder, dan aplikasi selalu tetap, walaupun LLM menandainya sebagai isian.
+  - **Nama dari ucapan user dipakai apa adanya**: "namanya X", "…skill X", 'X' dalam kutip, 名前はX, "called X".
+  - **Langkah pertama ditambahkan otomatis**: "Jangan bertanya dulu: panggil semua tool ini berurutan dalam satu balasan". Bila ada isian dari user, kalimatnya menjadi "langsung jalankan bila isinya sudah disebut, walau singkat".
+  - **Pemicu yang akan membajak perintah biasa dibuang**: "volume 20", "putar lagu", 「電卓を開いて」, kata dari permintaan simpan, dan ucapan yang hanya mencakup satu langkah dari skill beberapa langkah ("buka folder downloads" di skill "siap kerja").
+  - **Pratinjau `SKILL.md` lengkap + konfirmasi** lewat jalur yang sudah ada (y/n, "ya/はい", atau dialog GUI). Baru setelah itu disimpan ke `data/skills/<nama>/`. Draf divalidasi dengan parser yang sama dengan skill dari file.
+  - Bila belum ada tool yang berhasil di percakapan, Miku menjelaskan bahwa belum ada yang bisa disimpan, tanpa memanggil LLM.
+- `/skill new <nama>`: template `SKILL.md` untuk diisi sendiri (tanpa LLM), beserta daftar tool yang boleh dipakai. `/skill forget <nama>`: menghapus skill di `data/skills/` setelah konfirmasi. Contoh bawaan di `skills/` tidak bisa dihapus.
+- `AIBrain.generate_json`: satu panggilan tanpa tool dengan keluaran JSON schema, memakai `num_ctx`/`keep_alive` yang sama dengan chat supaya model tidak dimuat ulang. `AIBrain.record_exchange`: mencatat giliran yang dijawab tanpa `think()`.
+
+### Diubah
+- `run_turn`: bila skill user terpicu tapi model hanya mengobrol, langkah skill diminta lewat `next_skill_calls`. Ucapan seperti "mode fokus dong" tidak berisi kata kerja aksi, jadi retry di `think()` tidak jalan. Tidak berlaku bila skill sedang menanyakan detail ("kegiatanmu hari ini apa?").
+- `user_skills.parse_skill_text`: memvalidasi isi `SKILL.md` tanpa harus menulis file dulu.
+
+### Pengujian
+- `experiments/skills/bench_save_skill.py`, qwen3:4b-instruct, 5 skenario × 3. Tiap skenario: tugas → simpan → pakai ulang di sesi baru dengan isi lain.
+  - Skenario: mode fokus (volume + YouTube), daftar belanja dan catatan rapat (dokumen Word), ジャズタイム (Jepang), siap kerja (dua giliran: folder + aplikasi).
+
+  | Riwayat tugas | Tersimpan | Tool skill tepat | Terpilih saat dipakai | Pakai ulang benar | Giliran simpan |
+  |---|---|---|---|---|---|
+  | Disuntikkan (yang diukur hanya S2) | 15/15 | 15/15 | 15/15 | **14/15** | median 2,4 s |
+  | Dijalankan qwen3:4b (`--live`) | 15/15 | 11/15 | 15/15 | 11/15 | median 2,4 s |
+
+  - Keempat kegagalan `--live` sama: di giliran tugas, qwen3:4b hanya mengatur volume tanpa memutar YouTube. Skill-nya ikut hanya berisi `set_volume`, dan pratinjau memperlihatkan itu. Ini keterbatasan lama: satu tool per balasan bila tidak ada skill.
+  - Daftar belanja dan catatan rapat: isi dokumen saat dipakai ulang mengikuti permintaan baru, tanpa sisa isi lama.
+- Perjalanan desain (angka pakai ulang yang sama):
+  - **6/15** saat LLM menulis langkahnya sendiri. Ia mengarang tool `mengunduh_lagu_dari_youtube`, menyalin isi dokumen lama (ruang, tanggal, anggaran), mengabaikan nama dari user, dan mengubah "jalankan keduanya" menjadi "tanyakan mau yang mana".
+  - **11/15** setelah langkah disusun dari tool call.
+  - **14/15** setelah tiga perbaikan:
+    - kalimat pembuka Jepang 「質問せずに」 diganti, karena 質問 dibaca parser S1 sebagai "skill ini boleh bertanya dulu";
+    - `run_turn` meminta langkah skill bila model hanya mengobrol;
+    - volume/folder/aplikasi tidak lagi bisa ditandai sebagai isian.
+- Regresi S1 (`bench_skills.py 3`), commit induk vs branch ini:
+  - laporan harian 26 vs 27/30, musik mood 27 vs 27/30;
+  - perintah umum 24 vs 27/30 (dengan skill) dan 27 vs 26/30 (tanpa);
+  - tidak ada perintah umum yang mengaktifkan skill user (30/30 di keduanya).
+  - Yang meleset sama di keduanya (次の曲にして, ミュートして).
+- `tests/test_skill_builder.py` (50 test):
+  - pemicu dan bukan-pemicu;
+  - penyaring pemicu;
+  - pemasangan tool call dengan argumennya;
+  - langkah dari tool call (isi tidak tersalin, nilai tetap tetap, urutan dan batas langkah, cadangan bila LLM salah pilih);
+  - nama dari user;
+  - bahasa langkah;
+  - pratinjau/batal/tanpa konfirmasi;
+  - `run_turn` tanpa `think()`;
+  - `/skill new`, `/skill forget`.
+  - Ditambah 2 test di `tests/test_user_skills.py` untuk langkah skill saat model hanya mengobrol.
+- `pytest`: 443 lulus; di Python sistem seperti CI 437 lulus, 6 dilewati.
+
+### Keterbatasan diketahui
+- Skill hanya setia pada tool yang berhasil. Bila Miku tadi hanya mengerjakan sebagian tugas, skill-nya juga hanya sebagian, sehingga pratinjau perlu dibaca sebelum disetujui.
+- Di mode suara, pratinjau hanya tampil di terminal; Miku bertanya "この操作を実行してもいい？" tanpa membacakan isinya.
+- Skill tidak bisa disunting lewat suara; ubah `data/skills/<nama>/SKILL.md` langsung atau simpan ulang dengan nama yang sama.
+
+---
+
 ## Belum dirilis (2026-10-31): Miku membaca layar (agent visi Fase 1)
 
 Rencana: Fase 1 di [`docs/PLAN_VISION_AGENT.md`](docs/PLAN_VISION_AGENT.md). Hanya melihat; Miku belum mengklik atau mengetik.

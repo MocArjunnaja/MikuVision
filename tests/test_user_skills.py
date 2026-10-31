@@ -269,6 +269,26 @@ def test_run_turn_asks_for_the_next_skill_tool(tmp_path):
     assert turn.reply == "Selamat belajar!"
 
 
+def test_run_turn_asks_for_skill_steps_when_the_model_only_chats(tmp_path):
+    # "bgm dong" memicu skill musik mood tapi tidak berisi kata kerja aksi
+    brain = _brain(tmp_path,
+                   {"content": "[EMOTION:happy] Semangat belajar ya! Mau lagu apa?"},
+                   _tool_call("set_volume", level=30),
+                   _tool_call("youtube_search", query="lofi hip hop study music"))
+    turn = run_turn(brain, _system_control(), "bgm dong", source="text", report_results=False)
+
+    assert [r.action for r in turn.tool_results] == ["set_volume", "youtube_search"]
+    assert turn.reply == ""  # pertanyaan tadi sudah tidak berlaku
+
+
+def test_run_turn_lets_a_skill_ask_for_missing_details(tmp_path):
+    brain = _brain(tmp_path, {"content": "[EMOTION:happy] Oke! Hari ini kegiatanmu apa saja?"})
+    turn = run_turn(brain, _system_control(), "buatkan laporan harian", source="text")
+
+    assert turn.tool_results == [] and brain.client.chat.call_count == 1
+    assert brain.awaiting_skill_details
+
+
 def test_run_turn_stops_skill_steps_after_a_failed_tool(tmp_path):
     brain = _brain(tmp_path, _tool_call("set_volume", level=30), {"content": "[EMOTION:sad] Gagal"})
     turn = run_turn(brain, _system_control(fail={"set_volume"}), "putar lagu buat belajar", source="text")

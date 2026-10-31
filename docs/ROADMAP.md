@@ -13,7 +13,8 @@
 | #24 | Skill buatan user (S1); spike agent visi di Linux | Setelah #23 |
 | #25 | Installer untuk dnf/pacman/zypper (L5); peta jalan ini | Setelah #24 |
 | #26 | T1: shortcut `Ctrl+Shift+M` dan `miku.py --trigger` | Setelah #25 |
-| (baru) | Agent visi Fase 1: Miku membaca layar (branch `feat/vision-read-screen`) | Setelah #26 |
+| #27 | Agent visi Fase 1: Miku membaca layar | Setelah #26 |
+| (baru) | S2: "simpan ini sebagai skill" (branch `feat/skill-from-chat`) | Setelah #27 |
 | #21 | README lebih ringkas | Kapan saja; bentrok kecil dengan #25 di teks instalasi Linux |
 
 Setelah semuanya merge dan daftar cek Windows (bagian 2) lulus: rilis **v1.5.0**.
@@ -26,7 +27,7 @@ Setelah semuanya merge dan daftar cek Windows (bagian 2) lulus: rilis **v1.5.0**
 | 2 | Rilis v1.5.0 | keduanya | CHANGELOG | Mengumpulkan #21–#25 |
 | 3 | ~~**T1**: shortcut keyboard untuk mulai bicara~~ | keduanya | [VISION bagian 5, T1](PLAN_VISION_AGENT.md) | Selesai di Linux (31 Okt); Windows lewat daftar cek di bagian 2 |
 | 4 | ~~Agent visi Fase 1: membaca layar~~ | keduanya | VISION Fase 1 | Selesai di Linux (31 Okt). Windows: `describe_screen` lewat daftar cek di bagian 2, `find_on_screen` (UI Automation) masuk Fase 2 |
-| 5 | S2: "simpan ini sebagai skill" | keduanya | SKILLS S2 | Menunggu keputusan 2 di bagian 3 |
+| 5 | ~~S2: "simpan ini sebagai skill"~~ | keduanya | SKILLS S2 | Selesai (31 Okt); keputusan 2: ya, dengan konfirmasi |
 | 6 | T2: "Oke Miku" di mode suara | keduanya | VISION T2 | Perlu gerbang VAD dan pengukuran pemicu palsu |
 | 7 | Agent visi Fase 2–3: Miku menggerakkan mouse/keyboard | keduanya | VISION Fase 2–3 | Memakai strategi gabungan dari spike Linux |
 | 8 | L4: benchmark Linux vs Windows | keduanya | LINUX L4 | Butuh angka Windows dari bagian 2 |
@@ -35,7 +36,7 @@ Setelah semuanya merge dan daftar cek Windows (bagian 2) lulus: rilis **v1.5.0**
 
 ## 2. Daftar cek di Windows
 
-Dijalankan setelah boot ke Windows, di folder repo yang sama (`D:`). Lakukan setelah #22–#25 merge, atau checkout `feat/vision-read-screen` yang sudah memuat semuanya (termasuk T1 dan Fase 1).
+Dijalankan setelah boot ke Windows, di folder repo yang sama (`D:`). Lakukan setelah #22–#25 merge, atau checkout `feat/skill-from-chat` yang sudah memuat semuanya (termasuk T1, Fase 1, dan S2).
 
 **Persiapan**
 1. `git pull`, lalu jalankan ulang `install.ps1` (langkah yang sudah beres dilewati).
@@ -50,7 +51,7 @@ Dijalankan setelah boot ke Windows, di folder repo yang sama (`D:`). Lakukan set
 | Folder, dokumen, WhatsApp | v1.4.0 | "buka folder downloads", "buatkan dokumen Word berisi …", draf WhatsApp | Dokumen dibuat dan terbuka; pesan tidak terkirim tanpa konfirmasi |
 | Maskot | #22: jendela lewat `_Win32Window` | `python miku.py`: transparan, seret untuk bicara, menu klik kanan | Sama seperti v1.3.0 |
 | Buka aplikasi apa pun + cache | #23: `Get-StartApps`, `shell:AppsFolder` | Aplikasi di luar katalog, termasuk aplikasi Store (misalnya Paint, Photos); buka sekali lagi; `/apps` | Terbuka, tercatat di `/apps`, kedua kali dari cache. Catat lama `Get-StartApps` |
-| Skill buatan user | #24 | "buatkan laporan harian: tadi …", "putar lagu buat belajar", `/skills` | Dokumen dibuat lalu foldernya terbuka; volume diatur lalu YouTube diputar |
+| Skill buatan user | #24, S2 | "buatkan laporan harian: tadi …", "putar lagu buat belajar", `/skills`. Lalu "kecilkan volume ke 20 lalu putar lofi di youtube" → "simpan ini sebagai skill, namanya mode fokus" → "mode fokus dong"; `/skill forget mode fokus` | Dokumen dibuat lalu foldernya terbuka; volume diatur lalu YouTube diputar. Pratinjau skill tampil di dialog Yes/No, file ada di `data\skills\mode-fokus\`, dan "mode fokus dong" mengulang kedua langkah |
 | Urutan muat VRAM | v1.3.0, belum diukur di Windows | Waktu balasan pertama, `ollama ps` | Balasan pertama ≤ 3 s, model 100% di GPU |
 | Shortcut `Ctrl+Shift+M` (T1) | `feat/hotkey-trigger`: library `keyboard`, named pipe untuk `--trigger` | `python miku.py`, tekan shortcut dari Notepad/browser 10×; GUI: tekan, bicara, tekan lagi; `python miku.py --trigger` di terminal lain | 10/10 mulai merekam tanpa jeda terasa; pesan jelas bila kombinasi sudah dipakai aplikasi lain; `--trigger` ≤ 1 s |
 | Membaca layar (Fase 1) | `feat/vision-read-screen`: screenshot jendela aktif lewat `GetForegroundWindow`, tukar model dengan `num_gpu` | Simpan `qwen3-vl:4b-instruct` di D (`OLLAMA_MODELS`), lalu `ollama pull`. Buka dialog error atau Notepad berisi teks, tekan shortcut, "error apa ini?" / "bacakan tulisan di layar". Coba juga di layar dengan skala 125%; `python experiments/vision_linux/swap_bench.py --vl-ctx 4096 --vl-gpu 999 --reload-gpu 999` | Teks terbaca tepat dari jendela yang benar (bukan bergeser karena skala DPI); `ollama ps` 100% GPU setelah giliran; catat waktu tukar model |
@@ -66,6 +67,6 @@ Dijalankan setelah boot ke Windows, di folder repo yang sama (`D:`). Lakukan set
 ## 3. Keputusan yang dibutuhkan dari user
 
 1. Shortcut: `Ctrl+Shift+M`, atau kombinasi lain?
-2. S2: boleh Miku menyusun skill sendiri dari percakapan, dengan konfirmasi dulu?
+2. ~~S2: boleh Miku menyusun skill sendiri dari percakapan, dengan konfirmasi dulu?~~ Ya (31 Okt).
 3. Wayland (W1): perlu dikerjakan, atau cukup X11?
 4. Agent visi: tugas nyata apa yang paling ingin diotomatiskan, dan aplikasi apa yang tidak boleh disentuh (misalnya aplikasi bank)?

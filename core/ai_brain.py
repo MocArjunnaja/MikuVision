@@ -640,6 +640,11 @@ class AIBrain:
 
         except Exception as e:
             return f"Error: {e}", [], "confused"
+    @property
+    def awaiting_skill_details(self) -> bool:
+        """Skill user yang boleh bertanya baru saja bertanya ("kegiatanmu hari ini apa?")."""
+        return bool(self._pending_user_skills)
+
     def next_skill_calls(self, done: List[str]) -> List[Dict]:
         """
         Tool call untuk langkah skill berikutnya, setelah hasil tool dicatat. Model 4B
@@ -670,6 +675,34 @@ class AIBrain:
             else:
                 self.conversation_history.append({"role": "assistant", "content": "", **tool_meta})
         return calls
+
+    def generate_json(self, prompt: str, schema: Dict[str, Any], max_tokens: int = 600) -> Dict[str, Any]:
+        """Satu panggilan tanpa tool dengan keluaran JSON sesuai schema (structured output Ollama).
+
+        num_ctx dan keep_alive sama dengan chat biasa, supaya Ollama tidak memuat ulang model.
+        """
+        self.turn_usage = LLMUsage()
+        response = self.client.chat(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}],
+            format=schema,
+            keep_alive=OLLAMA_KEEP_ALIVE,
+            options={"temperature": 0.3, "num_ctx": OLLAMA_NUM_CTX, "num_predict": max_tokens},
+        )
+        for usage in (self.turn_usage, self.session_usage):
+            usage.add(response)
+        content = _strip_thinking(response.get("message", {}).get("content", "") or "")
+        parsed = json.loads(content or "{}")
+        return parsed if isinstance(parsed, dict) else {}
+
+    def record_exchange(self, user_input: str, reply: str, emotion: str = "neutral"):
+        """Catat giliran yang dijawab tanpa think() (misalnya menyimpan skill) ke riwayat."""
+        if self.memory:
+            self.memory.add_message("user", user_input)
+            self.memory.add_message("assistant", reply, emotion)
+        else:
+            self.conversation_history.append({"role": "user", "content": user_input})
+            self.conversation_history.append({"role": "assistant", "content": reply})
 
     def record_tool_results(self, results: List[Tuple[str, str]]):
         """Simpan hasil eksekusi tool [(action, pesan_hasil)] sebagai pesan role 'tool'."""

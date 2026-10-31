@@ -2,7 +2,7 @@
 
 **Tujuan:** user bisa menambah kemampuan Miku tanpa mengubah kode: cukup satu file teks berisi petunjuk, daftar tool, dan pemicu. Miku memuatnya hanya saat relevan, lalu tetap berpikir sendiri: mengisi parameter dari ucapan user, bertanya bila ada yang kurang, dan menyesuaikan dengan situasi.
 
-**Status:** S1 selesai (31 Okt 2026, bagian 8). Berikutnya: S2 ("simpan ini sebagai skill"); urutannya terhadap rencana lain ada di [`ROADMAP.md`](ROADMAP.md).
+**Status:** S1 selesai (31 Okt 2026, bagian 8). S2 ("simpan ini sebagai skill") selesai (31 Okt 2026, bagian 9). Berikutnya: S3 (evaluasi lebih luas); urutannya terhadap rencana lain ada di [`ROADMAP.md`](ROADMAP.md).
 
 ---
 
@@ -77,7 +77,7 @@ tools: [create_word_document, open_folder]
 ## 7. Keputusan yang dibutuhkan dari user
 
 1. Format file Markdown + front matter seperti contoh di atas, oke? (S1 memakai format ini)
-2. Boleh Miku membuat skill sendiri dari percakapan ("simpan ini sebagai skill"), dengan konfirmasi dulu? (S2)
+2. ~~Boleh Miku membuat skill sendiri dari percakapan ("simpan ini sebagai skill"), dengan konfirmasi dulu? (S2)~~ Ya (31 Okt 2026).
 3. Skill pertama apa yang paling ingin dibuat? (S1 membawa dua contoh: laporan harian dan musik mood)
 
 ## 8. Hasil S1 (31 Okt 2026)
@@ -109,3 +109,38 @@ tools: [create_word_document, open_folder]
 | Aksi berisiko tanpa konfirmasi | 0 | 0; gerbang konfirmasi tidak bisa dilewati skill |
 
 `次の曲にして` gagal di kedua versi (model bertanya "lagu apa?"), jadi itu kelemahan lama, bukan efek skill. Satu catatan dari hasil ini: skill yang gagal bisa diperbaiki dengan mengubah `SKILL.md` saja, tanpa mengubah kode.
+
+## 9. Hasil S2 (31 Okt 2026)
+
+**Alur**
+1. User mengucapkan "simpan ini sebagai skill, namanya mode fokus" (atau 「これをスキルとして保存して」). Kalimat ini dikenali oleh regex, bukan oleh LLM, sehingga tidak bisa tersasar ke tool lain.
+2. `core/skill_builder.py` membaca ±12 pesan terakhir dan memasangkan setiap tool call yang berhasil dengan argumennya.
+3. Satu panggilan qwen3:4b (JSON schema) memilih nama, deskripsi, pemicu, tool call mana yang termasuk tugas, dan parameter mana yang diambil dari user setiap kali.
+4. Kode menyusun langkahnya (`Panggil set_volume: level = 20`) dan menambahkan langkah pembuka "jangan bertanya dulu, panggil semua tool ini berurutan".
+5. Draf divalidasi dengan parser S1, lalu ditampilkan lengkap untuk dikonfirmasi. Setelah disetujui, disimpan ke `data/skills/<nama>/SKILL.md`.
+6. `/skill new <nama>` membuat template tanpa LLM. `/skill forget <nama>` menghapus skill setelah konfirmasi.
+
+**Keputusan yang muncul saat uji LLM**
+
+| Masalah | Keputusan |
+|---|---|
+| LLM yang menulis langkahnya sendiri mengarang tool (`mengunduh_lagu_dari_youtube`), menyalin isi dokumen lama, mengabaikan nama dari user, dan mengubah "jalankan keduanya" menjadi "tanyakan yang mana": pakai ulang 6/15 | Langkah disusun kode dari tool call yang benar-benar terjadi; LLM hanya memilih. Nama dari ucapan user dipakai apa adanya |
+| Isi dokumen pendek ("telur, susu, roti") tersalin karena LLM lupa menandainya | Parameter teks bebas (`content`, `message`, `title`, ...) dan teks > 60 huruf selalu dari user; nama file diganti nama skill |
+| LLM menandai folder "Downloads" sebagai isian, lalu Miku bertanya setiap kali | Hanya teks bebas, `query`, nama kontak, dan memori yang boleh jadi isian |
+| Kalimat pembuka 「質問せずに」 dibaca parser S1 sebagai "skill boleh bertanya" | Diganti 「確認なしで」 |
+| "mode fokus dong" tidak berisi kata kerja aksi, sehingga model hanya mengobrol | `run_turn` meminta langkah skill bila skill user terpicu tanpa tool call, kecuali skill sedang menanyakan detail |
+| Pemicu "volume 20", "buka folder downloads" akan membajak perintah biasa | Pemicu tanpa kata khas, dengan kata dari permintaan simpan, atau sama dengan satu langkah dari skill beberapa langkah dibuang |
+
+**Angka** (`experiments/skills/bench_save_skill.py`, 5 skenario × 3, qwen3:4b-instruct)
+
+| Metrik | Target (bagian 5) | Riwayat disuntikkan | Tugas dijalankan qwen3:4b |
+|---|---|---|---|
+| Skill tersimpan dan valid | - | 15/15 | 15/15 |
+| Tool skill sesuai tugas | - | 15/15 | 11/15 (tugas awal tidak lengkap) |
+| Skill terpilih saat dipakai ulang | ≥ 9/10 | 15/15 | 15/15 |
+| Pakai ulang benar, dengan isi baru | ≥ 9/10 | 14/15 | 11/15 |
+| Regresi S1 (perintah umum) | tetap | 27/30 vs 24/30 di commit induk | - |
+| Aksi berisiko tanpa konfirmasi | 0 | 0; skill tetap lewat gerbang konfirmasi | 0 |
+
+Kegagalan saat tugas dijalankan qwen3:4b berasal dari giliran tugasnya: qwen3:4b hanya mengatur volume tanpa memutar YouTube. Ini keterbatasan lama (satu tool per balasan tanpa skill), bukan S2. Pratinjau memperlihatkan bahwa skill-nya hanya berisi `set_volume`.
+
