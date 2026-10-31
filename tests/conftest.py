@@ -63,12 +63,48 @@ def _no_real_desktop(monkeypatch):
         monkeypatch.setattr(backend, "windows_by_pid", lambda self, pids: {})
         monkeypatch.setattr(backend, "close_window", lambda self, window: None)
         monkeypatch.setattr(backend, "can_close_windows", property(lambda self: True))
+        # Menu aplikasi sistem kosong; test yang butuh mengisinya sendiri
+        monkeypatch.setattr(backend, "list_installed_apps", lambda self: [])
 
     def refuse(*args, **kwargs):
         raise AssertionError(f"Test menjalankan perintah desktop sungguhan: {args}")
 
-    for name in ("_run", "_spawn", "_copy_to_clipboard"):
+    for name in ("_run", "_spawn", "_start", "_copy_to_clipboard"):
         monkeypatch.setattr(linux, name, refuse)
+    monkeypatch.setattr(windows, "_start_apps", refuse)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_hotkey(monkeypatch, tmp_path):
+    """Test tidak boleh memasang shortcut global sungguhan atau memakai socket --trigger milik Miku yang jalan."""
+    from core import hotkey
+
+    def refuse():
+        raise AssertionError("Test membuka koneksi X11 atau memanggil RegisterHotKey sungguhan untuk shortcut")
+
+    monkeypatch.setattr(hotkey, "_open_display", refuse)
+    monkeypatch.setattr(hotkey, "_user32", refuse)
+    monkeypatch.setattr(hotkey, "default_runtime_dir", lambda: tmp_path / "runtime")
+
+
+@pytest.fixture(autouse=True)
+def _no_real_screen(monkeypatch):
+    """Test tidak boleh mengambil screenshot, membaca pohon aksesibilitas, atau memanggil model visi."""
+    from core.vision import capture, model, ui_tree
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("Test membaca layar atau memanggil model visi sungguhan")
+
+    for module, name in ((capture, "_grab"), (capture, "_x11_active_window"), (capture, "_win32_active_window"),
+                         (ui_tree, "_run_helper"), (model, "_client")):
+        monkeypatch.setattr(module, name, refuse)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_app_cache(monkeypatch, tmp_path):
+    """Test tidak boleh membaca/menulis cache aplikasi asli di data/."""
+    from core import system_control
+    monkeypatch.setattr(system_control, "APP_CACHE_FILE", tmp_path / "app_cache.json")
 
 
 @pytest.fixture(autouse=True)
@@ -76,3 +112,10 @@ def _isolated_long_term_memory(monkeypatch, tmp_path):
     """Test tidak boleh membaca/menulis memori jangka panjang asli di data/."""
     from core import long_term_memory
     monkeypatch.setattr(long_term_memory, "store", long_term_memory.LongTermMemory(tmp_path / "ltm.json"))
+
+
+@pytest.fixture(autouse=True)
+def _isolated_user_skills(monkeypatch, tmp_path):
+    """Test hanya melihat contoh skill di repo, bukan skill milik user di data/skills/."""
+    from core import user_skills
+    monkeypatch.setattr(user_skills, "USER_SKILLS_DIR", tmp_path / "user_skills")

@@ -31,8 +31,9 @@ except (ImportError, NotImplementedError):  # pygetwindow di Linux: NotImplement
     if sys.platform == "win32":
         print("[SystemControl] Warning: Some Windows modules not available")
 
-from config import COMMON_WEBSITES
+from config import APP_CACHE_FILE, COMMON_WEBSITES
 from . import desktop as desktop_backend
+from .desktop.app_search import AppCache, AppLauncher
 from .tools import registry
 from .confirmation import ConfirmCallback, describe_action, requires_confirmation
 
@@ -85,6 +86,9 @@ class SystemControl:
         # create_time mencegah salah kill jika PID sudah dipakai ulang proses lain.
         self._opened_apps: Dict[str, List[Tuple[int, float]]] = {}
 
+        # Aplikasi di luar katalog config.py: dicari di menu sistem, lalu diingat (cache)
+        self.apps = AppLauncher(self.desktop, AppCache(APP_CACHE_FILE, self.desktop.name))
+
     @registry.register("Check current system volume level (0-100). Returns integer.")
     def get_volume(self) -> int:
         """Get current system volume (0-100)"""
@@ -111,12 +115,24 @@ class SystemControl:
         """Check if system is muted"""
         return self.desktop.is_muted()
 
-    @registry.register("Open a desktop application like Notepad, Calculator, a web browser "
-                       "(Chrome, Brave, Firefox), VS Code, Spotify, WhatsApp. "
-                       "To create a Word document with content, use create_word_document instead.")
+    @registry.register("Open any installed desktop application by its name, e.g. Notepad, Calculator, "
+                       "LibreOffice, a web browser (Chrome, Brave, Firefox), VS Code, Spotify, WhatsApp. "
+                       "Pass the application name the user said. "
+                       "To create a Word document with content, use create_word_document instead.",
+                       params={"app_name": "Application name in English or as it appears in the app menu, "
+                                           "e.g. 'LibreOffice', 'Calendar', 'Notepad', even when the user "
+                                           "speaks Japanese or Indonesian (カレンダー -> 'Calendar')."})
     def open_application(self, app_name: str) -> Tuple[bool, str]:
-        """Open an application by name (whitelist per OS, see config.py)"""
+        """Katalog config.py dulu; bila tidak ada atau tidak terpasang, cache lalu menu aplikasi sistem."""
         success, message, pid = self.desktop.launch(app_name)
+        if not success:
+            found = self.apps.open(app_name)
+            if found is not None:
+                success, message, pid = found
+            else:
+                similar = self.apps.suggestions(app_name)
+                if similar:
+                    message += f". Aplikasi terpasang yang mirip: {', '.join(similar)}"
         if success and pid:
             self._track_process(app_name, pid)
         return success, message
@@ -171,11 +187,17 @@ class SystemControl:
                 print(f"[SystemControl] Gagal menutup PID {proc.pid}: {e}")
 
         gone, alive = psutil.wait_procs(signaled, timeout=CLOSE_TIMEOUT_SEC)
+        # Jendelanya sudah tertutup tapi prosesnya lanjut di latar (layanan GApplication di
+        # GNOME, aplikasi di system tray): dianggap tertutup dan tidak di-kill
+        open_windows = self.desktop.windows_by_pid({p.pid for p in alive if p.pid in windows}) if alive else {}
         still_open = 0
         for proc in alive:
             if proc.pid in windows:
-                # Kemungkinan menunggu dialog "simpan perubahan?"; biarkan user memutuskan
-                still_open += 1
+                if proc.pid in open_windows:
+                    # Kemungkinan menunggu dialog "simpan perubahan?"; biarkan user memutuskan
+                    still_open += 1
+                else:
+                    gone.append(proc)
                 continue
             try:
                 proc.kill()
@@ -189,7 +211,8 @@ class SystemControl:
         """Close an application by exact process name (no substring match)"""
         if not app_name or not app_name.strip():
             return False, "Nama aplikasi kosong"
-        names = self.desktop.process_names(app_name)
+        # Ditambah nama proses aplikasi yang pernah dibuka lewat menu sistem (cache)
+        names = self.desktop.process_names(app_name) | self.apps.process_names(app_name)
         protected = sorted(names & self.desktop.protected_processes)
         if protected:
             return False, f"Proses '{protected[0]}' dilindungi dan tidak boleh ditutup"

@@ -5,6 +5,7 @@ setara WM_CLOSE di Windows), buka file/folder (xdg-open), media (playerctl).
 Semua jalan sebagai user biasa, tanpa sudo.
 """
 
+import configparser
 import os
 import re
 import shlex
@@ -14,6 +15,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 from config import LINUX_APPS, LINUX_GENERIC_APPS
+from .app_search import AppEntry
 
 try:
     import pyautogui
@@ -33,6 +35,7 @@ PROTECTED_PROCESSES = {
 # Perintah peluncur -> nama proses aplikasinya, bila berbeda
 PROCESS_NAMES: Dict[str, Set[str]] = {
     "brave-browser": {"brave"},
+    "brave-browser-stable": {"brave"},
     "google-chrome": {"chrome"},
     "google-chrome-stable": {"chrome"},
     "chromium-browser": {"chromium", "chrome"},
@@ -72,6 +75,14 @@ def _spawn(argv: List[str]) -> subprocess.Popen:
                             stderr=subprocess.DEVNULL, start_new_session=True)
 
 
+def _start(argv: List[str]) -> int:
+    """Jalankan peluncur yang selesai sendiri setelah membuka aplikasi (gtk-launch, gio) dan
+    kembalikan exit code-nya. stdout DEVNULL: aplikasi yang dibuka mewarisi pipa yang terbuka."""
+    return subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                          stderr=subprocess.DEVNULL, start_new_session=True,
+                          timeout=COMMAND_TIMEOUT_SEC * 2).returncode
+
+
 def _copy_to_clipboard(text: str):
     # stdout harus DEVNULL: xclip tetap jalan di latar untuk melayani clipboard,
     # dan pipa yang tetap terbuka membuat subprocess.run menunggu sampai timeout
@@ -92,6 +103,51 @@ def user_dir(name: str) -> Path:
         except (OSError, subprocess.SubprocessError):
             pass
     return Path.home() / FALLBACK_DIRS.get(name, name)
+
+
+FIELD_CODE = re.compile(r"%[a-zA-Z]")
+
+
+def _application_dirs() -> List[Path]:
+    """Folder menu aplikasi menurut XDG, folder user lebih dulu (menimpa yang sistem)."""
+    data_home = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    data_dirs = os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
+    roots = [data_home] + [d for d in data_dirs.split(":") if d]
+    dirs = [Path(root) / "applications" for root in roots]
+    dirs += [Path("/var/lib/flatpak/exports/share/applications"),
+             Path.home() / ".local" / "share" / "flatpak" / "exports" / "share" / "applications",
+             Path("/var/lib/snapd/desktop/applications")]
+    unique: List[Path] = []
+    for path in dirs:
+        if path not in unique:
+            unique.append(path)
+    return unique
+
+
+def _read_desktop_entry(path: Path) -> Optional[Dict[str, str]]:
+    parser = configparser.ConfigParser(interpolation=None, strict=False)
+    parser.optionxform = str  # kunci peka huruf besar: Name[id], NoDisplay
+    try:
+        parser.read_string(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, configparser.Error):
+        return None
+    return dict(parser["Desktop Entry"]) if parser.has_section("Desktop Entry") else None
+
+
+def _exec_process_names(exec_line: str) -> Tuple[str, ...]:
+    """Nama proses dari baris Exec ("libreoffice %U" -> soffice.bin)."""
+    try:
+        tokens = shlex.split(FIELD_CODE.sub("", exec_line))
+    except ValueError:
+        return ()
+    while tokens and (tokens[0] == "env" or "=" in tokens[0]):
+        tokens.pop(0)
+    if not tokens:
+        return ()
+    command = os.path.basename(tokens[0]).lower()
+    if command in ("flatpak", "snap"):
+        return ()
+    return tuple(sorted(PROCESS_NAMES.get(command, {command})))
 
 
 def _default_browser_id() -> Optional[str]:
@@ -230,6 +286,52 @@ class LinuxDesktop:
 
         tried = ", ".join(c for c in LINUX_APPS[key] if not c.startswith(("http://", "https://")))
         return False, f"{app_name} belum terpasang (dicari: {tried})", None
+
+    def list_installed_apps(self) -> List[AppEntry]:
+        """Aplikasi di menu (file .desktop), sama dengan yang dicari menu aplikasi desktop."""
+        desktops = {d.lower() for d in os.environ.get("XDG_CURRENT_DESKTOP", "").split(":") if d}
+        found: Dict[str, Optional[AppEntry]] = {}
+        for root in _application_dirs():
+            if not root.is_dir():
+                continue
+            for path in sorted(root.rglob("*.desktop")):
+                app_id = str(path.relative_to(root).with_suffix("")).replace(os.sep, "-")
+                if app_id in found:
+                    continue  # versi user (atau folder yang lebih dulu) menang, termasuk yang menyembunyikan
+                entry = _read_desktop_entry(path)
+                found[app_id] = None
+                if not entry or entry.get("Type") != "Application" or not entry.get("Name"):
+                    continue
+                if "true" in (entry.get("NoDisplay", "").lower(), entry.get("Hidden", "").lower()):
+                    continue
+                only = {d.lower() for d in entry.get("OnlyShowIn", "").split(";") if d}
+                if (only and not only & desktops) or ({d.lower() for d in entry.get("NotShowIn", "").split(";") if d} & desktops):
+                    continue
+                if entry.get("TryExec") and not shutil.which(entry["TryExec"]):
+                    continue
+                aliases = tuple(entry[k] for k in ("Name[id]", "Name[ja]", "GenericName", "GenericName[id]", "GenericName[ja]")
+                                if entry.get(k))
+                keywords = tuple(k for key in ("Keywords", "Keywords[id]") for k in entry.get(key, "").split(";") if k)
+                found[app_id] = AppEntry(id=app_id, name=entry["Name"], aliases=aliases, keywords=keywords,
+                                         process_names=_exec_process_names(entry.get("Exec", "")), path=str(path))
+        return [entry for entry in found.values() if entry]
+
+    def launch_entry(self, entry: AppEntry) -> Tuple[bool, str, Optional[int]]:
+        """Buka aplikasi dari menu lewat id-nya, seperti mengkliknya di menu."""
+        if shutil.which("gtk-launch"):
+            argv = ["gtk-launch", entry.id]
+        elif entry.path and shutil.which("gio"):
+            argv = ["gio", "launch", entry.path]
+        else:
+            return False, "gtk-launch/gio tidak ditemukan", None
+        print(f"[SystemControl] Launching: {' '.join(argv)}")
+        try:
+            code = _start(argv)
+        except (OSError, subprocess.SubprocessError) as e:
+            return False, f"Gagal membuka {entry.name}: {e}", None
+        if code != 0:
+            return False, f"Gagal membuka {entry.name} (exit {code})", None
+        return True, f"Membuka {entry.name}...", None
 
     def process_names(self, app_name: str) -> Set[str]:
         """Nama-nama proses milik aplikasi ini (beda distro beda program)."""

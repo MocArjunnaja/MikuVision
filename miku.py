@@ -9,6 +9,7 @@ Usage:
     python miku.py              # Voice mode (default, with sprite avatar & automation)
     python miku.py --text       # Text chat mode (no sprite)
     python miku.py --test       # Test initialization only
+    python miku.py --trigger    # Ask the running Miku to listen (desktop shortcut)
 """
 
 import os
@@ -50,6 +51,17 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
+# --trigger (dari shortcut desktop): minta Miku yang sedang jalan mendengarkan, lalu keluar.
+# core/hotkey.py dimuat langsung dari file, karena config.py dan package core memuat torch dan Whisper (±20 s)
+if __name__ == "__main__" and "--trigger" in sys.argv[1:]:
+    import importlib.util
+    _spec = importlib.util.spec_from_file_location("miku_hotkey", Path(__file__).parent / "core" / "hotkey.py")
+    _hotkey = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_hotkey)
+    _ok, _message = _hotkey.send_trigger()
+    print(_message)
+    sys.exit(0 if _ok else 1)
+
 from core.voice_input import VoiceInput
 from core.voice_output import VoiceOutput
 from core.voice_converter import VoiceConverter
@@ -62,7 +74,8 @@ from core.confirmation import is_affirmative
 from core.commands import handle_command
 from core.conversation import ToolResult, run_turn
 from core.turn_log import TurnLogger
-from config import DATA_DIR, CHARACTERS, DEFAULT_CHARACTER, TURN_LOG_DIR
+from core.hotkey import ListenTriggers
+from config import DATA_DIR, CHARACTERS, DEFAULT_CHARACTER, TURN_LOG_DIR, WAKE_HOTKEY, HOTKEY_ENABLED
 
 
 class MikuCLI:
@@ -86,7 +99,10 @@ class MikuCLI:
 
         # Hover / Drag interactive mode
         self._interaction_event = threading.Event()
-        
+        # "mascot" (diseret) atau "shortcut" (Ctrl+Shift+M / --trigger): shortcut langsung merekam
+        self._interaction_source: Optional[str] = None
+        self.triggers: Optional[ListenTriggers] = None
+
         self.wake_trigger_language_hint = self.character.lang
         self.wake_conversation_language_hint = None
         self.wake_silence_timeout_sec = 3.0
@@ -243,6 +259,12 @@ class MikuCLI:
 
     def _on_avatar_interacted(self):
         """Callback from avatar window when dragged/clicked"""
+        self._interaction_source = "mascot"
+        self._interaction_event.set()
+
+    def _on_listen_trigger(self):
+        """Shortcut global atau `miku.py --trigger` (dari thread lain)."""
+        self._interaction_source = "shortcut"
         self._interaction_event.set()
 
     def _on_avatar_quit(self):
@@ -278,18 +300,26 @@ class MikuCLI:
         if self.avatar_window:
             self.avatar_window.set_emotion("neutral")
 
-        print("\n" + "="*50)
-        print("💡 HOW TO USE: Drag the Miku mascot on your screen to talk!")
-        print("="*50 + "\n")
+        self.triggers = ListenTriggers(self._on_listen_trigger, WAKE_HOTKEY, hotkey_enabled=HOTKEY_ENABLED)
+        trigger_messages = self.triggers.start()
 
-        # Register a hotkey just in case they want a manual way to exit
-        # or we just rely on Ctrl+C.
+        print("\n" + "="*50)
+        if self.triggers.hotkey_active:
+            print(f"💡 HOW TO USE: Drag the Miku mascot or press {self.triggers.hotkey.combo} to talk!")
+        else:
+            print("💡 HOW TO USE: Drag the Miku mascot on your screen to talk!")
+        print("="*50 + "\n")
+        for message in trigger_messages:
+            print(f"[Shortcut] {message}")
+
         print("Press Ctrl+C to exit.\n")
 
         import time
         while True:
             try:
                 # Clear any lingering events before waiting to avoid accidental queueing
+                # (shortcut yang ditekan selama Miku memproses atau bicara ikut dibuang)
+                self._interaction_source = None
                 self._interaction_event.clear()
                 
                 # Wait for user to interact with the avatar
@@ -304,18 +334,23 @@ class MikuCLI:
                     break
                     
                 self._interaction_event.clear()
-                
-                # Feedback: Miku acknowledges the interaction
-                print("\n[User interacted with Miku]")
-                if self.avatar_window:
-                    self.avatar_window.set_emotion("happy")
-                
-                trigger_phrase = "はい、何でしょうか？" # "Yes, what is it?"
-                self.voice_output.speak(trigger_phrase, blocking=True)
-                
-                # Give a small pause to avoid hearing her own echo
-                time.sleep(0.3)
-                
+
+                if self._interaction_source == "shortcut":
+                    # Shortcut: langsung merekam, tanpa sapaan (±1-2 s TTS + RVC), jadi user
+                    # bisa bicara begitu menekan; maskot berganti ekspresi "listening"
+                    print("\n[Shortcut pressed]")
+                else:
+                    # Feedback: Miku acknowledges the interaction
+                    print("\n[User interacted with Miku]")
+                    if self.avatar_window:
+                        self.avatar_window.set_emotion("happy")
+
+                    trigger_phrase = "はい、何でしょうか？" # "Yes, what is it?"
+                    self.voice_output.speak(trigger_phrase, blocking=True)
+
+                    # Give a small pause to avoid hearing her own echo
+                    time.sleep(0.3)
+
                 # Miku starts listening for user request
                 if self.avatar_window:
                     self.avatar_window.set_emotion("listening")
@@ -414,6 +449,8 @@ class MikuCLI:
 
     def cleanup(self):
         """Cleanup resources"""
+        if self.triggers:
+            self.triggers.stop()
         if self.avatar_window:
             cleanup_avatar_window()
         if self.voice_input:
@@ -435,6 +472,7 @@ Examples:
   python miku.py --text         # Text chat mode
   python miku.py --test         # Test initialization only
   python miku.py --text --resume  # Lanjutkan sesi terakhir
+  python miku.py --trigger      # Minta Miku yang sedang jalan mendengarkan (untuk shortcut desktop)
         """,
     )
 
@@ -452,6 +490,11 @@ Examples:
     )
     group.add_argument(
         "--test", action="store_true", help="Test initialization only"
+    )
+    # Ditangani di awal file sebelum model dimuat; di sini hanya untuk --help
+    group.add_argument(
+        "--trigger", action="store_true",
+        help="Ask the running Miku to listen (for a desktop keyboard shortcut)",
     )
 
     parser.add_argument(

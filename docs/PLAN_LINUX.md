@@ -2,7 +2,7 @@
 
 **Tujuan:** MikuVision jalan penuh di Linux dengan fitur setara Windows: suara dua arah, LLM lokal, aksi di komputer (buka/tutup aplikasi, volume, dokumen, pesan), dan maskot desktop. Windows tetap didukung dari kode yang sama.
 
-**Status:** Audit, Fase L0, Fase L1, dan perbaikan urutan muat VRAM selesai 29 Okt 2026 (bagian 2.5); Fase L2 selesai 31 Okt 2026 (bagian 2.6). Berikutnya: Fase L3 (maskot). Urutan yang disarankan: L0 → L4 di dokumen ini, lalu agent visi Fase 1 ([`PLAN_VISION_AGENT.md`](PLAN_VISION_AGENT.md)) dengan backend Linux.
+**Status:** Audit, Fase L0, Fase L1, dan perbaikan urutan muat VRAM selesai 29 Okt 2026 (bagian 2.5); Fase L2 dan L3 selesai 31 Okt 2026 (bagian 2.6 dan 2.7); installer untuk dnf/pacman/zypper (L5 butir 1) juga 31 Okt. Berikutnya: Fase L4 (benchmark, perlu angka Windows juga). Urutan semua rencana, termasuk daftar cek di Windows: [`ROADMAP.md`](ROADMAP.md).
 
 ---
 
@@ -83,7 +83,7 @@ Detail dan angka lengkap ada di CHANGELOG v1.3.0.
 | Aplikasi memuat Whisper + RVC (±1,7 GB) sebelum LLM; Ollama menyisakan cadangan 1 GB dan hanya menaruh 29/37 layer di GPU | Balasan pertama 49 s, berikutnya 1,6 s dengan 34 token/s | **Diperbaiki:** LLM dimuat lebih dulu dan ditahan (`keep_alive`), dilepas saat keluar. Balasan 1,3 s / 0,9 s, 100% GPU, 59 token/s, VRAM 5,5/6,1 GB |
 | Setelah LLM dimuat lebih dulu, sisa VRAM ±300 MB; RVC memproses balasan panjang sekaligus | Balasan 18,7 s: `CUDA out of memory`, suara jatuh ke MeloTTS | **Diperbaiki:** RVC dipotong per 6 s (puncak +207 MiB). Sisa tetap tipis; uji KV cache Ollama `q8_0` (backlog) |
 | Python 3.10 dari uv membawa Tcl/Tk 9.0; mengubah widget dari thread lain langsung segfault | GUI tertutup sendiri saat selesai memuat (sudah diperbaiki) | **Diaudit di L2:** 12 fungsi yang jalan di thread lain tidak menyentuh widget langsung; semua lewat antrean |
-| Emoji berwarna tampil sebagai kotak di Tk Linux | Kosmetik | L3, bersama maskot |
+| Emoji berwarna tampil sebagai kotak di Tk Linux | Kosmetik | **Diperbaiki di L3:** emoji dibuang dari teks GUI di Linux |
 
 ### 2.6 Setelah L2 (31 Okt 2026)
 
@@ -105,6 +105,22 @@ Aksi OS sekarang lewat `core/desktop/` (`windows.py` berisi kode lama tanpa peru
 - Tool: 27/27 jalan atau menjawab jelas. Pengecualian yang disengaja: WhatsApp di Linux hanya menyiapkan draf di WhatsApp Web (user menekan Enter; grup belum didukung), Telegram butuh Telegram Desktop, dan `type_text`/`press_key`/`hotkey` baru dicek lewat unit test.
 - `pytest`: 216 lulus (35 test baru untuk backend Linux), juga di Python sistem tanpa paket suara/GUI, seperti di CI.
 - CI GitHub Actions (`.github/workflows/tests.yml`) menjalankan `pytest` di Ubuntu dan Windows.
+
+### 2.7 Setelah L3 (31 Okt 2026)
+
+Maskot desktop (`python miku.py`) di Linux sekarang setara Windows, tanpa dependency baru: memakai python-xlib, yang sudah terpasang bersama pyautogui. Keputusan no. 2 (bagian 8): **X11 SHAPE**, bukan Qt.
+
+| Uji sungguhan di Mint | Hasil |
+|---|---|
+| Transparan: jendela dibentuk persis seperti sprite (ekstensi SHAPE, ±90 persegi, 4 ms per frame baru); klik di area kosong jatuh ke jendela di bawahnya | lulus, tanpa kotak magenta |
+| Selalu di atas, di semua workspace, tidak di taskbar/pager (`_NET_WM_STATE`) | lulus |
+| Fokus keyboard tetap di jendela user saat maskot muncul | lulus |
+| Seret maskot → jendela ikut pindah, callback "mulai bicara" terpanggil | lulus |
+| Klik kanan → "Exit Miku" → mode suara keluar dan model dilepas dari VRAM | lulus |
+| GUI: emoji tidak lagi tampil sebagai kotak | lulus |
+
+- `pytest`: 229 lulus (10 test baru); di Python sistem seperti CI 224 lulus dan 5 dilewati (butuh pygame asli).
+- Belum: sesi Wayland (maskot tidak bisa transparan atau dipindah; ada peringatan), dan monitor dengan skala HiDPI.
 
 ## 3. Prinsip desain
 
@@ -168,7 +184,7 @@ Aksi OS sekarang lewat `core/desktop/` (`windows.py` berisi kode lama tanpa peru
 - Test backend Linux dengan `subprocess` di-mock; conftest tidak lagi membuat Windows selalu "tersedia"; CI GitHub Actions (ubuntu-latest + windows-latest) menjalankan `pytest`.
 - **Keluaran:** 27/27 tool jalan, atau menjawab jelas "belum didukung di Linux"; tanpa crash.
 
-### Fase L3: Maskot desktop di Linux (1–2 hari)
+### Fase L3: Maskot desktop di Linux (selesai 31 Okt 2026; hasil di bagian 2.7)
 - Spike: X11 SHAPE (python-xlib) vs Qt (PySide6) dengan latar transparan. Pilih satu.
 - Transparan, always-on-top (`_NET_WM_STATE_ABOVE`), bisa diseret, menu klik kanan "Exit", tidak mencuri fokus.
 - **Keluaran:** maskot tanpa kotak magenta, bisa diseret ke mana saja.
@@ -178,14 +194,35 @@ Aksi OS sekarang lewat `core/desktop/` (`windows.py` berisi kode lama tanpa peru
 - Hasil di `experiments/linux_eval/RESULTS.md` dan CHANGELOG, berdampingan dengan angka Windows.
 
 ### Sesudahnya: agent visi Fase 1 lintas OS
-- Spike Fase 0 versi Linux: cakupan AT-SPI2 (pengganti UI Automation) di Nemo, Cinnamon Settings, Kalkulator, LibreOffice, Firefox, dan Brave (browser Chromium butuh `--force-renderer-accessibility`).
+- Spike Fase 0 versi Linux selesai 31 Okt 2026 (Kalkulator, Xed, Nemo, Pengaturan Suara Cinnamon, System Monitor): [`experiments/vision_linux/RESULTS.md`](../experiments/vision_linux/RESULTS.md). LibreOffice, Firefox, dan Brave (browser Chromium butuh `--force-renderer-accessibility`) belum diuji.
 - OCR: RapidOCR (ONNX, CPU) bisa dipakai di dua OS, menggantikan Windows OCR yang hanya ada di Windows.
-- Screenshot `mss` dan model `qwen3-vl:4b-instruct` sama dengan rencana Windows.
+- Screenshot `PIL.ImageGrab` dan model `qwen3-vl:4b-instruct` sama dengan rencana Windows.
+
+### L5: Distro dan desktop lain
+Yang menentukan bukan distronya, tetapi **X11 atau Wayland** dan paket sistem yang tersedia.
+
+| Bagian | Bergantung pada | Distro lain (sesi X11) | Sesi Wayland |
+|---|---|---|---|
+| Cari & buka aplikasi | File `.desktop` standar freedesktop (XDG, flatpak, snap), `gtk-launch`, cadangan `gio launch` | Jalan di GNOME, KDE, XFCE, Cinnamon, MATE | Jalan |
+| Volume | `wpctl` (PipeWire) atau `pactl` (PulseAudio) | Jalan di distro modern; sistem ALSA murni tidak didukung | Jalan |
+| Media, buka file/folder | `playerctl` (MPRIS), `xdg-open`, `xdg-user-dir` | Jalan | Jalan |
+| Tutup jendela | `wmctrl` (EWMH) | Jalan | Hanya jendela XWayland |
+| Mengetik, tombol, mouse | `pyautogui` / `xdotool` (XTest) | Jalan | Tidak jalan |
+| Shortcut global, maskot transparan | XGrabKey, ekstensi SHAPE | Jalan | Tidak jalan / tidak dijamin |
+| Installer | `apt`, `dnf`, `pacman`, `zypper`, dengan nama paket per distro (L5 butir 1, selesai) | Jalan; distro lain di luar empat keluarga ini: pasang paket sendiri | Sama |
+
+Pekerjaan:
+1. ~~Installer mengenali `dnf`, `pacman`, dan `zypper`, dengan pemetaan nama paket~~ (selesai 31 Okt 2026):
+   - `pkg_manager` membaca `ID`/`ID_LIKE` di `/etc/os-release`, dengan cadangan `command -v`.
+   - Nama paket dicek di repo Fedora 42, Arch, dan openSUSE Tumbleweed/Leap 15.6: `libportaudio2` → `portaudio` (dnf, pacman); `build-essential` → `gcc-c++ make` (dnf, zypper) atau `base-devel` (pacman). Paket lain bernama sama.
+   - pacman memakai `-S --needed` tanpa `-y`, supaya tidak terjadi upgrade setengah jalan.
+   - Diuji dengan `os-release` palsu (Ubuntu, Mint, Pop!_OS, Debian, Fedora, Rocky, Arch, Manjaro, EndeavourOS, openSUSE) dan `sudo` palsu (`tests/test_install_sh.py`), belum di VM distro aslinya.
+2. Uji di VM: Ubuntu 24.04 (sesi Xorg), Fedora KDE (X11), Arch XFCE.
+3. Backend Wayland (W1, di [`PLAN_VISION_AGENT.md`](PLAN_VISION_AGENT.md)): portal RemoteDesktop/ScreenCast/GlobalShortcuts atau `ydotool`. GNOME terbaru tidak lagi menyediakan sesi X11, jadi ini perlu bila ingin mendukung Ubuntu/Fedora GNOME terbaru.
 
 ### Backlog
 - Ruang VRAM: uji `OLLAMA_FLASH_ATTENTION=1` + `OLLAMA_KV_CACHE_TYPE=q8_0` di service Ollama (KV cache 1152 → ±576 MiB) dan ukur ulang tool calling.
 - Pindah dari Python 3.10 (EOL): cari implementasi RVC tanpa `fairseq`.
-- Dukungan Wayland (screenshot lewat portal, input sintetis).
 - Rilis GitHub dengan petunjuk Linux.
 
 ## 6. Evaluasi
@@ -214,7 +251,7 @@ Aksi OS sekarang lewat `core/desktop/` (`windows.py` berisi kode lama tanpa peru
 ## 8. Keputusan yang dibutuhkan dari user
 
 1. **Lokasi repo**: tetap di partisi NTFS bersama (dipakai Windows dan Linux, venv Linux di ext4), atau clone terpisah ke ext4?
-2. **Maskot**: X11 SHAPE (tanpa dependency baru) atau Qt/PySide6 (lebih rapi, dependency besar)?
+2. ~~**Maskot**: X11 SHAPE atau Qt/PySide6?~~ Diputuskan di L3: X11 SHAPE, tanpa dependency baru.
 3. **WhatsApp di Linux**: lewat WhatsApp Web di browser, oke?
 4. **Urutan**: port Linux (L0–L4) dulu, baru agent visi Fase 1? (rekomendasi: ya)
 5. **Wayland**: perlu didukung, atau cukup X11?

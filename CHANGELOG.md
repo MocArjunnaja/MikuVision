@@ -6,6 +6,427 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-10-31): "simpan ini sebagai skill" menyimpan tugas yang baru selesai
+
+Perbaikan S2 setelah baris "Skill buatan user" di checklist Windows ([`docs/ROADMAP.md`](docs/ROADMAP.md) bagian 2) gagal. Masalahnya bukan khusus Windows.
+
+### Diperbaiki
+- **Skill berisi tugas lama dari sesi yang sama.** Diulang di `miku.py --text`, satu sesi: "buatkan laporan harian: …", lalu "putar lagu buat belajar", lalu "kecilkan volume ke 20 lalu putar lofi di youtube", lalu "simpan ini sebagai skill, namanya mode fokus".
+  - Hasilnya: skill berisi `create_word_document`, `open_folder`, `set_volume` (level 30, bukan 20), dan `youtube_search`.
+  - "mode fokus dong" lalu memanggil `run_routine('mode fokus')`: "Routine 'mode fokus' tidak ditemukan".
+  - Di sesi baru yang hanya berisi giliran ketiga, simpan dan pakai ulang berjalan benar.
+- Penyebab dan perbaikannya (`core/skill_builder.py`):
+  - **Ucapan yang sudah dikerjakan skill lain tidak ditawarkan sebagai langkah.** Giliran 1 dan 2 di atas dikerjakan skill contoh (pemicu "laporan harian" dan "lagu buat"). Tugas itu sudah punya skill, jadi bukan bagian skill baru. Giliran itu tetap ada di percakapan yang dibaca LLM. Ucapan terakhir selalu ditawarkan.
+  - **Tool call dikelompokkan per ucapan user** di prompt, dengan ucapan terakhir ditandai `(latest)`. Prompt meminta tool call ucapan terakhir, plus ucapan sebelumnya hanya bila itu bagian lain dari tugas yang sama. Sebelumnya prompt menyebut langkahnya "biasanya semuanya".
+  - **Bila tidak ada tool call dari ucapan terakhir yang dipilih**, termasuk bila nomornya salah semua, yang disimpan tool call ucapan terakhir saja. Sebelumnya cadangannya semua tool call di riwayat.
+  - **Batas langkah membuang langkah terlama**, bukan yang terbaru. Sebelumnya `chosen[:MAX_STEPS - 1]` menyimpan empat tool call tertua, jadi tugas yang baru selesai yang terpotong.
+  - Jendela riwayat 12 → 20 pesan, sama dengan memori chat, dan dimulai dari ucapan user. Tanpa itu, giliran yang terpotong di awal jendela menyisakan hasil tool tanpa argumennya, misalnya `open_folder()` kosong.
+  - Tugas beberapa giliran tetap didukung: "siap kerja" (folder di satu giliran, aplikasi di giliran berikutnya).
+- **Pemicu yang memuat nama routine, pemicu skill lain, atau kata simpan dibuang.**
+  - Nama routine: "mode belajar" (`routines.example.yaml`, `data/routines.yaml`) menarik giliran ke `run_routine`.
+  - Pemicu skill lain: "buat laporan harian" akan mengalahkan skill laporan harian karena lebih panjang.
+  - Kata simpan: "simpan mode fokus", "save …", 「…を保存」. Balasan konfirmasi tidak lagi menyuruh user bilang "simpan mode fokus".
+  - Contoh nama skill di prompt diganti dari "mode belajar" (nama routine) menjadi "persiapan rapat", karena nama skill selalu ikut menjadi pemicu.
+
+### Pengujian
+- `experiments/skills/bench_save_skill.py` mendapat skenario `campur_id`: ketiga giliran di atas dalam satu sesi, lalu "simpan ini sebagai skill, namanya mode fokus", lalu "mode fokus dong" di sesi baru. Benar bila skill hanya berisi `set_volume` + `youtube_search` dan pakai ulangnya volume 20 + lofi, tanpa dokumen. Skenario bisa dipilih lewat argumen: `bench_save_skill.py 3 campur_id`.
+
+  | Riwayat tugas (6 skenario × 3) | Tersimpan | Tool skill tepat | Terpilih saat dipakai | Pakai ulang benar | Giliran simpan |
+  |---|---|---|---|---|---|
+  | Disuntikkan (yang diukur hanya S2) | 18/18 | **18/18** | 18/18 | **17/18** | median 3,4 s |
+  | Dijalankan qwen3:4b (`--live`) | 18/18 | 10/18 | 18/18 | 9/18 | median 3,0 s |
+
+  - Kedelapan "tool skill tepat" yang meleset di `--live` sama penyebabnya: di giliran tugas, qwen3:4b hanya mengatur volume tanpa memutar YouTube (mode fokus 3, ジャズタイム 2, `campur_id` 3). Skill-nya setia pada yang berhasil, jadi ikut hanya berisi `set_volume`. Ini keterbatasan lama yang sama dengan rilis S2.
+  - Pakai ulang yang meleset di luar itu, penyebabnya juga lama:
+    - satu mode fokus (disuntikkan): LLM menandai `query` sebagai isian, jadi skill bertanya dulu dan tidak memanggil tool;
+    - satu catatan rapat (`--live`): petunjuk isian membawa detail lama ("anggaran total"), dan dokumen barunya ikut menyebut anggaran.
+  - Lima skenario lama, dibanding hasil S2: disuntikkan 15/15 tool tepat dan 14/15 pakai ulang (sama); `--live` 10/15 dan 9/15 (sebelumnya 11/15 dan 11/15). Selisihnya dari giliran tugas yang tidak memutar YouTube, bukan dari penyusun skill.
+  - Giliran simpan lebih lama ±1 s (median 2,4 → 3,4 s disuntikkan) karena jendela riwayat 20 pesan.
+- `campur_id`, commit induk vs branch ini (3 run masing-masing):
+
+  | | Skill tanpa tugas lama | Tool skill tepat | Pakai ulang benar |
+  |---|---|---|---|
+  | Commit induk, disuntikkan | 3/3 | 3/3 | 3/3 |
+  | Commit induk, `--live` | **0/3** | 0/3 | 0/3 |
+  | Branch ini, disuntikkan | 3/3 | 3/3 | 3/3 |
+  | Branch ini, `--live` | **3/3** | 0/3 | 0/3 |
+
+  - Commit induk `--live` mengulang kegagalan Windows persis: keempat tool, pemicu "simpan mode fokus" dan "mode belajar", lalu "mode fokus dong" memanggil `run_routine('mode fokus')` (1×) atau membuat dokumen "Mode_Fokus" (2×).
+  - Commit induk lulus saat disuntikkan hanya karena jendela 12 pesan memotong giliran laporan harian, dan LLM kebetulan memilih tool call terakhir.
+  - Branch ini `--live`: ketiga skill hanya berisi `set_volume` level 20, tanpa dokumen dan tanpa volume 30. YouTube tidak ada karena giliran tugasnya sendiri tidak memutarnya (lihat di atas).
+- Varian yang dicoba dengan pemeriksaan langkah simpan saja (5 run per kasus), sebelum memilih yang sekarang:
+  - LLM memilih nomor ucapan awal tugas (`first_request`, ditulis sebelum langkah): riwayat campur dan "dokumen lalu jazz" 5/5, tapi "siap kerja" 0/5 karena LLM selalu memilih ucapan terakhir.
+  - Tanda `same_task` per ucapan: "siap kerja" 0/5, dan LLM tertukar antara nomor ucapan dan nomor tool call.
+  - Langkah dipilih per tool call (yang dipakai): "siap kerja" 5/5 dan riwayat campur 5/5. Tetapi satu kalimat tambahan di prompt ("most skills are only those") menurunkan riwayat campur ke 2/5. Karena rapuh, ucapan yang dikerjakan skill lain kini tidak ditawarkan sama sekali; dengan itu riwayat campur 5/5 tanpa bergantung pada pilihan LLM.
+- `tests/test_skill_builder.py` (+7 test):
+  - regresi dari riwayat di atas, dengan LLM yang memilih keenam tool call seperti di Windows: skill hanya berisi `set_volume` 20 + `youtube_search`, pemicunya tanpa kata simpan, nama routine, atau pemicu skill lain, dan balasannya menyebut "mode fokus sekarang";
+  - tugas lama tanpa skill (dokumen, lalu jazz): ikut hanya bila LLM memilihnya bersama ucapan terakhir; bila LLM hanya memilih tugas lama, tidak memilih apa pun, atau nomornya salah, yang disimpan ucapan terakhir;
+  - penyaring pemicu untuk nama routine dan kata simpan;
+  - jendela riwayat dimulai dari ucapan user;
+  - test batas langkah kini mengharapkan langkah terbaru (30, 40, 50, 60), bukan terlama;
+  - test "siap kerja" kini juga memeriksa kedua tool-nya tetap ada.
+- `pytest`: 419 lulus, 31 dilewati (venv aplikasi); di Python sistem seperti CI 413 lulus, 37 dilewati.
+
+### Keterbatasan diketahui
+- **Tugas lama yang tidak dikerjakan skill masih bisa ikut** bila qwen3:4b memilihnya. Contoh: dokumen daftar belanja, lalu "putar jazz di youtube dengan volume 30", lalu "jadikan skill ya": skill berisi ketiga tool di 5/5 percobaan. Begitu juga lagu YouTube sebelum "siap kerja" (5/5). Pratinjau memperlihatkan tool-nya sebelum disetujui.
+- **"mode fokus dong" bisa tersasar ke `run_routine`** bila skill "mode fokus" hanya berisi satu langkah. Kata "mode" mengaktifkan skill bawaan routine, sehingga `run_routine` ikut ditawarkan. Terjadi di 4 dari 6 pakai ulang `--live` dengan skill satu langkah, dan 0 dari 18 dengan skill dua langkah (disuntikkan). Perbaikannya di pemilihan skill (`AIBrain._select_turn_skills`, `core/skills.py`), di luar perubahan ini.
+
+---
+
+## Belum dirilis (2026-10-31): shortcut di Windows memberi tahu bila kombinasinya sudah dipakai
+
+Dari daftar cek Windows ([`docs/ROADMAP.md`](docs/ROADMAP.md) bagian 2): baris "Shortcut `Ctrl+Shift+M` (T1)" gagal di kriteria "pesan jelas bila kombinasi sudah dipakai aplikasi lain". Deteksi tekan sendiri lulus (6/6 saat Miku diam, 63–66 ms; `--trigger` 342–410 ms).
+
+### Diperbaiki
+- Windows: sebelum memasang hook `keyboard`, `KeyboardHotkey` mencoba `RegisterHotKey` lalu langsung `UnregisterHotKey` (ctypes, tetap library standar untuk `--trigger`). Bila gagal dengan `ERROR_HOTKEY_ALREADY_REGISTERED` (1409), Miku menampilkan pesan yang sama dengan Linux, "Shortcut Ctrl+Shift+M tidak dipasang: sudah dipakai aplikasi lain…", dan jalan tanpa shortcut. Sebelumnya Miku mengaku shortcut aktif, lalu satu tekan menjalankan Miku dan aplikasi lain sekaligus.
+  - Kombinasinya tidak dipegang Miku. Tekan tetap dideteksi hook `keyboard` seperti sebelumnya, jadi shortcut di dalam aplikasi tidak ditelan.
+  - Error `RegisterHotKey` lain bukan bukti bentrok: diabaikan, hook tetap dipasang.
+  - Mengganti `keyboard` seluruhnya dengan `RegisterHotKey` + message loop tidak dipilih. Kombinasinya akan ditelan dari semua aplikasi, dan deteksi tekan yang baru lulus di daftar cek harus diuji ulang.
+
+### Pengujian
+- `tests/test_hotkey.py` (+6 test, user32 palsu): kombinasi yang sudah dipakai menghasilkan pesan tanpa memasang hook, pengecekan melepas kombinasinya lagi, error lain tetap memasang hook, kode virtual-key angka dan F1/F24, pesan `ListenTriggers` di Windows. `conftest.py` menolak panggilan `RegisterHotKey` sungguhan dari test.
+- Manual di Windows 11 (31 Okt), dengan proses pembantu yang memegang `Ctrl+Shift+M` lewat `RegisterHotKey`:
+  - Pembantu jalan dulu, lalu `python miku.py`: setelah sapaan muncul `[Shortcut] Shortcut Ctrl+Shift+M tidak dipasang: sudah dipakai aplikasi lain. …`, dan petunjuk "HOW TO USE" hanya menyebut maskot.
+  - Tanpa pembantu: "Shortcut Ctrl+Shift+M: mulai bicara dari aplikasi mana pun."
+  - Miku jalan dulu, lalu pembantu: pembantu berhasil mendaftar (pengecekan tidak memegang kombinasinya), dan satu tekan lewat `keybd_event` sampai ke keduanya.
+
+### Dokumentasi
+- README Troubleshooting: shortcut di dalam aplikasi (misalnya `Ctrl+Shift+M` di Chrome) tidak bisa dideteksi, dan cara mengganti `WAKE_HOTKEY`.
+
+### Keterbatasan diketahui
+- Hanya bentrok saat Miku mulai yang terdeteksi. Aplikasi yang mendaftarkan kombinasi yang sama setelah itu tidak ketahuan, dan satu tekan menjalankan keduanya.
+- Shortcut di dalam aplikasi tidak lewat `RegisterHotKey`: di Chrome, `Ctrl+Shift+M` tetap membuka menu profil sekaligus membuat Miku mendengarkan.
+- Saran cadangan di pesan ("pasang `python miku.py --trigger` sebagai shortcut di pengaturan keyboard desktop") ditulis untuk Linux. Windows tidak punya pengaturan seperti itu.
+- Tekan saat Miku sedang memproses atau bicara tetap dibuang tanpa tanda, seperti sejak T1.
+
+---
+
+## Belum dirilis (2026-10-31): opsi installer untuk MikuVision Setup (PLAN_INSTALLER I1)
+
+Rencana: I1 di [`docs/PLAN_INSTALLER.md`](docs/PLAN_INSTALLER.md). Semua opsi bersifat tambahan; `install.bat` tanpa opsi berperilaku sama seperti sebelumnya.
+
+### Ditambahkan
+- `install.ps1 -Progress`: selain log biasa, satu baris `##MIKU {json}` per kejadian di stdout (`step` dengan nomor dan total langkah, `warn`, `error`, `done`), untuk wizard yang menjalankan installer tanpa jendela konsol. Jejak stack dan baris penutup error tidak dipancarkan, jadi `error` terakhir selalu penyebab kegagalannya.
+- `-ModelDir <folder>`: model Ollama di `<folder>\ollama` dan cache Hugging Face di `<folder>\huggingface`. `OLLAMA_MODELS` dan `HF_HOME` diatur sebagai variabel user sebelum Ollama dan Whisper dipakai; Ollama yang sedang jalan dimatikan lalu dinyalakan ulang, karena Ollama hanya membaca `OLLAMA_MODELS` saat start.
+- `-WithVision`: `ollama pull` model visi dari `VISION_MODEL` di `config.py`, sebagai langkah tersendiri.
+- `-RvcModel <pth> -RvcIndex <index>`: menyalin model RVC ke `models\miku_default_rvc\`, lalu `rvc-python` ikut dipasang. Index disalin dengan nama tetap yang dibaca `config.py`.
+- `-StartMenu`: shortcut juga di Start Menu (`Programs\MikuVision\MikuVision.lnk`). Berlaku walau `-SkipShortcut` (yang hanya melewati shortcut desktop).
+- Cadangan Ollama tanpa winget (Windows LTSC, sebagian laptop kantor): `OllamaSetup.exe` resmi (±1,7 GB) diunduh ke `.tools\`, tanda tangan digitalnya dicek (`Valid`, `CN=Ollama Inc.`), lalu dipasang diam-diam per-user (`/VERYSILENT`, Inno Setup).
+- Kode keluar: `0` selesai, `1` gagal yang sudah dijelaskan, `2` error tak terduga (sebelumnya keduanya `1`).
+
+### Diperbaiki
+- Driver NVIDIA 621 menulis `CUDA UMD Version: 13.5` di header `nvidia-smi`, sehingga installer melapor "Versi CUDA dari nvidia-smi tidak terbaca" (tetap memakai cu128, jadi hasilnya benar). Kedua format sekarang terbaca.
+- Instalasi pertama di Windows: uv gagal me-rename file yang baru diekstrak di cache karena masih dipindai antivirus (`Access is denied. (os error 5)`). Installer melaporkannya sebagai "fairseq butuh Visual Studio Build Tools" lalu lanjut tanpa RVC, padahal Build Tools sudah ada: perintah yang sama berhasil saat installer dijalankan ulang. Sekarang `uv pip install` dicoba sekali lagi bila errornya file terkunci, dan pesannya menyebut penyebab yang benar.
+
+### Diubah
+- Langkah instalasi disusun di `Get-InstallSteps` (total langkah untuk `-Progress`); setiap fungsi langkah memanggil `Write-Step` tepat sekali. Deteksi build PyTorch dicatat di bawah judul langkah PyTorch, bukan di atasnya. `install.ps1` bisa di-source oleh test tanpa menjalankan instalasi.
+
+### Pengujian
+- `tests/test_install_ps1.py` (27 test, Windows PowerShell 5.1 dan PowerShell 7): parsing script, file tetap ASCII (PowerShell 5.1 membaca script tanpa BOM sebagai ANSI), `-SelfCheck` memancarkan tiga baris `##MIKU` JSON yang valid dengan judul berhuruf Jepang, baris mesin hanya muncul dengan `-Progress`, daftar langkah per kombinasi opsi, satu `Write-Step` per langkah, penyalinan dan penolakan file RVC, `-ModelDir` (variabel user diganti pencatat, tidak diubah sungguhan), dua format header `nvidia-smi`, dan deteksi file terkunci dari potongan log nyata. Dua mutasi (hapus `Write-Step` dari satu langkah; kembalikan regex CUDA lama) masing-masing membuat test gagal.
+- Uji terima I1 di laptop pengembang (Windows 11, RTX 4050, Ollama sudah jalan dengan model di `D:\ollama_models`): `install.ps1 -Yes -Progress -ModelDir D:\MikuTest\models -WithVision -RvcModel … -RvcIndex … -StartMenu -SkipShortcut` dari worktree kosong selesai dalam ±11 menit, 13/13 langkah, `{"event":"done","ok":true}`, `miku.py --test` lulus, `RVC ready`. Ollama dimatikan lalu dinyalakan ulang dan hanya melihat dua model yang baru diunduh; model Ollama (5,5 GB) dan cache Hugging Face (1,8 GB: Whisper, MeloTTS) ada di `D:\MikuTest\models`, bukan di lokasi lama. Header `CUDA UMD Version: 13.5` terbaca. `install.ps1` baru tanpa opsi pada instalasi yang sudah ada (sama dengan menjalankan ulang `install.bat`): exit 0 dalam 76 s, langkah yang sama dilewati seperti sebelumnya, tanpa baris `##MIKU`.
+
+---
+
+## Belum dirilis (2026-10-31): "simpan ini sebagai skill" (PLAN_SKILLS S2)
+
+Rencana: S2 di [`docs/PLAN_SKILLS.md`](docs/PLAN_SKILLS.md). Keputusan 2 dari user: Miku boleh menyusun skill dari percakapan, dengan konfirmasi.
+
+### Ditambahkan
+- **"Simpan ini sebagai skill"** (`core/skill_builder.py`). Bisa diucapkan setelah Miku menyelesaikan tugas: "simpan ini sebagai skill, namanya mode fokus", 「これをスキルとして保存して」, "save this as a skill".
+  - **Dipicu oleh kalimatnya, bukan oleh LLM**: harus ada "skill"/"スキル" bersama kata kerja simpan, jadi permintaan ini tidak pernah tersasar ke tool lain. Kalimat seperti "buatkan dokumen tentang skill komunikasi" tidak terpicu. Dari 42 ucapan di benchmark yang ada, tidak satu pun terpicu.
+  - **Langkahnya disusun oleh kode dari tool call yang tadi berhasil**, lengkap dengan nilainya (`Panggil set_volume: level = 20`), jadi tidak ada tool karangan. LLM (satu panggilan, JSON schema) hanya memilih nama, deskripsi, pemicu, tool call mana yang termasuk tugas, dan parameter mana yang diambil dari ucapan user setiap kali.
+  - **Isi sekali pakai tidak pernah tersalin.** Isi dokumen, pesan, judul, dan teks > 60 huruf selalu diambil dari permintaan berikutnya. Nama file diganti nama skill. Volume, folder, dan aplikasi selalu tetap, walaupun LLM menandainya sebagai isian.
+  - **Nama dari ucapan user dipakai apa adanya**: "namanya X", "…skill X", 'X' dalam kutip, 名前はX, "called X".
+  - **Langkah pertama ditambahkan otomatis**: "Jangan bertanya dulu: panggil semua tool ini berurutan dalam satu balasan". Bila ada isian dari user, kalimatnya menjadi "langsung jalankan bila isinya sudah disebut, walau singkat".
+  - **Pemicu yang akan membajak perintah biasa dibuang**: "volume 20", "putar lagu", 「電卓を開いて」, kata dari permintaan simpan, dan ucapan yang hanya mencakup satu langkah dari skill beberapa langkah ("buka folder downloads" di skill "siap kerja").
+  - **Pratinjau `SKILL.md` lengkap + konfirmasi** lewat jalur yang sudah ada (y/n, "ya/はい", atau dialog GUI). Baru setelah itu disimpan ke `data/skills/<nama>/`. Draf divalidasi dengan parser yang sama dengan skill dari file.
+  - Bila belum ada tool yang berhasil di percakapan, Miku menjelaskan bahwa belum ada yang bisa disimpan, tanpa memanggil LLM.
+- `/skill new <nama>`: template `SKILL.md` untuk diisi sendiri (tanpa LLM), beserta daftar tool yang boleh dipakai. `/skill forget <nama>`: menghapus skill di `data/skills/` setelah konfirmasi. Contoh bawaan di `skills/` tidak bisa dihapus.
+- `AIBrain.generate_json`: satu panggilan tanpa tool dengan keluaran JSON schema, memakai `num_ctx`/`keep_alive` yang sama dengan chat supaya model tidak dimuat ulang. `AIBrain.record_exchange`: mencatat giliran yang dijawab tanpa `think()`.
+
+### Diubah
+- `run_turn`: bila skill user terpicu tapi model hanya mengobrol, langkah skill diminta lewat `next_skill_calls`. Ucapan seperti "mode fokus dong" tidak berisi kata kerja aksi, jadi retry di `think()` tidak jalan. Tidak berlaku bila skill sedang menanyakan detail ("kegiatanmu hari ini apa?").
+- `user_skills.parse_skill_text`: memvalidasi isi `SKILL.md` tanpa harus menulis file dulu.
+
+### Pengujian
+- `experiments/skills/bench_save_skill.py`, qwen3:4b-instruct, 5 skenario × 3. Tiap skenario: tugas → simpan → pakai ulang di sesi baru dengan isi lain.
+  - Skenario: mode fokus (volume + YouTube), daftar belanja dan catatan rapat (dokumen Word), ジャズタイム (Jepang), siap kerja (dua giliran: folder + aplikasi).
+
+  | Riwayat tugas | Tersimpan | Tool skill tepat | Terpilih saat dipakai | Pakai ulang benar | Giliran simpan |
+  |---|---|---|---|---|---|
+  | Disuntikkan (yang diukur hanya S2) | 15/15 | 15/15 | 15/15 | **14/15** | median 2,4 s |
+  | Dijalankan qwen3:4b (`--live`) | 15/15 | 11/15 | 15/15 | 11/15 | median 2,4 s |
+
+  - Keempat kegagalan `--live` sama: di giliran tugas, qwen3:4b hanya mengatur volume tanpa memutar YouTube. Skill-nya ikut hanya berisi `set_volume`, dan pratinjau memperlihatkan itu. Ini keterbatasan lama: satu tool per balasan bila tidak ada skill.
+  - Daftar belanja dan catatan rapat: isi dokumen saat dipakai ulang mengikuti permintaan baru, tanpa sisa isi lama.
+- Perjalanan desain (angka pakai ulang yang sama):
+  - **6/15** saat LLM menulis langkahnya sendiri. Ia mengarang tool `mengunduh_lagu_dari_youtube`, menyalin isi dokumen lama (ruang, tanggal, anggaran), mengabaikan nama dari user, dan mengubah "jalankan keduanya" menjadi "tanyakan mau yang mana".
+  - **11/15** setelah langkah disusun dari tool call.
+  - **14/15** setelah tiga perbaikan:
+    - kalimat pembuka Jepang 「質問せずに」 diganti, karena 質問 dibaca parser S1 sebagai "skill ini boleh bertanya dulu";
+    - `run_turn` meminta langkah skill bila model hanya mengobrol;
+    - volume/folder/aplikasi tidak lagi bisa ditandai sebagai isian.
+- Regresi S1 (`bench_skills.py 3`), commit induk vs branch ini:
+  - laporan harian 26 vs 27/30, musik mood 27 vs 27/30;
+  - perintah umum 24 vs 27/30 (dengan skill) dan 27 vs 26/30 (tanpa);
+  - tidak ada perintah umum yang mengaktifkan skill user (30/30 di keduanya).
+  - Yang meleset sama di keduanya (次の曲にして, ミュートして).
+- `tests/test_skill_builder.py` (50 test):
+  - pemicu dan bukan-pemicu;
+  - penyaring pemicu;
+  - pemasangan tool call dengan argumennya;
+  - langkah dari tool call (isi tidak tersalin, nilai tetap tetap, urutan dan batas langkah, cadangan bila LLM salah pilih);
+  - nama dari user;
+  - bahasa langkah;
+  - pratinjau/batal/tanpa konfirmasi;
+  - `run_turn` tanpa `think()`;
+  - `/skill new`, `/skill forget`.
+  - Ditambah 2 test di `tests/test_user_skills.py` untuk langkah skill saat model hanya mengobrol.
+- `pytest`: 443 lulus; di Python sistem seperti CI 437 lulus, 6 dilewati.
+
+### Keterbatasan diketahui
+- Skill hanya setia pada tool yang berhasil. Bila Miku tadi hanya mengerjakan sebagian tugas, skill-nya juga hanya sebagian, sehingga pratinjau perlu dibaca sebelum disetujui.
+- Di mode suara, pratinjau hanya tampil di terminal; Miku bertanya "この操作を実行してもいい？" tanpa membacakan isinya.
+- Skill tidak bisa disunting lewat suara; ubah `data/skills/<nama>/SKILL.md` langsung atau simpan ulang dengan nama yang sama.
+
+---
+
+## Belum dirilis (2026-10-31): Miku membaca layar (agent visi Fase 1)
+
+Rencana: Fase 1 di [`docs/PLAN_VISION_AGENT.md`](docs/PLAN_VISION_AGENT.md). Hanya melihat; Miku belum mengklik atau mengetik.
+
+### Ditambahkan
+- Tool `describe_screen(question)`: "error apa ini?", "bacakan tulisan di layar", 「画面に何が表示されてる？」.
+  - Screenshot jendela yang sedang aktif (`core/vision/capture.py`). Bila yang aktif jendela Miku sendiri (GUI), atau jendelanya tidak terbaca, seluruh layar yang diambil. Jendela dipotong, bukan seluruh layar, karena teks kecil sulit dibaca setelah gambar diperkecil.
+  - Dijawab oleh model visi lokal `qwen3-vl:4b-instruct` (`VISION_MODEL`), lalu Miku merangkumnya dalam balasannya.
+  - Bila model visi belum terpasang, Miku menyebut perintah `ollama pull`-nya tanpa menyentuh LLM utama.
+- Tool `find_on_screen(query)`: "tombol apa saja di jendela ini?", 「電卓に「π」のボタンはある？」.
+  - Membaca nama, jenis, dan status elemen jendela aktif dari pohon aksesibilitas Linux (AT-SPI2), tanpa model visi. Isi field, termasuk password, tidak dibaca.
+  - `pyatspi` adalah paket sistem, jadi dibaca oleh `core/vision/atspi_helper.py` yang dijalankan dengan `/usr/bin/python3`, lalu hasilnya dikirim sebagai JSON.
+  - Windows (UI Automation) menyusul.
+- **Tukar model di VRAM** (`core/vision/model.py`). GPU 6 GB tidak muat qwen3:4b + qwen3-vl + Whisper + RVC sekaligus. Satu pertanyaan visi berjalan begini: qwen3:4b dilepas → qwen3-vl menjawab, lalu langsung dilepas → qwen3:4b dimuat lagi.
+  - Kedua pemuatan memaksa semua layer ke GPU (`VISION_NUM_GPU`, opsi `num_gpu` Ollama). Bila VRAM benar-benar kurang, model dimuat otomatis.
+  - Bila model visi gagal, qwen3:4b tetap dikembalikan.
+- Skill bawaan "screen": tool layar dikirim ke LLM bila ada kata seperti 画面/エラー/ボタン, layar/error/tombol/baca, atau screen.
+- Teks di layar adalah data, bukan perintah. Hasil tool diberi label begitu, prompt model visi menyatakannya, dan balasan setelah tool tidak pernah menjalankan tool call.
+
+### Pengujian
+- Tukar model dengan Whisper + RVC di VRAM (`experiments/vision_linux/swap_bench.py`):
+
+  | | Otomatis (Ollama memutuskan) | `num_gpu` dipaksa |
+  |---|---|---|
+  | qwen3-vl, num_ctx 4096: di GPU, muat + jawab 150 token | 76%, 11,7 s | 100%, 8,8 s |
+  | qwen3:4b setelah dimuat ulang | 85% di GPU, prompt penuh 45 token/s | 100%, 67 token/s (sama dengan sebelum tukar) |
+
+  - qwen3-vl dengan num_ctx 8192 (17,6–26,7 s) jauh lebih lambat dari 4096, jadi dipakai `VISION_NUM_CTX = 4096`.
+  - Chat biasa sesudahnya tidak membuat Ollama memuat ulang model.
+- Uji sungguhan lewat `run_turn` + qwen3:4b, dengan Whisper + RVC di VRAM dan jendela berisi data dummy (`experiments/vision_linux/screen_tools_demo.py`, 8 kasus × 3): **24/24**.
+  - Dialog error zenity (bahasa Indonesia dan Jepang), Xed dengan pengumuman, dan Nemo di folder dummy: `describe_screen` 12/12. Pesan error dan nama file terkutip tepat.
+  - Kalkulator ("tombol apa saja…", 「π のボタンはある？」): `find_on_screen` 6/6.
+  - Obrolan biasa dan "buka notepad" tidak memanggil tool layar (6/6).
+  - Giliran dengan `describe_screen`: median 11,0 s (maks 12,5 s). Tool visinya 6–10 s, sisanya LLM. `find_on_screen` 1,4–3,4 s.
+  - qwen3:4b 100% di GPU setelah setiap giliran.
+- Percobaan pertama lulus 7/8. Dua deskripsi tool lalu diperbaiki:
+  - Contoh parameter "What does the error message say?" dijiplak untuk semua pertanyaan.
+  - 「電卓に「π」のボタンはある？」 sempat membuka Kalkulator, bukan melihat jendela yang sudah terbuka.
+- Regresi tool calling (`bench_skills.py 3 regression`, 10 perintah × 3, dua kali): 25–28/30, sama dengan commit sebelumnya (24–27/30). Perintah yang meleset juga sama (次の曲にして, ミュートして tanpa tool call), dan tidak ada yang tersasar ke tool layar.
+- `tests/test_vision_screen.py` (31 test):
+  - potongan jendela dan cadangan seluruh layar (GUI Miku, jendela terlalu kecil, tidak terbaca);
+  - Wayland dan tanpa DISPLAY tidak menyentuh X11;
+  - helper AT-SPI dengan pyatspi palsu (elemen tersembunyi/tanpa ukuran dilewati, password ditandai, aplikasi Miku dilewati);
+  - urutan tukar model dengan Ollama palsu, termasuk cadangan saat VRAM kurang, model visi gagal, dan model visi belum terpasang;
+  - kedua tool dan pemicu skill.
+  - `tests/conftest.py` melarang screenshot, helper AT-SPI, dan panggilan Ollama sungguhan.
+- `pytest`: 391 lulus; di Python sistem seperti CI 385 lulus, 6 dilewati.
+
+### Keterbatasan diketahui
+- Giliran yang membaca layar butuh ±11 s, dan Miku belum memberi tanda suara saat mulai melihat (hanya ekspresi "thinking").
+- `find_on_screen` hanya di Linux. Di Windows tool itu menjawab "belum tersedia" (UI Automation menyusul).
+- `describe_screen` di Windows baru dites dengan mock; masuk daftar cek Windows.
+- Wayland belum dicoba. Jendela aktif tidak terbaca (jadi seluruh layar yang diambil), dan screenshot bisa gagal tanpa portal Screenshot.
+- Teks Jepang di layar belum diuji, karena semua jendela uji berbahasa Indonesia/Inggris.
+- `qwen3-vl:4b-instruct` (3,3 GB) tidak dipasang oleh installer.
+
+---
+
+## Belum dirilis (2026-10-31): shortcut keyboard untuk mulai bicara (T1)
+
+Rencana: T1 di [`docs/PLAN_VISION_AGENT.md`](docs/PLAN_VISION_AGENT.md).
+
+### Ditambahkan
+- `core/hotkey.py`: `Ctrl+Shift+M` (`WAKE_HOTKEY` di `config.py`) membuat Miku mendengarkan, dari aplikasi mana pun.
+  - Linux X11: XGrabKey pada root window lewat python-xlib, tanpa root. Keempat variasi CapsLock/NumLock ikut di-grab.
+  - Windows: library `keyboard` (sudah dependency).
+  - Bila kombinasi sudah dipakai aplikasi lain, atau sesinya Wayland, Miku memberi tahu, menyarankan `--trigger`, dan tetap jalan tanpa shortcut.
+  - Kombinasi tanpa Ctrl, Alt, atau Super ditolak (kecuali F1–F24), supaya ketikan biasa tidak tertelan. `HOTKEY_ENABLED = False` mematikan shortcut.
+  - Tekan beruntun dalam 0,5 s (termasuk auto-repeat saat tombol ditahan) diabaikan. Tekan saat Miku sedang memproses atau bicara juga diabaikan.
+- `python miku.py --trigger` meminta Miku yang sedang jalan (maskot atau GUI) untuk mendengarkan. Perintah ini dipasang user sebagai shortcut di pengaturan keyboard desktop, dan jalan juga di Wayland.
+  - Lewat `multiprocessing.connection`: Unix socket di `$XDG_RUNTIME_DIR/mikuvision/`, named pipe di Windows.
+  - Kunci acak dibuat per sesi dan disimpan di file yang hanya bisa dibaca user (0600). Pesan dibaca sebagai byte (`recv_bytes`, tanpa pickle), dan hanya "listen" yang diterima.
+  - `core/hotkey.py` dimuat langsung dari file, tanpa `config.py` dan package `core` yang memuat torch dan Whisper (±20 s). Perintahnya selesai dalam 0,2–0,26 s.
+  - Socket yang tertinggal karena Miku crash diganti otomatis. Miku kedua tidak mengambil alih socket Miku pertama.
+- Mode suara (`miku.py`): shortcut langsung merekam, tanpa sapaan 「はい、何でしょうか？」 yang muncul saat maskot diseret. Sapaan itu butuh ±1–2 s TTS + RVC, dan selama itu ucapan user tidak terekam. Maskot berganti ekspresi "listening".
+- GUI: tekan sekali untuk mulai merekam, sekali lagi untuk selesai, karena tombol GUI berupa "tahan untuk bicara".
+  - Callback shortcut hanya mengisi antrean pesan; widget Tk tetap diubah di main thread.
+  - Status shortcut tampil di chat dan tercatat di `gui.log`.
+- Grab dan socket dilepas saat Miku keluar: Ctrl+C, menu maskot "Exit Miku", atau tombol ✕ di GUI. Menutup Miku tepat setelah `--trigger` tidak menggantung: koneksi yang membangunkan listener berjalan di thread sendiri.
+
+### Pengujian
+- `tests/test_hotkey.py` (35 test):
+  - `parse_combo`;
+  - backend X11 dengan Display palsu: 4 variasi grab, `BadAccess` melepas semua grab, Wayland dan tanpa DISPLAY tidak menyentuh X11;
+  - backend Windows dengan `keyboard` palsu;
+  - `--trigger` lewat socket sungguhan: kunci salah ditolak, pesan lain diabaikan, error di callback tidak mematikan listener, `stop()` tepat setelah satu pemicu tidak menggantung, socket basi diganti, Miku kedua ditolak, kunci ditulis byte demi byte;
+  - debounce;
+  - mode suara: shortcut tanpa sapaan, seret maskot tetap disapa, cleanup melepas shortcut;
+  - GUI: callback hanya mengisi antrean, tekan-tekan memulai dan menghentikan rekaman.
+  - `tests/conftest.py` melarang koneksi X11 sungguhan dan socket milik Miku yang sedang jalan.
+- `pytest`: 360 lulus; di Python sistem seperti CI 354 lulus, 6 dilewati.
+- `stop()` tepat setelah satu pemicu sempat menggantung (1 dari 10 putaran suite). Setelah diperbaiki: suite penuh 10/10 dan `test_hotkey.py` 30/30 tanpa hang; 200× pemicu lalu `stop()`: 200/200 diterima, `stop()` terlama 1 ms.
+- Uji sungguhan di Linux Mint (Cinnamon, X11), shortcut ditekan lewat `xdotool`:
+
+  | Uji | Hasil |
+  |---|---|
+  | `python miku.py`, 10 tekan | 10/10 mulai merekam, jeda median 30 ms (maks 38 ms, termasuk proses `xdotool`). Tekan saat Miku sedang merekam diabaikan |
+  | Instance kedua saat Miku jalan | "Shortcut Ctrl+Shift+M tidak dipasang: sudah dipakai aplikasi lain…" dan "`--trigger` tidak aktif: Miku lain sudah jalan" |
+  | `miku.py --trigger` saat Miku jalan / tidak jalan | Miku mendengarkan (0,26 s) / "Miku tidak sedang jalan…" (0,2 s) |
+  | Setelah Ctrl+C | Shortcut dan socket bisa dipasang ulang (tidak ada yang tertinggal); model dilepas dari VRAM |
+  | GUI, 5 putaran tekan-tekan | 5/5 mulai dan selesai merekam, jeda median 85 ms (antrean Tk dicek tiap 50 ms). Ditutup lewat ✕ tanpa sisa socket |
+
+  Mic menangkap derau di setiap siklus: 10× gagal dikenali, dan sekali "Terima kasih" yang dibalas Miku tanpa tool. Tidak ada aksi yang jalan.
+
+### Keterbatasan diketahui
+- Bagian Windows (`keyboard`, named pipe) baru dites dengan mock dan di CI; masuk daftar cek Windows di `docs/ROADMAP.md`.
+- `--trigger` baru dicoba dari terminal, belum dipasang sebagai shortcut di pengaturan keyboard Cinnamon.
+- Dari shortcut desktop (tanpa terminal), pesan "Miku tidak sedang jalan" tidak terlihat.
+- Wayland: tanpa shortcut global; hanya `--trigger`.
+
+---
+
+## Belum dirilis (2026-10-31): installer untuk Fedora, Arch, dan openSUSE
+
+### Diubah
+- `install.sh` memasang paket sistem lewat `apt`, `dnf`, `pacman`, atau `zypper`, tergantung distro (dibaca dari `ID`/`ID_LIKE` di `/etc/os-release`, cadangan `command -v`). Sebelumnya hanya `apt`; di distro lain installer menyebut nama paket Debian dan berhenti.
+  - Nama paket dipetakan per distro dan dicek di repo resminya: PortAudio = `portaudio` di Fedora/Arch, `libportaudio2` di Debian/openSUSE; compiler C++ untuk RVC = `gcc-c++ make` atau `base-devel`.
+  - Peringatan, pertanyaan konfirmasi, dan saran compiler saat RVC gagal memakai nama paket distro itu.
+  - Konfirmasi dan `--yes` tetap sama: `sudo` tidak pernah dijalankan tanpa persetujuan.
+- `install.sh` bisa di-source tanpa menjalankan instalasi (untuk test).
+
+### Dokumentasi
+- `docs/ROADMAP.md`: urutan kerja berikutnya untuk Windows dan Linux, daftar cek di Windows (fitur sejak v1.3.0 yang belum pernah dijalankan di Windows), dan keputusan yang dibutuhkan dari user.
+- `PLAN_VISION_AGENT.md`: rencana rinci T1 (shortcut keyboard untuk mulai bicara): desain per OS, test, dan kriteria selesai.
+
+### Pengujian
+- `tests/test_install_sh.py` (26 test): deteksi dari 11 file `os-release` palsu, cadangan `command -v`, pemetaan nama, dan alur `check_system` dengan `sudo` palsu. Total `pytest` 325 lulus; Python sistem 320 lulus, 5 dilewati.
+- Installer asli dijalankan sampai cek sistem pertama untuk memastikan `main` tetap jalan saat dipanggil langsung.
+
+### Keterbatasan diketahui
+- Belum diuji di VM Fedora/Arch/openSUSE sungguhan.
+- RHEL/Rocky: `xdotool`, `wmctrl`, `playerctl`, dan `xclip` tersedia lewat EPEL; repo bawaannya kemungkinan tidak memuatnya.
+
+---
+
+## Belum dirilis (2026-10-31): skill buatan user, dan spike agent visi di Linux
+
+Lanjutan [`docs/PLAN_SKILLS.md`](docs/PLAN_SKILLS.md) fase S1, dan Fase 0 Linux dari [`docs/PLAN_VISION_AGENT.md`](docs/PLAN_VISION_AGENT.md).
+
+### Ditambahkan
+- **Skill buatan user** (`core/user_skills.py`): satu file `SKILL.md` berisi nama, deskripsi, pemicu, daftar tool, dan petunjuk. Contoh ada di `skills/`; skill milik user ditaruh di `data/skills/<nama>/SKILL.md` dan menimpa contoh bernama sama.
+  - Petunjuk dan skema tool skill hanya dikirim ke LLM saat pemicunya ada di ucapan user (maksimal 2 skill); skill lain cukup disebut nama dan deskripsinya.
+  - Skill hanya bisa memakai tool yang sudah terdaftar, tidak bisa menjalankan routine, dan petunjuknya maksimal ±400 token. Aksi berisiko tetap dikonfirmasi.
+  - Dua contoh: **laporan harian** (dokumen Word dari cerita user, lalu membuka foldernya) dan **musik mood** (volume + YouTube sesuai suasana).
+- `run_turn`: selama skill user aktif dan masih ada tool-nya yang belum dipakai, Miku diminta langkah berikutnya (maks. 3), karena qwen3:4b biasanya hanya memanggil satu tool per balasan.
+- `/skills` menampilkan skill user dan file yang gagal dimuat beserta alasannya; `/skill <nama>` menampilkan isi satu skill.
+- Spike agent visi Linux di `experiments/vision_linux/` dan `experiments/triggers_linux/`: cakupan AT-SPI2, Qwen-VL memilih elemen dan membaca layar, percobaan agent yang menggerakkan mouse/keyboard, dan shortcut global lewat XGrabKey.
+
+### Diubah
+- Retry "tool terlewat" tidak memaksa tool call bila skill aktif menyuruh bertanya dulu dan user belum memberi detail.
+- 「かけて」 dan 「流して」 kini dianggap permintaan aksi (memutar musik).
+- `PLAN_VISION_AGENT.md`: backend per OS (Windows, Linux X11, Wayland), pemicu tanpa tangan (shortcut keyboard dan "Oke Miku"), fase T1/T2. `PLAN_LINUX.md`: kompatibilitas distro dan desktop lain (L5).
+
+### Pengujian
+- `pytest`: 299 lulus (40 test baru di `tests/test_user_skills.py`); di Python sistem seperti CI 294 lulus, 5 dilewati.
+- Skill dengan qwen3:4b-instruct (`experiments/skills/bench_skills.py`, 3 percobaan):
+  - skill tepat terpilih 60/60;
+  - laporan harian 29/30, musik mood 29/30;
+  - perintah umum tidak mengaktifkan skill user 30/30, dan tool calling-nya 27/30 dengan skill vs 25/30 tanpa skill;
+  - prompt +54 token.
+  - Rinciannya di `docs/PLAN_SKILLS.md` bagian 8.
+- Agent visi Linux (`experiments/vision_linux/RESULTS.md`):
+  - AT-SPI2 membaca 5 jendela dalam < 1 s;
+  - qwen3-vl:4b memilih elemen yang benar 51/54 (daftar AT-SPI + gambar);
+  - nama file di Nemo terbaca dari screenshot;
+  - mengetik di Xed lewat keyboard 5/5;
+  - menghitung 12 + 7 di Kalkulator dengan klik mouse 3/3 bila rencananya disusun dari daftar nama tanpa gambar (0/7 dengan gambar);
+  - tukar model 2,4–2,6 s.
+- Shortcut global XGrabKey (`experiments/triggers_linux/hotkey_spike.py`): `Ctrl+Shift+M` 5/5, ±24 ms; `Super+M` tidak sampai di Cinnamon.
+
+### Keterbatasan diketahui
+- `/skill forget`, `/skill new`, dan "simpan ini sebagai skill" belum ada (fase S2).
+- Agent visi masih berupa eksperimen di `experiments/`; Miku belum bisa mengendalikan mouse/keyboard dari percakapan.
+
+---
+
+## Belum dirilis (2026-10-31): buka aplikasi apa pun dari menu sistem, dan Miku mengingatnya
+
+Pemicunya sesi GUI: "libreOffice o haite kudasai" → "Aplikasi 'LibreOffice' tidak dikenali", karena hanya aplikasi di katalog `config.py` yang bisa dibuka.
+
+### Ditambahkan
+- `core/desktop/app_search.py`: `open_application` kini mencari di menu aplikasi sistem bila nama tidak ada di katalog atau aplikasinya tidak terpasang.
+  - Urutan: katalog alias → **cache** aplikasi yang sudah dipelajari → menu sistem → nama-nama yang paling mirip.
+  - Linux: file `.desktop` dari folder XDG, flatpak, dan snap, sama dengan yang dibaca menu aplikasi. Entri tersembunyi, khusus desktop lain, atau yang programnya tidak ada dilewati. Dibuka dengan `gtk-launch`.
+  - Windows: `Get-StartApps` (termasuk aplikasi Store), cadangan shortcut Start Menu. Dibuka dengan `shell:AppsFolder`.
+  - Cocok dengan nama, nama terjemahan (Indonesia/Jepang), kata kunci, dan salah ketik ("librofice" → LibreOffice). Bila beberapa aplikasi sama cocoknya (misalnya "writer"), tidak ada yang dibuka dan Miku menanyakan yang mana.
+  - Aplikasi berisi kata "uninstall" di namanya tidak pernah dibuka lewat pencarian.
+- **Cache** `data/app_cache.json`: aplikasi yang ditemukan di menu dan benar-benar berhasil dibuka disimpan, dipisah per OS (folder `data/` bisa dipakai bersama Windows saat dual-boot). Bila aplikasinya sudah dihapus, entri dilupakan dan dicari ulang. Nama prosesnya ikut disimpan, sehingga "tutup LibreOffice" juga jalan.
+- Slash command `/apps` (daftar aplikasi yang dipelajari) dan `/apps forget <nama>`.
+- 30 test (`tests/test_app_search.py`).
+
+### Diubah
+- Deskripsi tool `open_application`: aplikasi terpasang apa pun, dan nama dikirim dalam bahasa Inggris/nama di menu (「カレンダー」 → "Calendar"), karena aplikasi GNOME tidak menyimpan nama Jepang di file menunya.
+- Menutup aplikasi yang jendelanya sudah tertutup tapi prosesnya lanjut di latar (layanan GApplication GNOME, aplikasi di system tray) kini dilaporkan "Menutup …", bukan "masih terbuka". Prosesnya tetap tidak di-kill.
+
+### Diperbaiki
+- Brave di Linux: program `brave-browser-stable` dipetakan ke proses `brave`.
+
+### Pengujian
+- `pytest`: 259 lulus; di Python sistem seperti CI 254 lulus, 5 dilewati.
+- Di Linux Mint (101 aplikasi di menu, dibaca dalam 90 ms):
+  - LibreOffice: ditemukan di menu dan dibuka (0,16 s), ditutup, lalu dibuka lagi dari cache (0,07 s).
+  - Calendar: dibuka dari menu, lalu ditutup dengan benar walau prosesnya lanjut di latar.
+  - "Photoshop" (tidak terpasang): "tidak dikenali", tanpa membuka apa pun.
+- Tool calling: 8/8 permintaan aplikasi JP/ID ("libreOffice o haite kudasai", 「カレンダーを開いて」, 「電卓を開いて」, "buka kalender", …), dan 10/10 perintah umum dari pengujian L2.
+
+### Keterbatasan diketahui
+- Bagian Windows (`Get-StartApps`, `shell:AppsFolder`) baru dites dengan mock, belum dijalankan di Windows.
+- Aplikasi GNOME tanpa nama Jepang di file menunya hanya ditemukan bila LLM mengirim nama Inggrisnya (8/8 pada uji di atas).
+
+## Belum dirilis (2026-10-31): maskot desktop di Linux (Fase L3)
+
+### Ditambahkan
+- `core/avatar_x11.py`: maskot `python miku.py` di Linux (X11) setara Windows, lewat python-xlib (sudah terpasang bersama pyautogui, tanpa dependency baru).
+  - Transparan: bentuk jendela = piksel sprite (ekstensi SHAPE). Deretan piksel yang sama digabung, jadi satu frame ±90 persegi dan 4 ms; bentuk hanya dikirim saat frame berganti. Klik di area kosong jatuh ke jendela di bawahnya.
+  - Selalu di atas, di semua workspace, tidak muncul di taskbar/pager.
+  - Fokus keyboard dikembalikan ke jendela yang aktif sebelumnya (setara `SWP_NOACTIVATE`), jadi terminal tidak kehilangan fokus.
+  - Diseret lewat X11; posisi awal langsung di pojok kanan bawah tanpa berkedip di tengah.
+  - Menu klik kanan "Exit Miku" digambar sendiri (X11 tidak punya menu bawaan seperti `TrackPopupMenu`).
+  - Peringatan di sesi Wayland.
+- 10 test (`tests/test_avatar_linux.py`): bentuk dari piksel (persegi menutupi tepat piksel yang terisi, tanpa tumpang tindih), menu di dalam jendela, bentuk ikut menu.
+
+### Diubah
+- `SpriteAvatar` memindah jendela lewat objek jendela (`_Win32Window` atau `X11Window`), bukan memanggil Win32 langsung. Perilaku Windows sama.
+
+### Diperbaiki
+- GUI di Linux: emoji tidak lagi tampil sebagai kotak. Tk tidak bisa menggambar font emoji berwarna, jadi emoji (dan spasi sesudahnya) dibuang dari status, tombol, dan chat. Windows tidak berubah.
+
+### Pengujian
+- `pytest`: 229 lulus; di Python sistem seperti CI 224 lulus, 5 dilewati (butuh pygame asli).
+- Uji sungguhan di Linux Mint: maskot transparan di atas jendela lain, tetap di atas, tidak di taskbar, fokus user tidak berpindah; diseret (-300, -200) dan callback "mulai bicara" terpanggil; klik kanan → "Exit Miku" menutup mode suara, cleanup jalan, dan model dilepas dari VRAM. Juga dicek lewat `python miku.py` sungguhan.
+
+### Keterbatasan diketahui
+- Wayland belum didukung (maskot tidak transparan dan tidak bisa dipindah).
+- Belum diuji di monitor dengan skala HiDPI.
+
 ## v1.4.0 (2026-10-31): aksi komputer di Linux (Fase L2) dan ekspresi Miku baru
 
 [#18](https://github.com/MocArjunnaja/MikuVision/pull/18) (frame emosi) dan [#19](https://github.com/MocArjunnaja/MikuVision/pull/19) (Fase L2). Rencana Linux: `docs/PLAN_LINUX.md`.

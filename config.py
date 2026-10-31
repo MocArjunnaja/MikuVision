@@ -21,8 +21,17 @@ MEMORY_PROMPT_MAX_FACTS = 15
 # Routine: contoh bawaan (ikut repo) + milik user (tidak ikut git, menimpa contoh)
 ROUTINES_EXAMPLE_FILE = BASE_DIR / "routines.example.yaml"
 ROUTINES_FILE = DATA_DIR / "routines.yaml"
+# Aplikasi yang ditemukan di menu sistem dan berhasil dibuka (lihat core/desktop/app_search.py)
+APP_CACHE_FILE = DATA_DIR / "app_cache.json"
 # Kirim hanya skema tool dari skill yang relevan (lihat core/skills.py)
 SKILL_ROUTING = True
+# Skill buatan user: <folder>/<nama>/SKILL.md. Contoh ikut repo; milik user menimpa
+# contoh dengan nama sama (lihat core/user_skills.py dan docs/PLAN_SKILLS.md)
+SKILLS_EXAMPLE_DIR = BASE_DIR / "skills"
+USER_SKILLS_DIR = DATA_DIR / "skills"
+# Batas untuk model 4B dengan konteks 8k
+USER_SKILL_MAX_TOKENS = 400
+USER_SKILL_MAX_ACTIVE = 2
 
 # Sprite-sheet UI assets for the GUI
 MIKU_SPRITE_SHEET = AVATAR_DIR / "miku_smart_sheet.png"
@@ -115,8 +124,23 @@ OLLAMA_THINK: Optional[bool] = None
 # Whisper + RVC (±1,7 GB) dan di GPU 6 GB hanya 29/37 layer yang muat (sisanya di CPU, 49 s).
 OLLAMA_KEEP_ALIVE = -1
 
+# ============ Vision: membaca layar (docs/PLAN_VISION_AGENT.md Fase 1) ============
+# Model visi dimuat hanya saat Miku membaca layar: OLLAMA_MODEL dilepas dulu (VRAM 6 GB tidak
+# cukup untuk keduanya + Whisper + RVC), lalu dimuat lagi. Tukar total ±3 s di Linux.
+VISION_MODEL = "qwen3-vl:4b-instruct"
+# Screenshot 1280 px ±900 token. num_ctx 8192: 26,7 s per jawaban, 4096: 8,8 s
+VISION_NUM_CTX = 4096
+VISION_MAX_IMAGE_SIDE = 1280
+# Paksa semua layer ke GPU saat bertukar model (opsi num_gpu Ollama; None = Ollama memutuskan).
+# Dengan Whisper + RVC di VRAM, Ollama sendiri hanya menaruh 76% qwen3-vl dan 85% qwen3:4b di GPU,
+# padahal muat penuh: sisa sesi melambat dari 67 ke 45 token/s. Bila gagal, dimuat ulang otomatis.
+VISION_NUM_GPU: Optional[int] = 999
+
 # ============ Hotkey Config ============
+# Shortcut global untuk mulai bicara dari aplikasi mana pun (maskot dan GUI). Butuh Ctrl, Alt,
+# atau Super; hindari Super di Cinnamon (diambil desktop). Cadangan: `python miku.py --trigger`.
 WAKE_HOTKEY = "ctrl+shift+m"
+HOTKEY_ENABLED = True
 STOP_HOTKEY = "ctrl+shift+s"
 
 

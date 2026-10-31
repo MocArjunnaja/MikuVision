@@ -53,6 +53,11 @@ SKILLS: Tuple[Skill, ...] = (
     Skill("memory", "Memori", "Mengingat, mencari, dan melupakan fakta tentang user",
           ("remember", "recall_memory", "forget"),
           _p(r"覚え|忘れ|思い出|ingat|lupakan|remember|forget|recall")),
+    Skill("screen", "Layar", "Membaca layar: aplikasi yang terbuka, pesan error, tulisan, tombol",
+          ("describe_screen", "find_on_screen"),
+          _p(r"画面|スクリーン|エラー|表示|書いてある|何て書|読んで|ボタン"
+             r"|layar|\berror|\beror|tulisan|tertulis|\bbaca|tombol|jendela ini"
+             r"|\bscreen|\bbutton|what does it say")),
     Skill("system", "Info sistem", "CPU, RAM, baterai",
           ("get_system_info",),
           _p(r"システム|バッテリー|メモリ|\bcpu|\bram\b|baterai|battery|sistem|spesifikasi")),
@@ -65,14 +70,17 @@ SKILLS: Tuple[Skill, ...] = (
 ALWAYS_ON: Tuple[str, ...] = ("memory",)
 
 
-def select_skills(text: str, skills: Sequence[Skill] = SKILLS) -> List[Skill]:
+def select_skills(text: str, skills: Sequence[Skill] = SKILLS, fallback_all: bool = True) -> List[Skill]:
     """
     Skill yang relevan untuk teks user. Bila tidak ada pemicu yang cocok
     (obrolan biasa atau kalimat tak terduga), semua skill dikirim supaya
-    tidak ada kemampuan yang hilang.
+    tidak ada kemampuan yang hilang. fallback_all=False dipakai bila skill
+    buatan user sudah cocok: cukup skill ALWAYS_ON ditambah tool skill itu.
     """
     matched = [s for s in skills if s.triggers.search(text or "")]
     if not [s for s in matched if s.id not in ALWAYS_ON]:
+        if not fallback_all:
+            return [s for s in skills if s.id in ALWAYS_ON]
         return list(skills)
     always = [s for s in skills if s.id in ALWAYS_ON and s not in matched]
     return always + matched
