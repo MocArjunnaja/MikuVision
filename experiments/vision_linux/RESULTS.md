@@ -100,9 +100,56 @@ Skrip: `../triggers_linux/hotkey_spike.py`. XGrabKey pada root window lewat `pyt
 
 Jeda sudah termasuk waktu menjalankan `xdotool`. Grab dilepas setelah tes. Bila kombinasi sudah dipakai aplikasi lain, X11 menolak dengan `BadAccess` dan skrip melaporkannya.
 
+## 6. Fase 1: Miku membaca layar (31 Okt 2026)
+
+Kode di `core/vision/`.
+
+### Tukar model saat Whisper + RVC di VRAM
+
+Skrip: `swap_bench.py`. Urutannya meniru Miku yang sedang jalan: qwen3:4b dimuat dulu, lalu Whisper + RVC (VRAM 5,1/6,1 GB). Satu giliran visi: lepas qwen3:4b → qwen3-vl menjawab satu pertanyaan tentang screenshot (150 token) → lepas qwen3-vl → muat ulang qwen3:4b. "Prompt penuh" = ±3.900 token, seukuran persona + skema tool Miku.
+
+| Penempatan | qwen3-vl num_ctx | qwen3-vl di GPU | Muat + jawab | qwen3:4b sesudahnya | Prompt penuh sesudahnya |
+|---|---|---|---|---|---|
+| Otomatis | 8192 | 64% | 17,6 s | 85% | - |
+| Otomatis | 4096 | 76% | 10,6–11,7 s | 85% | 45 token/s |
+| `num_gpu` 999 | 4096 | **100%** | **8,8 s** | **100%** | **67 token/s** |
+| `num_gpu` 999 | 8192 | 100% | 26,7 s | 100% | 67 token/s |
+
+- Sebelum tukar: prompt penuh 63–67 token/s.
+- Ollama menyisakan cadangan VRAM yang terlalu besar, sehingga tanpa paksaan model jatuh sebagian ke CPU padahal muat. Dengan `num_gpu`, puncak VRAM 5,7/6,1 GB.
+- Chat biasa sesudahnya (tanpa `num_gpu`) tidak membuat Ollama memuat ulang qwen3:4b.
+- Lepas model 0,1–0,2 s. Muat ulang qwen3:4b 2,3–2,7 s.
+
+### Giliran sungguhan
+
+Skrip: `screen_tools_demo.py`. `run_turn` + qwen3:4b dengan Whisper + RVC di VRAM. Jendela uji berisi data dummy. Hanya tool layar yang dijalankan; tool lain hanya dicatat. 8 kasus × 3: **24/24**.
+
+| Kasus | Tool | Hasil |
+|---|---|---|
+| Dialog error zenity, "Miku, error apa ini?" / 「このエラー、何て書いてあるの？」 | `describe_screen` | 6/6, pesan terkutip tepat ("Disk D: penuh. File laporan_akhir.docx tidak bisa disimpan.") |
+| Xed berisi pengumuman, "bacakan tulisan di layar" | `describe_screen` | 3/3, Miku membacakan hari, jam, dan ruangannya |
+| Nemo di folder dummy, 「画面に何が表示されてる？」 | `describe_screen` | 3/3, kelima nama file/folder disebut |
+| Kalkulator, "tombol apa saja yang ada di jendela ini?" | `find_on_screen` | 3/3 (28 elemen, 0,13 s di helper) |
+| Kalkulator, 「電卓に「π」のボタンはある？」 | `find_on_screen` | 3/3 |
+| "Miku, apa kabar hari ini?", "buka notepad" | bukan tool layar | 6/6 |
+
+- Giliran dengan `describe_screen`: median 11,0 s, maks 12,5 s.
+- qwen3:4b 100% di GPU setelah setiap giliran.
+- Percobaan pertama lulus 7/8, karena dua masalah di deskripsi tool, bukan di kodenya:
+  - contoh parameter "What does the error message say?" dijiplak untuk semua pertanyaan;
+  - pertanyaan π sempat membuka Kalkulator, bukan melihat jendela yang sudah terbuka.
+
 ## Langkah berikutnya
 
-1. **T1**: shortcut keyboard untuk mulai bicara (XGrabKey / `keyboard`, cadangan `miku.py --trigger`).
-2. **Fase 1** (hanya baca): `describe_screen()` memakai gambar (Nemo, pesan error), dan `find_on_screen(query)` memakai daftar AT-SPI. AT-SPI dibaca lewat helper `/usr/bin/python3`, karena venv tidak punya `pyatspi`.
-3. **Fase 2–3**: strategi gabungan dari bagian 4, konfirmasi aksi berisiko, cek titik klik di dalam jendela target, kill switch.
-4. Belum diuji: LibreOffice, Firefox/Brave (`--force-renderer-accessibility`), tujuan berbahasa Jepang di agent, dan RapidOCR.
+1. ~~T1: shortcut keyboard untuk mulai bicara~~ (selesai, `core/hotkey.py`).
+2. ~~Fase 1: membaca layar~~ (selesai, bagian 6).
+3. **Fase 2–3**:
+   - strategi gabungan dari bagian 4;
+   - konfirmasi aksi berisiko;
+   - cek titik klik di dalam jendela target;
+   - kill switch;
+   - `find_on_screen` versi Windows (UI Automation).
+4. Belum diuji:
+   - LibreOffice dan Firefox/Brave (`--force-renderer-accessibility`);
+   - teks Jepang di layar dan tujuan berbahasa Jepang di agent;
+   - Wayland.

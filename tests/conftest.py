@@ -87,6 +87,19 @@ def _no_real_hotkey(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_screen(monkeypatch):
+    """Test tidak boleh mengambil screenshot, membaca pohon aksesibilitas, atau memanggil model visi."""
+    from core.vision import capture, model, ui_tree
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("Test membaca layar atau memanggil model visi sungguhan")
+
+    for module, name in ((capture, "_grab"), (capture, "_x11_active_window"), (capture, "_win32_active_window"),
+                         (ui_tree, "_run_helper"), (model, "_client")):
+        monkeypatch.setattr(module, name, refuse)
+
+
+@pytest.fixture(autouse=True)
 def _isolated_app_cache(monkeypatch, tmp_path):
     """Test tidak boleh membaca/menulis cache aplikasi asli di data/."""
     from core import system_control

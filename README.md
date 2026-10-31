@@ -30,6 +30,7 @@ Mendengar suara Anda, berpikir dengan LLM lokal, menjalankan aksi di komputer, l
 |---|---|
 | **Suara dua arah** | Faster-Whisper `large-v3-turbo` mendengar bahasa Jepang dan Indonesia (bahasa dideteksi otomatis, halusinasi Whisper dibuang), MeloTTS Jepang + RVC untuk timbre khas Miku |
 | **Aksi di komputer** | Volume, buka aplikasi/folder/situs, YouTube, dokumen Word/PowerPoint lengkap dengan isinya, WhatsApp/Telegram, keyboard shortcut |
+| **Membaca layar** | "error apa ini?", "bacakan tulisan di layar", "tombol apa saja di jendela ini?": Miku melihat jendela yang aktif lewat model visi lokal. Hanya melihat, tidak mengklik |
 | **LLM lokal** | `qwen3:4b-instruct` lewat Ollama dengan tool calling: 50/50 tool call tepat, median 0,9 s di RTX 4050 |
 | **Aman** | Aksi berisiko (kirim pesan, menutup aplikasi) selalu minta konfirmasi; aplikasi ditutup lewat `WM_CLOSE`, bukan kill paksa |
 | **Ingatan** | Memori jangka panjang (`"ingat ya, ..."`), lanjutkan sesi lama, penghitung token dari Ollama |
@@ -209,6 +210,16 @@ Dengan installer, ganti `python` dengan `.venv\Scripts\python.exe`. Di Linux: `~
 
 Miku membalas dalam bahasa Jepang, tapi isi dokumen yang dibuatnya mengikuti bahasa permintaan Anda.
 
+**Membaca layar.** Tanyakan hal yang sedang tampil di layar: "error apa ini?", "bacakan tulisan di layar", 「画面に何が表示されてる？」, "tombol apa saja di jendela ini?".
+- Miku melihat jendela yang sedang aktif. Bila yang aktif jendela GUI Miku sendiri, ia melihat seluruh layar. Karena itu paling enak dipakai lewat maskot atau shortcut `Ctrl+Shift+M`, sambil jendela yang ditanyakan tetap aktif.
+- Butuh model visi tambahan (3,3 GB), yang dimuat hanya saat Miku membaca layar. Giliran seperti ini butuh ±10–15 s.
+
+  ```bash
+  ollama pull qwen3-vl:4b-instruct
+  ```
+
+- Daftar tombol/menu ("tombol apa saja…") dibaca dari pohon aksesibilitas, tanpa model visi, dalam ±3 s. Saat ini hanya di Linux (Windows menyusul); di Windows tanyakan isi layarnya saja ("apa yang ada di layar?").
+
 > [!IMPORTANT]
 > Aksi berisiko (kirim WhatsApp/Telegram, menutup aplikasi) **selalu meminta konfirmasi**: `y/n` di mode teks, jawaban "ya/はい" di mode suara, atau dialog Yes/No di GUI.
 
@@ -276,6 +287,7 @@ Catatan teknis:
 - Dokumen buatan Miku tersimpan di `Desktop/Miku_Documents/` milik user yang sedang login.
 - Fitur WhatsApp memakai `data/contacts_db.json` berformat `{"nama": "62812xxxx"}` (buat sendiri).
 - Rekaman mic tidak disimpan. Untuk debugging audio, set `DEBUG_DUMP_AUDIO = True` di `config.py`; rekaman lalu tersimpan di `data/debug_audio/`.
+- Screenshot untuk membaca layar hanya diambil saat Anda bertanya tentang layar. Gambarnya hanya ada di memori dan dikirim ke Ollama lokal, tidak disimpan. Jawaban model visi (isi layar dalam bentuk teks) tercatat di riwayat percakapan dan log per giliran, sama seperti hasil tool lain.
 - Seluruh `data/` diabaikan git dan tidak pernah ikut di-commit.
 
 ## Pengembangan
@@ -316,6 +328,8 @@ Benchmark yang butuh GPU/Ollama ada di `experiments/` beserta hasilnya (`RESULTS
 | Balasan LLM lambat | Jalankan `ollama ps`: kolom PROCESSOR harus `100% GPU`. Bila ada bagian CPU, aplikasi lain memakai VRAM saat model dimuat; tutup aplikasi itu lalu buka ulang MikuVision |
 | Linux: emoji tampil sebagai kotak di GUI | Tk di Linux belum menampilkan emoji berwarna; hanya kosmetik |
 | `Shortcut Ctrl+Shift+M tidak dipasang: sudah dipakai aplikasi lain` | Ganti `WAKE_HOTKEY` di `config.py`, atau pakai `miku.py --trigger` sebagai shortcut desktop (lihat [Menjalankan](#menjalankan)). Hindari tombol Super di Cinnamon |
+| `Model visi qwen3-vl:4b-instruct belum terpasang` | Jalankan `ollama pull qwen3-vl:4b-instruct` (3,3 GB, hanya untuk membaca layar) |
+| Linux: `Elemen layar tidak terbaca: pyatspi tidak terpasang` | Pasang paket sistem `python3-pyatspi` (Debian/Ubuntu/Mint, Fedora) atau `python-atspi` (Arch). Membaca lewat screenshot tetap jalan tanpa paket itu |
 | `--trigger tidak aktif: Miku lain sudah jalan` | Miku (maskot atau GUI) sudah terbuka di jendela lain; shortcut dan `--trigger` memanggil yang pertama |
 
 ## Lisensi & kredit

@@ -6,7 +6,8 @@
 - Fase 0 Windows selesai (25 Okt 2026): [`experiments/vision_phase0/RESULTS.md`](../experiments/vision_phase0/RESULTS.md).
 - Fase 0 Linux selesai (31 Okt 2026): [`experiments/vision_linux/RESULTS.md`](../experiments/vision_linux/RESULTS.md). AT-SPI2 menggantikan UI Automation, `xdotool` menggerakkan mouse dan keyboard, dan shortcut global lewat XGrabKey sudah teruji.
 - T1 selesai di Linux (31 Okt 2026): `Ctrl+Shift+M` dan `miku.py --trigger` di maskot dan GUI, hasil di bagian 5. Bagian Windows menunggu daftar cek Windows.
-- Berikutnya: Fase 1 (hanya membaca layar). Urutan semua rencana: [`ROADMAP.md`](ROADMAP.md).
+- Fase 1 selesai di Linux (31 Okt 2026): `describe_screen` dan `find_on_screen` di `core/vision/`, hasil di bagian 5. Windows: `describe_screen` menunggu daftar cek, `find_on_screen` (UI Automation) belum ada.
+- Berikutnya: Fase 2 (aksi satu langkah berbasis elemen). Urutan semua rencana: [`ROADMAP.md`](ROADMAP.md).
 
 ---
 
@@ -162,10 +163,29 @@ Tidak bergantung pada fase visi, jadi dikerjakan lebih dulu. Hasilnya: tekan `Ct
 - tidak ada grab yang tertinggal setelah keluar;
 - `pytest` hijau di CI Ubuntu dan Windows.
 
-### Fase 1: Miku bisa "membaca" layar (hanya baca)
+### Fase 1: Miku bisa "membaca" layar (hanya baca) — selesai di Linux, 31 Okt 2026
 - Tool `describe_screen()` dan `find_on_screen(query)` → ringkasan dan daftar elemen yang cocok.
 - Contoh: "Miku, error apa ini?", "di layar ada tombol apa saja?", "bacakan pesan ini".
 - Tanpa aksi apa pun, jadi aman untuk dirilis lebih dulu.
+
+**Hasil** (rincian di CHANGELOG dan [`experiments/vision_linux/RESULTS.md`](../experiments/vision_linux/RESULTS.md)):
+- 24/24 giliran sungguhan lewat `run_turn`:
+  - `describe_screen` 12/12 pada dialog error, Xed, dan Nemo;
+  - `find_on_screen` 6/6 pada Kalkulator;
+  - obrolan biasa dan "buka notepad" tidak memanggil tool layar.
+- Giliran dengan `describe_screen`: median 11,0 s. `find_on_screen`: 1,4–3,4 s.
+- Regresi tool calling tidak berubah (25–28/30, sebelumnya 24–27/30).
+
+Keputusan yang muncul saat implementasi:
+- **Tukar model dengan `num_gpu` dipaksa.** Dengan Whisper + RVC di VRAM, Ollama sendiri hanya menaruh 76% qwen3-vl dan 85% qwen3:4b di GPU, sehingga sisa sesi melambat dari 67 ke 45 token/s. Dengan `num_gpu`, keduanya 100% dan tetap muat. Bila VRAM kurang, model dimuat otomatis.
+- **qwen3-vl memakai num_ctx 4096**, bukan 8192: 8,8 s vs 17,6–26,7 s.
+- **Jendela aktif dipotong, bukan seluruh layar.** Bila yang aktif GUI Miku sendiri, seluruh layar yang diambil.
+- **Tanpa OCR.** qwen3-vl sudah membaca pesan error dan nama file dengan tepat, jadi Windows OCR/RapidOCR tidak dipakai di fase ini.
+
+Untuk Fase 2:
+- `find_on_screen` versi Windows (UI Automation).
+- Tanda suara singkat saat Miku mulai melihat layar, karena ±11 s tanpa suara terasa lama.
+- Uji teks Jepang di layar.
 
 ### Fase 2: Aksi satu langkah berbasis elemen
 - Tool `click_element(id)`, `type_into(id, text)`, `press_hotkey`, `scroll`.
