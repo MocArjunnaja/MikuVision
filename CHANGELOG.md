@@ -6,6 +6,39 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-10-31): kerangka MikuVision Setup (PLAN_INSTALLER I2)
+
+Rencana: I2 di [`docs/PLAN_INSTALLER.md`](docs/PLAN_INSTALLER.md). Installer berantarmuka untuk user yang tidak memakai GitHub atau terminal; fase ini kerangka wizard-nya, tanpa memasang apa pun.
+
+### Ditambahkan
+- **`miku_setup/`**: wizard customtkinter 760×520 dengan 6 halaman (Selamat datang, Lisensi karakter, Cek sistem, Lokasi dan komponen, Unduh dan pasang, Selesai), daftar langkah di kiri, dan Kembali/Lanjut/Batal. Tema gelap dengan aksen teal Miku, sama dengan GUI MikuVision. Coba dengan `python -m miku_setup.main --dry-run`.
+  - **Lisensi karakter** wajib dicentang sebelum lanjut (keputusan 2).
+  - **Cek sistem nyata** di thread latar, hasilnya muncul satu per satu dengan ✓/⚠/✗ dan "Periksa lagi":
+    - Windows 10/11 64-bit (build dari `platform.version()`);
+    - GPU dan VRAM dari `nvidia-smi`;
+    - internet per situs unduhan (pypi.org, download.pytorch.org, ollama.com, huggingface.co), jadi situs yang diblokir proxy disebut namanya;
+    - Ollama yang sudah terpasang, mikrofon, folder user non-ASCII, dan ruang disk.
+
+    ✗ menghentikan instalasi; ruang kurang di lokasi bawaan boleh diperbaiki di halaman berikutnya.
+  - **Lokasi dan komponen:** folder aplikasi bawaan `%LOCALAPPDATA%\Programs\MikuVision` (keputusan 3), folder model (lokasi yang sudah dipakai, atau folder lain → `-ModelDir`), dan komponen dengan ukurannya. Komponen opsional: membaca layar → `-WithVision`; RVC dengan pemilih file `.pth`/`.index`. Kebutuhan ruang dihitung per drive setiap kali pilihan berubah, model Ollama yang sudah diunduh tidak dihitung, dan drive lain yang cukup disarankan bila ruang kurang. Folder dicek: lengkap dengan drive, tanpa tanda kutip, bisa ditulis (bukan `C:\Program Files`).
+  - **Unduh dan pasang:** langkah aktif ("Langkah 6 dari 13: PyTorch…") dari baris `##MIKU`, bar progres, waktu berjalan, jumlah peringatan, panel log, dan "Buka folder log". Halaman Selesai tampil sendiri setelah instalasi.
+  - **Selesai:** centang shortcut Desktop dan "Jalankan MikuVision sekarang", plus tips `Ctrl+Shift+M`. Bila gagal: pesan error terakhir, "Coba lagi", dan "Buka log".
+  - Batal saat instalasi meminta konfirmasi lalu menghentikan proses dengan rapi. Log wizard di `%LOCALAPPDATA%\MikuVision-setup\setup-<waktu>.log`, tanpa `print`.
+- **`--dry-run`** memutar ulang stdout nyata uji terima I1 (`miku_setup/assets/dry_run_stdout.txt`, path pribadi diganti); `--dry-run-fail` berakhir dengan error. Runner `install.ps1`, unduhan, registry, dan exe menyusul di I3–I5; tanpa `--dry-run`, `main.py` keluar dengan kode 2.
+- `components.install_args()`: argumen `install.ps1` untuk pilihan user (`-Yes -Progress -StartMenu -SkipShortcut`, `-ModelDir`, `-WithVision`, `-RvcModel/-RvcIndex`), untuk runner I3.
+
+### Pengujian
+- 57 test baru:
+  - `test_miku_setup_checks.py`: Windows/build, `nvidia-smi` termasuk dua GPU dan keluaran error, VRAM, ruang disk per drive, internet, mikrofon, folder non-ASCII, Ollama, manifest model;
+  - `test_miku_setup_components.py`: kebutuhan ruang untuk instalasi baru, folder model di D:, mode CPU, model yang sudah ada, dan file RVC; validasi folder dan RVC; argumen `install.ps1` yang harus ada di `install.ps1`; nama model sama dengan `config.py`;
+  - `test_miku_setup_runner.py`: baris `##MIKU`, termasuk BOM dan `\u003c` dari PowerShell 5.1; log contoh berhasil dan gagal; runner dry-run dan pembatalannya;
+  - `test_miku_setup_wizard.py`: semua halaman sampai Selesai, cek ✗ memblokir, pesan folder tidak valid, instalasi gagal lalu "Coba lagi".
+
+  Test wizard butuh customtkinter asli dan layar, jadi dilewati di CI. 534 test lulus di venv aplikasi.
+- Dijalankan sungguhan di laptop pengembang (Windows 11, skala layar 125%). Cek sistem selesai dalam ±5 s dan ketujuh baris ✓: Windows 11 build 26300, RTX 4050 6,0 GB, keempat situs terjangkau, Ollama sudah ada, Microphone Array (Realtek), folder user ASCII, dan ruang disk (C: 10,8 GB dari 61,2 GB; D: 3,9 GB, karena kedua model sudah ada di `D:\ollama_models`). Tangkapan layar tiap halaman diperiksa: tiga perbaikan tata letak (lebar sidebar tetap, teks pembuka terbungkus, baris cek rata atas) sebelum commit.
+
+---
+
 ## v1.5.0 (2026-10-31): ringkasan rilis
 
 Maskot transparan di Linux, buka aplikasi apa pun, skill buatan user dan "simpan ini sebagai skill", shortcut `Ctrl+Shift+M`, Miku membaca layar, installer untuk lebih banyak distro dan opsi baru untuk installer Windows. Kode Windows yang berubah sejak v1.3.0 (selama ini hanya dites di CI) kini sudah dicoba langsung di Windows. Rinciannya ada di entri v1.5.0 di bawah, satu per bagian.

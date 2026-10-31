@@ -2,7 +2,7 @@
 
 **Tujuan:** siapa saja bisa memasang MikuVision tanpa membuka GitHub, git, atau terminal. Caranya: unduh satu file `MikuVisionSetup.exe` (±25 MB), klik Lanjut beberapa kali, lalu Miku menyapa. Rasanya seperti installer aplikasi desktop besar (misalnya Ansys): ada pilihan folder, pilihan komponen, progres unduhan, serta Perbarui/Perbaiki/Hapus.
 
-**Status:** I1 selesai (31 Okt 2026, branch `feat/installer-options`); I2–I6 rencana. Dikerjakan di Windows dulu (fase I1–I6); Linux menyusul (fase IL). Urutan terhadap rencana lain: [`ROADMAP.md`](ROADMAP.md).
+**Status:** I1 dan I2 selesai (31 Okt 2026; I2 di branch `feat/setup-wizard-skeleton`); I3–I6 rencana. Dikerjakan di Windows dulu (fase I1–I6); Linux menyusul (fase IL). Urutan terhadap rencana lain: [`ROADMAP.md`](ROADMAP.md).
 
 **Untuk yang mengerjakan:** baca bagian 1–4 untuk gambaran, lalu kerjakan fase di bagian 8 satu per satu. Tiap fase satu PR, dengan kriteria selesai yang bisa dicek. Kode installer yang sudah teruji (`install.ps1`) **dibungkus, bukan ditulis ulang**.
 
@@ -130,6 +130,20 @@ Aturan yang perlu dijaga:
 - **Mode `--dry-run`:** semua halaman bisa dijalani tanpa mengunduh atau memasang apa pun (runner palsu yang memutar ulang log contoh). Dipakai untuk mengembangkan UI dan untuk tangkapan layar README.
 - **Ekstrak zip aman:** tolak entri dengan `..` atau path absolut (zip slip). Lewati `data/`, `models/`, `.venv/`, `.tools/`, `logs/` bila sudah ada di InstallDir.
 - **Unduhan diverifikasi:** setiap rilis melampirkan `SHA256SUMS`, dan wizard menolak zip yang hash-nya tidak cocok.
+
+**Hasil I2** (31 Okt 2026). Kerangka ada di `miku_setup/`: `main.py`, `wizard.py`, `pages/`, `checks.py`, `components.py`, `runner.py`, `state.py`, dan `assets/dry_run_stdout.txt`. Keputusan dan temuan saat mengerjakannya:
+- **Ukuran komponen diukur ulang** di laptop pengembang, menghitung hardlink sekali (cache uv di-hardlink ke `.venv`):
+  - folder aplikasi 8,8 GB, plus 0,75 GB dependency RVC (Windows, PyTorch CUDA);
+  - cache Hugging Face (Whisper, MeloTTS, dan BERT-nya) 1,8 GB;
+  - Ollama terpasang 3,3 GB di `%LOCALAPPDATA%\Programs\Ollama`.
+
+  Angka PyTorch CPU (±5 GB) masih perkiraan.
+- **Folder model bawaan = lokasi yang sudah dipakai.** Tanpa pilihan "Folder lain", wizard tidak meneruskan `-ModelDir`, sehingga `OLLAMA_MODELS`/`HF_HOME` yang sudah ada tetap dipakai dan model yang sudah diunduh tidak diunduh lagi. Ruang disk menghitung model Ollama dari manifest di `<OLLAMA_MODELS>\manifests\registry.ollama.ai\library\<nama>\<tag>`, jadi model yang sudah ada tidak dihitung, tanpa perlu server Ollama.
+- **Ruang kurang di lokasi bawaan tidak memblokir halaman 3**, karena user masih bisa memilih drive lain di halaman 4. Halaman 4 menyarankan drive lain yang cukup, dan memblokir bila ruang tetap kurang.
+- **VRAM:** batas ⚠ adalah 5.800 MiB, bukan 6 GB, karena kartu 6 GB melaporkan 6.141 MiB.
+- **Mikrofon:** nama perangkat yang berisi "micro", "mikro", atau "マイク" dari `Get-PnpDevice -Class AudioEndpoint -Status OK`. Di laptop pengembang terbaca "Microphone Array (Realtek(R) Audio)". Kondisi tanpa mikrofon belum bisa dicek di laptop yang sama; hasilnya hanya ⚠, tidak memblokir.
+- **Shortcut:** `install_args` meneruskan `-StartMenu -SkipShortcut`. Shortcut Desktop dibuat wizard dari halaman Selesai (fase I4), sesuai centang user.
+- **`--dry-run`** memutar ulang stdout nyata dari uji terima I1 (87 baris, path pribadi diganti). `--dry-run-fail` (tersembunyi) berhenti di langkah PyTorch dengan error, untuk halaman gagal dan "Coba lagi". Tanpa `--dry-run`, `main.py` keluar dengan kode 2 sampai runner `install.ps1` ada di I3.
 
 ## 6. Perawatan: Perbarui, Perbaiki, Hapus (fase I4)
 

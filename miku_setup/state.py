@@ -1,0 +1,25 @@
+"""Keadaan wizard yang dibagi semua halaman."""
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import List, Optional
+
+from .checks import CheckResult
+from .components import Selection
+
+
+@dataclass
+class SetupState:
+    selection: Selection
+    log_path: Path
+    dry_run: bool = True
+    dry_run_fail: bool = False          # --dry-run-fail: putar ulang log yang berakhir dengan error
+    license_accepted: bool = False
+    results: List[CheckResult] = field(default_factory=list)
+    gpu: bool = True
+    ollama_installed: bool = False
+    install_ok: Optional[bool] = None   # None = belum selesai
+    last_error: str = ""
+    warnings: List[str] = field(default_factory=list)
+    desktop_shortcut: bool = True
+    launch_now: bool = True
