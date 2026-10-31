@@ -9,6 +9,10 @@ yang baru selesai, menunjukkannya, dan menyimpannya ke data/skills/ setelah user
   pemicu, tool call mana yang termasuk tugas, dan parameter mana yang diambil dari ucapan user setiap
   kali (isi dokumen) dan mana yang tetap (volume 20, folder Downloads). Saat LLM yang menulis langkahnya
   sendiri, qwen3:4b mengarang tool dan menyalin isi dokumen lama: pakai ulang benar 6/15.
+- Yang disimpan tugas yang baru selesai: tool call dikelompokkan per ucapan user, ucapan terakhir selalu
+  ikut, dan ucapan sebelumnya hanya bila LLM memilihnya sebagai bagian tugas yang sama ("siap kerja":
+  folder di satu giliran, aplikasi di giliran berikutnya). Ucapan sebelumnya yang dikerjakan skill lain
+  tidak ditawarkan sama sekali.
 - Draf divalidasi dengan parser yang sama dengan skill dari file (tool terdaftar, panjang petunjuk).
 - Pemicu yang terlalu umum ("volume", "buka musik") dibuang supaya skill tidak membajak perintah biasa.
 
@@ -24,10 +28,12 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import yaml
 
 from core.desktop.app_search import normalize
+from core.routines import load_routines
 from core.skills import SKILLS
 from core.tools import registry
 from core import user_skills
-from core.user_skills import FORBIDDEN_TOOLS, SKILL_FILE, UserSkill, load_user_skills, parse_skill_text
+from core.user_skills import (FORBIDDEN_TOOLS, SKILL_FILE, UserSkill, load_user_skills, parse_skill_text,
+                              select_user_skills)
 
 # "simpan ini sebagai skill", "jadikan skill", "save this as a skill", 「スキルとして保存して」, 「スキルにして」.
 # Bukan "buatkan dokumen tentang skill komunikasi": kata kerja lemah (buat/bikin/make) hanya boleh
@@ -39,7 +45,11 @@ SAVE_REQUEST = re.compile(
     r"|スキル(?:を|として|に)?(?:保存|登録|作って)|スキルに(?:して|する)",
     re.IGNORECASE,
 )
-HISTORY_MESSAGES = 12
+# Kata simpan di pemicu ("simpan mode fokus") hanya mengulang permintaan simpan, bukan cara meminta tugasnya
+SAVE_WORDS = re.compile(r"\b(?:simpan|simpen|save)\b|保存", re.IGNORECASE)
+# Sama dengan jendela memori chat (MemoryManager): tugas beberapa giliran tidak terpotong. Tugas lama
+# yang ikut terbaca tidak disimpan kecuali LLM memilihnya lewat first_request
+HISTORY_MESSAGES = 20
 MAX_TRIGGERS = 6
 MAX_STEPS = 5
 # Isi dokumen, pesan, dan teks yang diketik selalu sekali pakai, begitu juga teks sepanjang LONG_VALUE:
@@ -80,21 +90,21 @@ SCHEMA = {
     "required": ["name", "description", "triggers", "steps"],
 }
 
-PROMPT = """You turn a finished conversation between a user and Miku (a desktop assistant) into a reusable skill, so that next time the user can ask for the same kind of task in one short sentence.
+PROMPT = """You turn the task a user just finished with Miku (a desktop assistant) into a reusable skill, so that next time the user can ask for the same kind of task in one short sentence.
 
 Conversation (oldest first):
 {transcript}
 
 The user now says: "{request}"
 
-Tool calls Miku made successfully, numbered:
+Tool calls Miku made successfully, numbered, grouped by the user request that caused them (oldest first):
 {calls}
 
 Write the skill as JSON:
 - name: {name_rule}
 - description: one sentence saying what the skill does.
 - triggers: 2-5 short phrases (2-5 words) the user would say to ask for the whole task again, in the languages the user used. Not a plain request for only one of the steps (such as "buka folder downloads"), and no words from the save request.
-- steps: the numbered calls that belong to the task, in order (usually all of them). For each step: "call" = its number; "from_user" = names of the parameters whose value must come from the user's new request every time (such as document content or a list the user dictates); every other parameter keeps the value used above. "hint" = for from_user parameters, at most 8 words saying what to put there, without this time's values (e.g. "daftar barang, satu per baris"); empty otherwise. Do not ask for details the user did not give."""
+- steps: the numbered calls of the task being saved, in order. Always include the calls of the latest request ({latest}). Include an earlier request's calls only when that request did another piece of the same task, so that together they make what the user wants to save (for example, one message wrote a document and the next one sent it). Leave out earlier requests for a different task, and calls that a later request did again with other values. For each step: "call" = its number; "from_user" = names of the parameters whose value must come from the user's new request every time (such as document content or a list the user dictates); every other parameter keeps the value used above. "hint" = for from_user parameters, at most 8 words saying what to put there, without this time's values (e.g. "daftar barang, satu per baris"); empty otherwise. Do not ask for details the user did not give."""
 
 
 @dataclass
@@ -156,6 +166,8 @@ def recent_activity(brain, limit: int = HISTORY_MESSAGES) -> Tuple[List[str], Li
         messages = [(m.role, m.content, m.metadata or {}) for m in brain.memory.current_context.messages[-limit:]]
     else:
         messages = [(m.get("role"), m.get("content", ""), m) for m in brain.conversation_history[-limit:]]
+    # Mulai dari ucapan user: giliran yang terpotong di awal jendela hanya menyisakan hasil tool tanpa argumennya
+    messages = messages[next((i for i, (role, _, _) in enumerate(messages) if role == "user"), 0):]
     lines: List[str] = []
     calls: List[Call] = []
     pending: List[Call] = []  # tool call yang hasilnya belum muncul, dipasangkan dengan pesan role tool
@@ -207,16 +219,22 @@ def _too_generic(trigger: str) -> bool:
     return len(trigger) < (3 if trigger.isascii() else 2) or not distinctive
 
 
-def clean_triggers(triggers: List[str], name: str, single_steps: List[str] = ()) -> List[str]:
+def clean_triggers(triggers: List[str], name: str, single_steps: List[str] = (),
+                   taken: List[str] = ()) -> List[str]:
     """single_steps: ucapan tugas yang hanya mencakup sebagian langkah skill ("buka folder downloads"
-    dari skill "siap kerja"); pemicu yang ada di dalamnya akan membajak perintah biasa itu."""
+    dari skill "siap kerja"); pemicu yang ada di dalamnya akan membajak perintah biasa itu.
+    taken: nama routine dan pemicu skill lain. Pemicu yang memuatnya membajak perintah itu: "mode belajar"
+    menarik giliran ke run_routine, "buat laporan harian" mengalahkan skill laporan harian."""
     single_steps = [normalize(s) for s in single_steps]
+    taken = [normalize(t) for t in taken]
     cleaned: List[str] = []
     for trigger in triggers:
         trigger = normalize(str(trigger).strip().strip("\"'「」『』"))
         if (trigger and trigger != normalize(name) and trigger not in cleaned and not _too_generic(trigger)
-                and not wants_to_save(trigger) and "skill" not in trigger.split() and "スキル" not in trigger
-                and not any(trigger in step for step in single_steps)):
+                and not wants_to_save(trigger) and not SAVE_WORDS.search(trigger)
+                and "skill" not in trigger.split() and "スキル" not in trigger
+                and not any(trigger in step for step in single_steps)
+                and not any(phrase and phrase in trigger for phrase in taken)):
             cleaned.append(trigger)
     return cleaned[:MAX_TRIGGERS]
 
@@ -273,14 +291,43 @@ def _render_step(call: Call, from_user: List[str], hint: str, name: str, japanes
     return (f"{call.tool} を呼ぶ: " if japanese else f"Panggil {call.tool}: ") + "; ".join(parts)
 
 
+def group_by_request(calls: List[Call]) -> List[List[Call]]:
+    """Tool call berurutan dikelompokkan per ucapan user yang memicunya."""
+    groups: List[List[Call]] = []
+    for call in calls:
+        if groups and groups[-1][-1].turn == call.turn:
+            groups[-1].append(call)
+        else:
+            groups.append([call])
+    return groups
+
+
+def _numbered_calls(requests: List[List[Call]]) -> str:
+    lines: List[str] = []
+    number = 0
+    for i, group in enumerate(requests, 1):
+        latest = " (latest)" if i == len(requests) else ""
+        lines.append(f"Request {i}{latest}: {json.dumps(group[0].turn, ensure_ascii=False)}")
+        for call in group:
+            number += 1
+            lines.append(f"  {number}. {call}")
+    return "\n".join(lines)
+
+
 def draft_skill(brain, request: str, transcript: List[str], calls: List[Call]) -> Tuple[Optional[Draft], str]:
     """Minta LLM memilih nama, pemicu, dan parameter dari user; langkahnya disusun dari tool call. (draf, "") atau (None, alasan)."""
     fixed_name = requested_name(request)
     name_rule = (f'exactly "{fixed_name}" (the user chose it).' if fixed_name else
                  "1-4 lowercase words in the user's language describing the whole task, "
-                 "e.g. \"mode belajar\" or \"日報\".")
-    numbered = "\n".join(f"{i}. {call}" for i, call in enumerate(calls, 1))
-    prompt = PROMPT.format(transcript="\n".join(transcript), request=request, calls=numbered, name_rule=name_rule)
+                 "e.g. \"persiapan rapat\" or \"日報\".")
+    skills = list(load_user_skills()[0].values())
+    # Ucapan sebelumnya yang dikerjakan skill yang sudah ada ("laporan harian", "lagu buat") bukan bagian
+    # tugas baru; qwen3:4b sering ikut memilihnya. Ucapan terakhir selalu jadi calon
+    requests = group_by_request(calls)
+    requests = [g for g in requests[:-1] if not select_user_skills(g[0].turn, skills)] + requests[-1:]
+    calls = [call for group in requests for call in group]
+    prompt = PROMPT.format(transcript="\n".join(transcript), request=request, calls=_numbered_calls(requests),
+                           latest=len(requests), name_rule=name_rule)
     try:
         data = brain.generate_json(prompt, SCHEMA)
     except Exception as e:
@@ -296,10 +343,14 @@ def draft_skill(brain, request: str, transcript: List[str], calls: List[Call]) -
         if not isinstance(index, int) or not 1 <= index <= len(calls) or any(c is calls[index - 1] for c, _, _ in chosen):
             continue
         chosen.append((calls[index - 1], [str(p) for p in step.get("from_user") or []], str(step.get("hint") or "")))
-    if not chosen:  # LLM tidak memilih dengan benar: semua tool call, berurutan
-        chosen = [(call, [], "") for call in calls]
-    chosen.sort(key=lambda item: calls.index(item[0]))
-    chosen = chosen[:MAX_STEPS - 1]
+    if not any(call is c for call, _, _ in chosen for c in requests[-1]):
+        # LLM tidak memilih dengan benar, atau hanya memilih tugas lama: tool call ucapan terakhir saja.
+        # Tugas lama yang tidak terkait lebih merugikan daripada langkah yang kurang
+        chosen = [(call, [], "") for call in requests[-1]]
+    position = {id(call): i for i, call in enumerate(calls)}
+    chosen.sort(key=lambda item: position[id(item[0])])
+    # Bila terlalu panjang, yang dibuang langkah terlama: tugas yang baru selesai ada di akhir
+    chosen = chosen[-(MAX_STEPS - 1):]
 
     japanese = _japanese(request)
     steps: List[str] = []
@@ -315,8 +366,9 @@ def draft_skill(brain, request: str, transcript: List[str], calls: List[Call]) -
     steps.insert(0, _opening_step(tools, may_ask, japanese))
     turns = list(dict.fromkeys(call.turn for call, _, _ in chosen))
     single_steps = turns if len(turns) > 1 else []
-    return Draft(name, str(data.get("description") or "").strip(),
-                 clean_triggers(data.get("triggers") or [], name, single_steps), list(dict.fromkeys(tools)), steps), ""
+    taken = [*load_routines(), *(t for skill in skills if skill.name.lower() != name for t in skill.triggers)]
+    triggers = clean_triggers(data.get("triggers") or [], name, single_steps, taken)
+    return Draft(name, str(data.get("description") or "").strip(), triggers, list(dict.fromkeys(tools)), steps), ""
 
 
 def save_from_chat(brain, request: str, confirm: Optional[Callable[[str], bool]]) -> SaveResult:

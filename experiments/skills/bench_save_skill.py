@@ -7,8 +7,8 @@ kontrol sistem palsu hanya mencatat dan menjawab sukses. Skill ditulis ke folder
 Bawaan: riwayat tugas disuntikkan apa adanya (ucapan, tool call + argumen, hasil SUKSES), supaya yang
 diukur hanya S2. --live: tugasnya dijalankan qwen3:4b sungguhan (bisa tidak lengkap, misalnya hanya
 mengatur volume tanpa memutar YouTube; skill lalu ikut tidak lengkap).
-Jalankan dari root repo:
-    python experiments/skills/bench_save_skill.py [runs] [--live]
+Jalankan dari root repo (nama skenario opsional, misalnya campur_id):
+    python experiments/skills/bench_save_skill.py [runs] [skenario ...] [--live]
 """
 import statistics
 import sys
@@ -75,6 +75,19 @@ SCENARIOS = [
      "simpan cara tadi sebagai skill siap kerja", {FOLDER, APP},
      "siap kerja",
      lambda c: has(c, FOLDER, folder_name_or_path="download") and has(c, APP, app_name=("calc", "kalkulator"))),
+    # Dua tugas lain sebelum tugas yang disimpan, di sesi yang sama (gagal di Windows, 31 Okt 2026):
+    # skill harus berisi volume 20 + lofi saja, tanpa dokumen dan volume 30 dari giliran sebelumnya
+    ("campur_id", [("buatkan laporan harian: tadi aku belajar fisika bab gelombang dan mengerjakan tugas kalkulus",
+                    [(DOC, {"filename": "Laporan_Harian", "content":
+                            "Laporan Harian\n- Belajar fisika bab gelombang\n- Mengerjakan tugas kalkulus"}),
+                     (FOLDER, {"folder_name_or_path": "Miku_Documents"})], "日報を作ったよ！"),
+                   ("putar lagu buat belajar", [(VOL, {"level": 30}), (YT, {"query": "lofi hip hop study music"})],
+                    "勉強用のlofiを流したよ！"),
+                   ("kecilkan volume ke 20 lalu putar lofi di youtube", [(VOL, {"level": 20}), (YT, {"query": "lofi"})],
+                    "音量を20にして、lofiを流したよ！")],
+     "simpan ini sebagai skill, namanya mode fokus", {VOL, YT},
+     "mode fokus dong",
+     lambda c: has(c, VOL, level="20") and has(c, YT, query="lofi") and not any(x["action"] in (DOC, FOLDER) for x in c)),
 ]
 
 
@@ -132,10 +145,11 @@ def run_scenario(name, task_turns, save_text, want_tools, reuse_text, reuse_ok, 
     }
 
 
-def main(runs: int, live: bool):
+def main(runs: int, live: bool, only: list):
     totals = {"saved": 0, "tools_ok": 0, "selected": 0, "reuse_ok": 0}
     seconds = []
-    for name, *scenario in SCENARIOS:
+    scenarios = [s for s in SCENARIOS if not only or s[0] in only]
+    for name, *scenario in scenarios:
         for i in range(runs):
             user_skills.USER_SKILLS_DIR = Path(tempfile.mkdtemp(prefix="miku_skills_"))
             r = run_scenario(name, *scenario, live=live)
@@ -154,7 +168,7 @@ def main(runs: int, live: bool):
                 print(f"       | {line}")
             print(f"       pakai ulang: terpilih={r['selected']} benar={r['reuse_ok']} calls={r['calls']}", flush=True)
 
-    total = len(SCENARIOS) * runs
+    total = len(scenarios) * runs
     print("\n" + " | ".join(f"{k} {v}/{total}" for k, v in totals.items()))
     if seconds:
         print(f"giliran simpan: median {statistics.median(seconds):.1f} s, maks {max(seconds):.1f} s")
@@ -162,4 +176,4 @@ def main(runs: int, live: bool):
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if a != "--live"]
-    main(int(args[0]) if args else 3, "--live" in sys.argv)
+    main(int(args[0]) if args else 3, "--live" in sys.argv, args[1:])

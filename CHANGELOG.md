@@ -6,6 +6,73 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-10-31): "simpan ini sebagai skill" menyimpan tugas yang baru selesai
+
+Perbaikan S2 setelah baris "Skill buatan user" di checklist Windows ([`docs/ROADMAP.md`](docs/ROADMAP.md) bagian 2) gagal. Masalahnya bukan khusus Windows.
+
+### Diperbaiki
+- **Skill berisi tugas lama dari sesi yang sama.** Diulang di `miku.py --text`, satu sesi: "buatkan laporan harian: …", lalu "putar lagu buat belajar", lalu "kecilkan volume ke 20 lalu putar lofi di youtube", lalu "simpan ini sebagai skill, namanya mode fokus".
+  - Hasilnya: skill berisi `create_word_document`, `open_folder`, `set_volume` (level 30, bukan 20), dan `youtube_search`.
+  - "mode fokus dong" lalu memanggil `run_routine('mode fokus')`: "Routine 'mode fokus' tidak ditemukan".
+  - Di sesi baru yang hanya berisi giliran ketiga, simpan dan pakai ulang berjalan benar.
+- Penyebab dan perbaikannya (`core/skill_builder.py`):
+  - **Ucapan yang sudah dikerjakan skill lain tidak ditawarkan sebagai langkah.** Giliran 1 dan 2 di atas dikerjakan skill contoh (pemicu "laporan harian" dan "lagu buat"). Tugas itu sudah punya skill, jadi bukan bagian skill baru. Giliran itu tetap ada di percakapan yang dibaca LLM. Ucapan terakhir selalu ditawarkan.
+  - **Tool call dikelompokkan per ucapan user** di prompt, dengan ucapan terakhir ditandai `(latest)`. Prompt meminta tool call ucapan terakhir, plus ucapan sebelumnya hanya bila itu bagian lain dari tugas yang sama. Sebelumnya prompt menyebut langkahnya "biasanya semuanya".
+  - **Bila tidak ada tool call dari ucapan terakhir yang dipilih**, termasuk bila nomornya salah semua, yang disimpan tool call ucapan terakhir saja. Sebelumnya cadangannya semua tool call di riwayat.
+  - **Batas langkah membuang langkah terlama**, bukan yang terbaru. Sebelumnya `chosen[:MAX_STEPS - 1]` menyimpan empat tool call tertua, jadi tugas yang baru selesai yang terpotong.
+  - Jendela riwayat 12 → 20 pesan, sama dengan memori chat, dan dimulai dari ucapan user. Tanpa itu, giliran yang terpotong di awal jendela menyisakan hasil tool tanpa argumennya, misalnya `open_folder()` kosong.
+  - Tugas beberapa giliran tetap didukung: "siap kerja" (folder di satu giliran, aplikasi di giliran berikutnya).
+- **Pemicu yang memuat nama routine, pemicu skill lain, atau kata simpan dibuang.**
+  - Nama routine: "mode belajar" (`routines.example.yaml`, `data/routines.yaml`) menarik giliran ke `run_routine`.
+  - Pemicu skill lain: "buat laporan harian" akan mengalahkan skill laporan harian karena lebih panjang.
+  - Kata simpan: "simpan mode fokus", "save …", 「…を保存」. Balasan konfirmasi tidak lagi menyuruh user bilang "simpan mode fokus".
+  - Contoh nama skill di prompt diganti dari "mode belajar" (nama routine) menjadi "persiapan rapat", karena nama skill selalu ikut menjadi pemicu.
+
+### Pengujian
+- `experiments/skills/bench_save_skill.py` mendapat skenario `campur_id`: ketiga giliran di atas dalam satu sesi, lalu "simpan ini sebagai skill, namanya mode fokus", lalu "mode fokus dong" di sesi baru. Benar bila skill hanya berisi `set_volume` + `youtube_search` dan pakai ulangnya volume 20 + lofi, tanpa dokumen. Skenario bisa dipilih lewat argumen: `bench_save_skill.py 3 campur_id`.
+
+  | Riwayat tugas (6 skenario × 3) | Tersimpan | Tool skill tepat | Terpilih saat dipakai | Pakai ulang benar | Giliran simpan |
+  |---|---|---|---|---|---|
+  | Disuntikkan (yang diukur hanya S2) | 18/18 | **18/18** | 18/18 | **17/18** | median 3,4 s |
+  | Dijalankan qwen3:4b (`--live`) | 18/18 | 10/18 | 18/18 | 9/18 | median 3,0 s |
+
+  - Kedelapan "tool skill tepat" yang meleset di `--live` sama penyebabnya: di giliran tugas, qwen3:4b hanya mengatur volume tanpa memutar YouTube (mode fokus 3, ジャズタイム 2, `campur_id` 3). Skill-nya setia pada yang berhasil, jadi ikut hanya berisi `set_volume`. Ini keterbatasan lama yang sama dengan rilis S2.
+  - Pakai ulang yang meleset di luar itu, penyebabnya juga lama:
+    - satu mode fokus (disuntikkan): LLM menandai `query` sebagai isian, jadi skill bertanya dulu dan tidak memanggil tool;
+    - satu catatan rapat (`--live`): petunjuk isian membawa detail lama ("anggaran total"), dan dokumen barunya ikut menyebut anggaran.
+  - Lima skenario lama, dibanding hasil S2: disuntikkan 15/15 tool tepat dan 14/15 pakai ulang (sama); `--live` 10/15 dan 9/15 (sebelumnya 11/15 dan 11/15). Selisihnya dari giliran tugas yang tidak memutar YouTube, bukan dari penyusun skill.
+  - Giliran simpan lebih lama ±1 s (median 2,4 → 3,4 s disuntikkan) karena jendela riwayat 20 pesan.
+- `campur_id`, commit induk vs branch ini (3 run masing-masing):
+
+  | | Skill tanpa tugas lama | Tool skill tepat | Pakai ulang benar |
+  |---|---|---|---|
+  | Commit induk, disuntikkan | 3/3 | 3/3 | 3/3 |
+  | Commit induk, `--live` | **0/3** | 0/3 | 0/3 |
+  | Branch ini, disuntikkan | 3/3 | 3/3 | 3/3 |
+  | Branch ini, `--live` | **3/3** | 0/3 | 0/3 |
+
+  - Commit induk `--live` mengulang kegagalan Windows persis: keempat tool, pemicu "simpan mode fokus" dan "mode belajar", lalu "mode fokus dong" memanggil `run_routine('mode fokus')` (1×) atau membuat dokumen "Mode_Fokus" (2×).
+  - Commit induk lulus saat disuntikkan hanya karena jendela 12 pesan memotong giliran laporan harian, dan LLM kebetulan memilih tool call terakhir.
+  - Branch ini `--live`: ketiga skill hanya berisi `set_volume` level 20, tanpa dokumen dan tanpa volume 30. YouTube tidak ada karena giliran tugasnya sendiri tidak memutarnya (lihat di atas).
+- Varian yang dicoba dengan pemeriksaan langkah simpan saja (5 run per kasus), sebelum memilih yang sekarang:
+  - LLM memilih nomor ucapan awal tugas (`first_request`, ditulis sebelum langkah): riwayat campur dan "dokumen lalu jazz" 5/5, tapi "siap kerja" 0/5 karena LLM selalu memilih ucapan terakhir.
+  - Tanda `same_task` per ucapan: "siap kerja" 0/5, dan LLM tertukar antara nomor ucapan dan nomor tool call.
+  - Langkah dipilih per tool call (yang dipakai): "siap kerja" 5/5 dan riwayat campur 5/5. Tetapi satu kalimat tambahan di prompt ("most skills are only those") menurunkan riwayat campur ke 2/5. Karena rapuh, ucapan yang dikerjakan skill lain kini tidak ditawarkan sama sekali; dengan itu riwayat campur 5/5 tanpa bergantung pada pilihan LLM.
+- `tests/test_skill_builder.py` (+7 test):
+  - regresi dari riwayat di atas, dengan LLM yang memilih keenam tool call seperti di Windows: skill hanya berisi `set_volume` 20 + `youtube_search`, pemicunya tanpa kata simpan, nama routine, atau pemicu skill lain, dan balasannya menyebut "mode fokus sekarang";
+  - tugas lama tanpa skill (dokumen, lalu jazz): ikut hanya bila LLM memilihnya bersama ucapan terakhir; bila LLM hanya memilih tugas lama, tidak memilih apa pun, atau nomornya salah, yang disimpan ucapan terakhir;
+  - penyaring pemicu untuk nama routine dan kata simpan;
+  - jendela riwayat dimulai dari ucapan user;
+  - test batas langkah kini mengharapkan langkah terbaru (30, 40, 50, 60), bukan terlama;
+  - test "siap kerja" kini juga memeriksa kedua tool-nya tetap ada.
+- `pytest`: 419 lulus, 31 dilewati (venv aplikasi); di Python sistem seperti CI 413 lulus, 37 dilewati.
+
+### Keterbatasan diketahui
+- **Tugas lama yang tidak dikerjakan skill masih bisa ikut** bila qwen3:4b memilihnya. Contoh: dokumen daftar belanja, lalu "putar jazz di youtube dengan volume 30", lalu "jadikan skill ya": skill berisi ketiga tool di 5/5 percobaan. Begitu juga lagu YouTube sebelum "siap kerja" (5/5). Pratinjau memperlihatkan tool-nya sebelum disetujui.
+- **"mode fokus dong" bisa tersasar ke `run_routine`** bila skill "mode fokus" hanya berisi satu langkah. Kata "mode" mengaktifkan skill bawaan routine, sehingga `run_routine` ikut ditawarkan. Terjadi di 4 dari 6 pakai ulang `--live` dengan skill satu langkah, dan 0 dari 18 dengan skill dua langkah (disuntikkan). Perbaikannya di pemilihan skill (`AIBrain._select_turn_skills`, `core/skills.py`), di luar perubahan ini.
+
+---
+
 ## Belum dirilis (2026-10-31): "simpan ini sebagai skill" (PLAN_SKILLS S2)
 
 Rencana: S2 di [`docs/PLAN_SKILLS.md`](docs/PLAN_SKILLS.md). Keputusan 2 dari user: Miku boleh menyusun skill dari percakapan, dengan konfirmasi.
