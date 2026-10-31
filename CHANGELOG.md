@@ -6,6 +6,41 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-11-01): MikuVisionSetup.exe, "Apps & features", Perbarui/Perbaiki/Hapus (PLAN_INSTALLER I4 dan I5)
+
+Rencana: I4 dan I5 di [`docs/PLAN_INSTALLER.md`](docs/PLAN_INSTALLER.md). Setup sekarang satu file exe, tercatat di Windows, dan bisa merawat instalasinya sendiri.
+
+### Ditambahkan
+- **Entri "Apps & features"** (`miku_setup/registry.py`, HKCU tanpa admin): nama, versi, publisher, ikon, ukuran, perintah Uninstall dan Modify, plus folder model dan komponen yang dipakai lagi oleh Perbarui/Perbaiki. Exe Setup menyalin dirinya ke `<InstallDir>\.tools\MikuVisionSetup.exe` supaya Uninstall dan Modify tetap jalan walau file unduhan sudah dihapus.
+- **Setup yang dibuka lagi** menampilkan halaman **Pilih tindakan** (versi terpasang dan versi terbaru):
+  - **Perbarui** ke rilis terbaru; `data/`, `models/`, `.venv`, dan `.tools` tidak ditimpa. Dinonaktifkan bila sudah versi terbaru.
+  - **Perbaiki**: `install.ps1` dijalankan lagi dengan pilihan yang sama, tanpa mengunduh kode.
+  - **Hapus**: percakapan, memori, dan skill (`data/`) serta folder model pilihan user disimpan kecuali dicentang. Model di lokasi bawaan Ollama tidak pernah dihapus (bisa dipakai aplikasi lain); Ollama sendiri juga tidak. Hanya shortcut yang menunjuk ke folder instalasi yang dihapus, jadi shortcut Desktop milik clone git tetap ada. `OLLAMA_MODELS`/`HF_HOME` hanya dihapus bila menunjuk ke folder model yang dihapus. Bila ada file terkunci, entri registry dibiarkan supaya Hapus bisa diulang.
+  - `--update`, `--repair`, `--uninstall` langsung ke modenya. Uninstall dari "Apps & features" menyalin exe ke Temp dulu, karena exe di `.tools` tidak bisa menghapus dirinya sendiri.
+  - Bila MikuVision masih berjalan dari folder itu, Setup meminta menutupnya dulu.
+- **`MikuVisionSetup.exe`** (`miku_setup.spec`, PyInstaller 6.11.1, satu file, tanpa konsol, tanpa UPX): 16,8 MB. `requirements-setup.txt` mematok versi build.
+- **Workflow `release-setup.yml`**: tag `vX.Y.Z` → runner Windows membangun exe, `git archive` tag itu menjadi `MikuVision-<versi>.zip`, menulis `version.json` dan `SHA256SUMS`, lalu melampirkan keempatnya ke rilis (membuat rilis bila belum ada). Bisa dijalankan ulang untuk tag lama.
+- README: Instalasi dimulai dari `MikuVisionSetup.exe`, dengan catatan SmartScreen ("More info → Run anyway").
+
+### Diperbaiki
+- Dialog konfirmasi berbahasa Indonesia ("Hentikan"/"Lanjutkan", "Keluar"/"Kembali"), bukan "Yes"/"No" dari Windows.
+- "x GB terunduh" menghitung byte yang diterima jaringan (psutil), bukan pertumbuhan cache uv yang sekitar dua kali lipat data internet. Ditampilkan sebagai perkiraan (±), karena unduhan aplikasi lain ikut terhitung.
+- Dari uji terima exe: ukuran di "Apps & features" menghitung file yang di-hardlink sekali (14,4 → 8,5 GB), dan RVC tidak lagi tercatat hanya karena folder kosong `models/miku_default_rvc` ikut di zip rilis.
+
+### Pengujian
+- 26 test baru di `test_miku_setup_maintenance.py` dan `test_miku_setup_wizard.py`: mode dari opsi dan registry, nilai dan round-trip registry (kunci uji sementara di HKCU), pilihan Perbarui/Perbaiki tanpa file RVC, ukuran dengan hardlink, Hapus (bawaan, semua, model di lokasi bawaan, file terkunci), shortcut yang menunjuk ke tempat lain, proses yang masih berjalan, alur Pilih tindakan → Perbarui/Perbaiki/Hapus di mode uji, dan dialog berbahasa Indonesia. 609 test lulus di venv aplikasi.
+- Sebagian test wizard kadang gagal di laptop pengembang karena Tk sesekali tidak bisa membaca `init.tcl` dari Python uv di `.tools` ("couldn't read file … No error"); lulus saat diulang. Masalah lingkungan, bukan kode wizard.
+- **Uji terima dengan exe** (Windows 11, RTX 4050, rilis uji dari `git archive` yang disajikan `python -m http.server`, langkah yang sama dengan workflow):
+  - Pasang di atas instalasi uji I3: tercatat di "Apps & features", exe tersalin ke `.tools`, penanda di `data/` tetap ada.
+  - Perbarui dengan exe baru (seperti mengunduh Setup versi baru): halaman Pilih tindakan menampilkan 1.6.0-i4a terpasang dan 1.6.0-i4b terbaru. Zip baru diunduh sekali, selesai 3 menit 20 detik, `DisplayVersion` naik, `data/` utuh.
+  - Modify (exe di `.tools`): instalasi dikenali. Rilis GitHub yang sekarang belum punya `version.json` (404), dan itu tampil sebagai peringatan, bukan error.
+  - Perbaiki: tanpa unduhan kode, 1 menit 55 detik, kode keluar 0.
+  - Uninstall (`UninstallString`): exe di `.tools` menyalin dirinya ke Temp dan keluar; salinannya membuka halaman Hapus. Izin klik untuk salinan di Temp tidak bisa diberikan dari jarak jauh, jadi tombol Hapus diganti panggilan fungsi yang sama (`remove_installation`, opsi bawaan): 31 s, tanpa masalah. Sisa folder hanya `data/`; entri registry dan Start Menu hilang; shortcut Desktop clone git, `OLLAMA_MODELS`/`HF_HOME`, dan 26 blob di `D:\ollama_models` tidak tersentuh.
+  - Pasang lagi dengan exe ke folder yang tinggal berisi `data/` (Hapus lalu pasang lagi): uv, Python, PyTorch, dan semua langkah dari nol, `install.ps1` selesai dalam 10 menit dengan kode 0, `miku.py --test` lulus, tercatat lagi di "Apps & features" (8,3 GB). Percakapan dan penanda di `data/` dari instalasi sebelumnya dipakai lagi.
+  - Selama uji, Task Manager dengan "Always on top" menutupi wizard; jendela wizard digeser supaya tombolnya terlihat. Shortcut Desktop tidak dicentang di halaman Selesai, supaya shortcut clone git pengembang tidak tertimpa.
+
+---
+
 ## Belum dirilis (2026-11-01): model RVC dari link di MikuVision Setup
 
 ### Ditambahkan

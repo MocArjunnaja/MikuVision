@@ -38,6 +38,15 @@ Mendengar suara Anda, berpikir dengan LLM lokal, menjalankan aksi di komputer, l
 
 ## Instalasi
 
+**Windows, paling mudah (mulai v1.6.0):** unduh **`MikuVisionSetup.exe`** dari [rilis terbaru](https://github.com/MocArjunnaja/MikuVision/releases/latest), jalankan, lalu klik Lanjut. Setup memeriksa komputer, memasang semuanya ke `%LOCALAPPDATA%\Programs\MikuVision` (tanpa admin), dan membuat shortcut. Tanpa git atau terminal.
+
+> [!NOTE]
+> Exe belum ditandatangani, jadi Windows SmartScreen bisa menampilkan "Windows protected your PC". Klik **More info → Run anyway**. Kode aplikasi yang diunduh Setup dari GitHub dicocokkan dengan SHA256 di rilis yang sama.
+
+Setup yang dibuka lagi (atau **Modify** di "Apps & features") menawarkan **Perbarui**, **Perbaiki**, dan **Hapus**. Hapus menyimpan percakapan, memori, skill, dan model kecuali Anda mencentangnya.
+
+**Untuk pengembang, atau Linux:**
+
 1. Ambil kode ke folder di drive yang lega (±16 GB): `git clone https://github.com/MocArjunnaja/MikuVision.git`, atau unduh ZIP dari [Releases](https://github.com/MocArjunnaja/MikuVision/releases).
 2. Jalankan installer. Installer memasang Python 3.10, PyTorch (CUDA bila ada GPU NVIDIA), dependency, Ollama, dan model LLM, lalu menguji hasilnya.
 
@@ -59,7 +68,7 @@ Mendengar suara Anda, berpikir dengan LLM lokal, menjalankan aksi di komputer, l
 - **Linux, sesi X11:** maskot transparan, shortcut `Ctrl+Shift+M`, klik/ketik, dan membaca jendela aktif butuh X11. KDE Plasma dan GNOME biasanya memakai Wayland: pilih sesi X11/Xorg di layar login (cek dengan `echo $XDG_SESSION_TYPE`). Di Wayland suara, LLM, GUI, dan dokumen tetap jalan.
 - **Linux, lokasi env:** bila folder repo ada di partisi Windows (dual-boot, NTFS/FAT), uv, Python, dan venv disimpan di `~/.local/share/mikuvision/`; lokasi lain lewat `MIKU_VENV=/path/venv`.
 - **Opsional:** model visi `ollama pull qwen3-vl:4b-instruct` (3,3 GB) untuk membaca layar; di Linux juga paket `python3-pyatspi` (Arch: `python-atspi`) untuk "tombol apa saja di jendela ini?".
-- **Menghapus:** hapus folder aplikasi dan shortcut (Linux: juga `rm -rf ~/.local/share/mikuvision ~/.local/share/applications/mikuvision.desktop ~/Desktop/MikuVision.desktop`). Ollama dihapus terpisah.
+- **Menghapus:** dipasang lewat Setup → "Apps & features" → MikuVision → Uninstall. Dipasang lewat git/`install.bat`: hapus folder aplikasi dan shortcut (Linux: juga `rm -rf ~/.local/share/mikuvision ~/.local/share/applications/mikuvision.desktop ~/Desktop/MikuVision.desktop`). Ollama dihapus terpisah.
 
 </details>
 
