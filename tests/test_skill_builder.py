@@ -41,6 +41,13 @@ def test_clean_triggers_drops_phrases_that_would_hijack_normal_commands():
     assert clean_triggers(triggers, "mode belajar") == ["lofi study", "dokumen rapat", "日報", "ジャズを流して"]
 
 
+def test_clean_triggers_drops_routine_names_and_save_words():
+    triggers = ["simpan mode fokus", "mode belajar", "Mode belajar dong", "save focus mode", "集中モードを保存",
+                "simpen fokus", "mode fokus sekarang"]
+
+    assert clean_triggers(triggers, "mode fokus", taken=["Mode Belajar"]) == ["mode fokus sekarang"]
+
+
 # ───────────────────────── riwayat percakapan ─────────────────────────
 
 def _message(role, content, **meta):
@@ -191,7 +198,7 @@ def test_wrong_step_numbers_fall_back_to_every_call_in_order():
     assert result.skill.tools == ("set_volume", "youtube_search")
 
 
-def test_steps_follow_the_order_they_happened_and_are_capped():
+def test_steps_follow_the_order_they_happened_and_the_cap_keeps_the_newest():
     calls = [_message("assistant", "", tool_calls=[{"function": {"name": "set_volume", "arguments": {"level": n}}}])
              for n in range(10, 70, 10)]
     history = [m for i, call in enumerate(calls)
@@ -202,7 +209,86 @@ def test_steps_follow_the_order_they_happened_and_are_capped():
 
     lines = result.skill.instructions.splitlines()
     assert len(lines) == skill_builder.MAX_STEPS
-    assert [line.rsplit(" ", 1)[1] for line in lines[1:]] == ["10", "20", "30", "40"]
+    # Yang dibuang langkah terlama: tugas yang baru selesai ada di akhir
+    assert [line.rsplit(" ", 1)[1] for line in lines[1:]] == ["30", "40", "50", "60"]
+
+
+def _turn(text, *calls):
+    """Satu giliran yang berhasil: ucapan user, tool call (nama, argumen), hasil SUKSES."""
+    return [
+        _message("user", text),
+        _message("assistant", "", tool_calls=[{"function": {"name": n, "arguments": a}} for n, a in calls]),
+        *[_message("tool", "SUKSES - ok", tool_name=n) for n, _ in calls],
+        _message("assistant", "[EMOTION:happy] Sudah!"),
+    ]
+
+
+# Diulang dari miku.py --text di Windows (31 Okt 2026): dua tugas lewat skill contoh (laporan harian,
+# musik mood) sebelum tugas yang disimpan. Dulu skill-nya berisi keempat tool dengan volume 30
+MIXED_HISTORY = [
+    *_turn("buatkan laporan harian: tadi aku belajar fisika bab gelombang dan mengerjakan tugas kalkulus",
+           ("create_word_document", {"filename": "Laporan_Harian", "content":
+                                     "Laporan Harian\n- Belajar fisika bab gelombang\n- Mengerjakan tugas kalkulus"}),
+           ("open_folder", {"folder_name_or_path": "Miku_Documents"})),
+    *_turn("putar lagu buat belajar", ("set_volume", {"level": 30}),
+           ("youtube_search", {"query": "lofi hip hop study music"})),
+    *_turn("kecilkan volume ke 20 lalu putar lofi di youtube", ("set_volume", {"level": 20}),
+           ("youtube_search", {"query": "lofi"})),
+]
+MIXED_DRAFT = {
+    "name": "mode fokus", "description": "Volume 20 lalu putar lofi",
+    "triggers": ["simpan mode fokus", "mode fokus sekarang", "fokus belajar", "mode belajar", "simpan fokus",
+                 "buat laporan harian fokus"],
+    "steps": [{"call": n, "from_user": [], "hint": ""} for n in range(1, 7)],  # LLM memilih semuanya
+}
+
+
+def test_history_window_starts_at_a_user_message():
+    # 12 pesan terakhir mulai di tengah giliran pertama: open_folder tanpa argumennya tidak ikut
+    _, calls = recent_activity(FakeBrain(messages=MIXED_HISTORY), limit=12)
+
+    assert [c.tool for c in calls] == ["set_volume", "youtube_search", "set_volume", "youtube_search"]
+    assert calls[0].turn == "putar lagu buat belajar"
+
+
+def test_saves_the_task_just_finished_not_earlier_skill_tasks_in_the_session():
+    brain = FakeBrain(messages=MIXED_HISTORY, draft=MIXED_DRAFT, lang="id")
+
+    result = save_from_chat(brain, "simpan ini sebagai skill, namanya mode fokus", lambda s: True)
+
+    assert result.skill.tools == ("set_volume", "youtube_search")
+    assert result.skill.instructions.splitlines()[1:] == [
+        "2. Panggil set_volume: level = 20", '3. Panggil youtube_search: query = "lofi"']
+    # Tanpa kata simpan, nama routine (dulu run_routine yang terpanggil), atau pemicu skill lain
+    assert result.skill.triggers == ("mode fokus", "mode fokus sekarang", "fokus belajar")
+    assert skill_builder.reply_for(result, "id")[0] == "Skill 'mode fokus' tersimpan! Lain kali cukup bilang 'mode fokus sekarang'."
+    # Giliran yang dikerjakan skill contoh tetap ada di percakapan, tapi bukan calon langkah
+    prompt = brain.prompts[0][0]
+    calls = prompt.split("grouped by the user request")[1].split("Write the skill")[0]
+    assert "User: buatkan laporan harian" in prompt and "create_word_document" not in calls
+    assert 'Request 1 (latest): "kecilkan volume ke 20 lalu putar lofi di youtube"\n  1. set_volume(level=20)' in calls
+
+
+# Tugas sebelumnya tanpa skill: LLM yang memutuskan ucapan mana yang termasuk
+DOC_THEN_MUSIC = [
+    *_turn("buatkan dokumen word daftar belanja: telur, susu",
+           ("create_word_document", {"filename": "belanja", "content": "telur\nsusu"})),
+    *_turn("putar jazz di youtube dengan volume 30", ("set_volume", {"level": 30}), ("youtube_search", {"query": "jazz"})),
+]
+
+
+@pytest.mark.parametrize("steps", [[2, 3], [1], [], [3, 2, 1, 9]])
+def test_earlier_unrelated_task_is_left_out_unless_the_llm_picks_it_with_the_latest(steps):
+    draft = {"name": "jazz", "description": "", "triggers": [], "steps": [{"call": n, "from_user": [], "hint": ""} for n in steps]}
+    brain = FakeBrain(messages=DOC_THEN_MUSIC, draft=draft)
+
+    result = save_from_chat(brain, "jadikan skill ya", lambda s: True)
+
+    # Hanya tugas lama, atau pilihan tidak valid: tool call ucapan terakhir saja
+    want = ("create_word_document", "set_volume", "youtube_search") if 1 in steps and 2 in steps else ("set_volume", "youtube_search")
+    assert result.skill.tools == want
+    assert "Always include the calls of the latest request (2)" in brain.prompts[0][0]
+    assert "usually all of them" not in brain.prompts[0][0]
 
 
 @pytest.mark.parametrize("request_text, name", [
@@ -250,11 +336,14 @@ def test_trigger_that_is_one_step_of_a_multi_turn_skill_is_dropped():
                                                             "arguments": {"app_name": "Calculator"}}}]),
         _message("tool", "SUKSES - Kalkulator dibuka", tool_name="open_application"),
     ]
-    draft = {"name": "siap kerja", "description": "", "triggers": ["buka folder downloads", "downloads dan kalkulator"],
+    draft = {"name": "siap kerja", "description": "",
+             "triggers": ["buka folder downloads", "downloads dan kalkulator"],
              "steps": [{"call": 1, "from_user": [], "hint": ""}, {"call": 2, "from_user": [], "hint": ""}]}
 
     result = save_from_chat(FakeBrain(messages=history, draft=draft), "simpan cara tadi sebagai skill", lambda s: True)
 
+    # Tugas dua giliran tetap utuh bila LLM memilih kedua ucapan
+    assert result.skill.tools == ("open_folder", "open_application")
     assert result.skill.triggers == ("siap kerja", "downloads dan kalkulator")
 
 

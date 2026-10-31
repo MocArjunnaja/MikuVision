@@ -114,7 +114,7 @@ tools: [create_word_document, open_folder]
 
 **Alur**
 1. User mengucapkan "simpan ini sebagai skill, namanya mode fokus" (atau 「これをスキルとして保存して」). Kalimat ini dikenali oleh regex, bukan oleh LLM, sehingga tidak bisa tersasar ke tool lain.
-2. `core/skill_builder.py` membaca ±12 pesan terakhir dan memasangkan setiap tool call yang berhasil dengan argumennya.
+2. `core/skill_builder.py` membaca 20 pesan terakhir dan memasangkan setiap tool call yang berhasil dengan argumennya, dikelompokkan per ucapan user. Ucapan sebelumnya yang dikerjakan skill lain tidak ditawarkan; ucapan terakhir selalu ikut.
 3. Satu panggilan qwen3:4b (JSON schema) memilih nama, deskripsi, pemicu, tool call mana yang termasuk tugas, dan parameter mana yang diambil dari user setiap kali.
 4. Kode menyusun langkahnya (`Panggil set_volume: level = 20`) dan menambahkan langkah pembuka "jangan bertanya dulu, panggil semua tool ini berurutan".
 5. Draf divalidasi dengan parser S1, lalu ditampilkan lengkap untuk dikonfirmasi. Setelah disetujui, disimpan ke `data/skills/<nama>/SKILL.md`.
