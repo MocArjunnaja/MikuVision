@@ -9,6 +9,7 @@ import webbrowser
 
 import customtkinter as ctk
 
+from ..checks import format_gb
 from .base import ACCENT, ACCENT_HOVER, MUTED, STATUS_COLORS, Page, heading, paragraph
 
 log = logging.getLogger("miku_setup")
@@ -30,6 +31,7 @@ class InstallPage(Page):
         self.events: "queue.Queue" = queue.Queue()
         self.runner = None
         self.started_at = 0.0
+        self.downloaded = 0
 
     def create(self, frame):
         heading(frame, "Memasang MikuVision")
@@ -63,6 +65,7 @@ class InstallPage(Page):
 
     def start(self):
         self.setup.install_ok, self.setup.last_error, self.setup.warnings = None, "", []
+        self.downloaded = 0
         self.bar.set(0)
         self.step.configure(text="Menyiapkan…", text_color=self.step_color)
         self.log_box.delete("1.0", "end")
@@ -80,6 +83,12 @@ class InstallPage(Page):
                 kind, data = self.events.get_nowait()
                 if kind == "log":
                     self._log(data)
+                elif kind == "phase":
+                    # Unduh dan ekstrak kode, sebelum langkah install.ps1
+                    self.step.configure(text=data["title"])
+                    self.bar.set(0.05 * data.get("fraction", 0))
+                elif kind == "downloaded":
+                    self.downloaded = data
                 elif self._progress(data):
                     return
         except queue.Empty:
@@ -99,7 +108,7 @@ class InstallPage(Page):
         kind = event["event"]
         if kind == "step":
             self.step.configure(text=f"Langkah {event['index']} dari {event['total']}: {event['title']}")
-            self.bar.set((event["index"] - 1) / max(event["total"], 1))
+            self.bar.set(0.05 + 0.95 * (event["index"] - 1) / max(event["total"], 1))
         elif kind == "warn":
             self.setup.warnings.append(event.get("message", ""))
         elif kind == "error":
@@ -115,6 +124,8 @@ class InstallPage(Page):
     def _show_info(self):
         minutes, seconds = divmod(int(time.monotonic() - self.started_at), 60)
         parts = [f"Berjalan {minutes:02d}:{seconds:02d}"]
+        if self.downloaded >= 10e6:
+            parts.append(f"{format_gb(self.downloaded)} terunduh")
         if self.setup.warnings:
             parts.append(f"{len(self.setup.warnings)} peringatan")
         self.info.configure(text=" · ".join(parts))

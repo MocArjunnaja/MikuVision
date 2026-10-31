@@ -2,7 +2,7 @@
 
 **Tujuan:** siapa saja bisa memasang MikuVision tanpa membuka GitHub, git, atau terminal. Caranya: unduh satu file `MikuVisionSetup.exe` (±25 MB), klik Lanjut beberapa kali, lalu Miku menyapa. Rasanya seperti installer aplikasi desktop besar (misalnya Ansys): ada pilihan folder, pilihan komponen, progres unduhan, serta Perbarui/Perbaiki/Hapus.
 
-**Status:** I1 dan I2 selesai (31 Okt 2026; I2 di branch `feat/setup-wizard-skeleton`); I3–I6 rencana. Dikerjakan di Windows dulu (fase I1–I6); Linux menyusul (fase IL). Urutan terhadap rencana lain: [`ROADMAP.md`](ROADMAP.md).
+**Status:** I1, I2, dan I3 selesai (I1 dan I2 31 Okt 2026, I3 1 Nov 2026); I4–I6 rencana. Dikerjakan di Windows dulu (fase I1–I6); Linux menyusul (fase IL). Urutan terhadap rencana lain: [`ROADMAP.md`](ROADMAP.md).
 
 **Untuk yang mengerjakan:** baca bagian 1–4 untuk gambaran, lalu kerjakan fase di bagian 8 satu per satu. Tiap fase satu PR, dengan kriteria selesai yang bisa dicek. Kode installer yang sudah teruji (`install.ps1`) **dibungkus, bukan ditulis ulang**.
 
@@ -144,6 +144,12 @@ Aturan yang perlu dijaga:
 - **Mikrofon:** nama perangkat yang berisi "micro", "mikro", atau "マイク" dari `Get-PnpDevice -Class AudioEndpoint -Status OK`. Di laptop pengembang terbaca "Microphone Array (Realtek(R) Audio)". Kondisi tanpa mikrofon belum bisa dicek di laptop yang sama; hasilnya hanya ⚠, tidak memblokir.
 - **Shortcut:** `install_args` meneruskan `-StartMenu -SkipShortcut`. Shortcut Desktop dibuat wizard dari halaman Selesai (fase I4), sesuai centang user.
 - **`--dry-run`** memutar ulang stdout nyata dari uji terima I1 (87 baris, path pribadi diganti). `--dry-run-fail` (tersembunyi) berhenti di langkah PyTorch dengan error, untuk halaman gagal dan "Coba lagi". Tanpa `--dry-run`, `main.py` keluar dengan kode 2 sampai runner `install.ps1` ada di I3.
+
+**Hasil I3** (1 Nov 2026). `download.py`, `InstallRunner` di `runner.py`, dan `launch.py` (shortcut Desktop dan menjalankan GUI dari halaman Selesai, dipindah dari I4). Opsi tersembunyi `--release-url` menunjuk ke folder rilis lain. Uji terima: aset rilis dari `git archive` disajikan `python -m http.server`, lalu wizard memasang ke `%LOCALAPPDATA%\Programs\MikuVision` yang belum ada. Batal di langkah PyTorch, jalankan lagi, sampai Selesai; angka lengkapnya di CHANGELOG. Temuan:
+- **Melanjutkan setelah batal bekerja per langkah dan per paket**, bukan per byte. Zip yang cocok tidak diunduh lagi; `install.ps1` melewati uv, Python, dan `.venv`; paket yang sudah selesai diunduh uv dipakai lagi. Wheel yang sedang terunduh saat batal (biasanya `torch`, ±2,5 GB) diunduh lagi dari nol, karena uv tidak melanjutkan unduhan parsial.
+- **"x GB terunduh" melebihi data internet**, karena ukuran cache uv juga membesar saat wheel dibongkar dan paket dibangun. Pilihan nanti: ganti label menjadi ukuran data, atau hitung hanya file `.whl`/`.tar.gz`.
+- **Batal menutup wizard** setelah proses berhenti. Menjalankan Setup lagi melanjutkan dari langkah terakhir yang beres.
+- Tombol dialog konfirmasi (`messagebox.askyesno`) mengikuti bahasa Windows ("Yes"/"No"). Bila semua teks harus berbahasa Indonesia, dialognya perlu dibuat sendiri dengan customtkinter.
 
 ## 6. Perawatan: Perbarui, Perbaiki, Hapus (fase I4)
 
