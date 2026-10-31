@@ -145,28 +145,94 @@ def test_x11_not_attempted_on_wayland_or_without_display(monkeypatch):
 
 # ───────────────────────── Backend Windows ─────────────────────────
 
-def test_windows_backend_uses_keyboard_library(monkeypatch):
+MOD_CONTROL_SHIFT = 0x0002 | 0x0004
+VK_M = 0x4D
+
+
+class FakeUser32:
+    """RegisterHotKey palsu: `taken` berisi (modifiers, vk) yang sudah didaftarkan aplikasi lain."""
+
+    def __init__(self):
+        self.taken = set()
+        self.error = 1409  # ERROR_HOTKEY_ALREADY_REGISTERED
+        self.registered = set()
+        self.probes = []
+        self.last_error = 0
+
+    def RegisterHotKey(self, hwnd, hotkey_id, modifiers, vk):
+        self.probes.append((modifiers, vk))
+        if (modifiers, vk) in self.taken:
+            self.last_error = self.error
+            return 0
+        self.registered.add(hotkey_id)
+        return 1
+
+    def UnregisterHotKey(self, hwnd, hotkey_id):
+        self.registered.discard(hotkey_id)
+        return 1
+
+    def get_last_error(self):
+        return self.last_error
+
+
+@pytest.fixture
+def user32(monkeypatch):
+    fake = FakeUser32()
+    monkeypatch.setattr(hotkey, "_user32", lambda: (fake, fake.get_last_error))
+    return fake
+
+
+@pytest.fixture
+def keyboard_lib(monkeypatch):
     fake = MagicMock()
     fake.add_hotkey.return_value = "handle"
     monkeypatch.setitem(sys.modules, "keyboard", fake)
+    return fake
+
+
+def test_windows_backend_uses_keyboard_library(user32, keyboard_lib):
     callback = lambda: None  # noqa: E731
     key = hotkey.make_hotkey(parse_combo("super+shift+m"), callback, platform="win32")
 
     assert key.start() is None
-    fake.add_hotkey.assert_called_once_with("shift+windows+m", callback)
+    keyboard_lib.add_hotkey.assert_called_once_with("shift+windows+m", callback)
+    assert user32.probes == [(0x0004 | 0x0008, VK_M)]  # MOD_SHIFT | MOD_WIN
+    assert user32.registered == set()  # pengecekan tidak memegang kombinasinya
 
     key.stop()
-    fake.remove_hotkey.assert_called_once_with("handle")
+    keyboard_lib.remove_hotkey.assert_called_once_with("handle")
 
 
-def test_windows_backend_reports_failure(monkeypatch):
-    fake = MagicMock()
-    fake.add_hotkey.side_effect = ValueError("bad")
-    monkeypatch.setitem(sys.modules, "keyboard", fake)
+def test_windows_backend_reports_failure(user32, keyboard_lib):
+    keyboard_lib.add_hotkey.side_effect = ValueError("bad")
 
     error = hotkey.make_hotkey(parse_combo("ctrl+shift+m"), lambda: None, platform="win32").start()
 
     assert "gagal dipasang" in error
+
+
+def test_windows_combo_taken_by_other_app(user32, keyboard_lib):
+    user32.taken = {(MOD_CONTROL_SHIFT, VK_M)}  # aplikasi lain sudah RegisterHotKey Ctrl+Shift+M
+
+    error = hotkey.make_hotkey(parse_combo("ctrl+shift+m"), lambda: None, platform="win32").start()
+
+    assert error == "sudah dipakai aplikasi lain"
+    keyboard_lib.add_hotkey.assert_not_called()
+
+
+def test_windows_other_register_errors_still_install_the_hook(user32, keyboard_lib):
+    user32.taken = {(MOD_CONTROL_SHIFT, VK_M)}
+    user32.error = 87  # ERROR_INVALID_PARAMETER: bukan bukti kombinasinya dipakai
+
+    assert hotkey.make_hotkey(parse_combo("ctrl+shift+m"), lambda: None, platform="win32").start() is None
+    keyboard_lib.add_hotkey.assert_called_once()
+
+
+@pytest.mark.parametrize("text, vk", [("ctrl+alt+7", 0x37), ("ctrl+f1", 0x70), ("ctrl+f24", 0x87)])
+def test_windows_virtual_key_codes(user32, keyboard_lib, text, vk):
+    hotkey.make_hotkey(parse_combo(text), lambda: None, platform="win32").start()
+
+    assert user32.probes[0][1] == vk
 
 
 # ───────────────────────── miku.py --trigger ─────────────────────────
@@ -350,6 +416,18 @@ def test_listen_triggers_explain_failures(x11, tmp_path):
 
     triggers = ListenTriggers(lambda: None, "ctrl+shift+m", hotkey_enabled=False, runtime_dir=tmp_path / "c")
     assert triggers.start() == []
+    assert not triggers.hotkey_active
+    triggers.stop()
+
+
+def test_listen_triggers_explain_windows_conflict(user32, keyboard_lib, tmp_path):
+    user32.taken = {(MOD_CONTROL_SHIFT, VK_M)}
+    triggers = ListenTriggers(lambda: None, "ctrl+shift+m", runtime_dir=tmp_path, platform="win32")
+
+    messages = triggers.start()
+
+    assert messages[0].startswith("Shortcut Ctrl+Shift+M tidak dipasang: sudah dipakai aplikasi lain.")
+    assert "WAKE_HOTKEY" in messages[0]
     assert not triggers.hotkey_active
     triggers.stop()
 

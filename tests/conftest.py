@@ -80,9 +80,10 @@ def _no_real_hotkey(monkeypatch, tmp_path):
     from core import hotkey
 
     def refuse():
-        raise AssertionError("Test membuka koneksi X11 sungguhan untuk shortcut")
+        raise AssertionError("Test membuka koneksi X11 atau memanggil RegisterHotKey sungguhan untuk shortcut")
 
     monkeypatch.setattr(hotkey, "_open_display", refuse)
+    monkeypatch.setattr(hotkey, "_user32", refuse)
     monkeypatch.setattr(hotkey, "default_runtime_dir", lambda: tmp_path / "runtime")
 
 

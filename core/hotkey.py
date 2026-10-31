@@ -3,13 +3,14 @@ Pemicu "mulai bicara" dari aplikasi mana pun (T1 di docs/PLAN_VISION_AGENT.md):
 
 - Shortcut keyboard global (default Ctrl+Shift+M, `WAKE_HOTKEY` di config.py).
   - Linux X11: XGrabKey pada root window lewat python-xlib (tanpa root; library yang sama dengan maskot).
-  - Windows: library `keyboard`.
+  - Windows: library `keyboard`, setelah RegisterHotKey memastikan kombinasinya belum dipakai aplikasi lain.
   - Wayland: belum didukung, Miku memberi tahu dan jalan tanpa shortcut.
 - `python miku.py --trigger`: mengirim "dengar" ke Miku yang sedang jalan lewat
   multiprocessing.connection (Unix socket di Linux, named pipe di Windows) dengan authkey acak.
   User memasangnya sebagai shortcut di pengaturan keyboard desktop; jalan juga di Wayland.
 
-Modul ini sengaja hanya memakai library standar (python-xlib dan `keyboard` di-import saat dipakai):
+Modul ini sengaja hanya memakai library standar (python-xlib, `keyboard`, dan user32 lewat ctypes
+dimuat saat dipakai):
 `miku.py --trigger` memuatnya langsung dari file tanpa config.py dan package core, yang memuat
 torch dan Whisper (±20 s).
 """
@@ -43,6 +44,12 @@ _X_KEY_PRESS = 2
 _X_GRAB_MODE_ASYNC = 1
 
 _WINDOWS_NAMES = {"ctrl": "ctrl", "alt": "alt", "shift": "shift", "super": "windows"}
+
+# Nilai RegisterHotKey (winuser.h, winerror.h), supaya modul ini bisa dites di luar Windows
+_WIN_MODIFIERS = {"alt": 0x0001, "ctrl": 0x0002, "shift": 0x0004, "super": 0x0008}
+_WIN_VK_F1 = 0x70
+_WIN_ERROR_HOTKEY_ALREADY_REGISTERED = 1409
+_WIN_PROBE_ID = 0x4D4B  # id bebas di rentang aplikasi (< 0xC000)
 
 _LISTEN = b"listen"
 _OK = b"ok"
@@ -193,6 +200,26 @@ class X11Hotkey:
             self._display = None
 
 
+def _user32():
+    """user32.dll dan pembaca GetLastError-nya (use_last_error: nilainya tidak tertimpa panggilan ctypes lain)."""
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    user32.RegisterHotKey.argtypes = (wintypes.HWND, ctypes.c_int, wintypes.UINT, wintypes.UINT)
+    user32.RegisterHotKey.restype = wintypes.BOOL
+    user32.UnregisterHotKey.argtypes = (wintypes.HWND, ctypes.c_int)
+    user32.UnregisterHotKey.restype = wintypes.BOOL
+    return user32, ctypes.get_last_error
+
+
+def _virtual_key(key: str) -> int:
+    """Kode virtual-key Windows: huruf dan angka = kode ASCII huruf besarnya, F1-F24 = 0x70-0x87."""
+    if len(key) > 1:
+        return _WIN_VK_F1 + int(key[1:]) - 1
+    return ord(key.upper())
+
+
 class KeyboardHotkey:
     """Windows: library `keyboard` (hook keyboard global tanpa hak admin)."""
 
@@ -201,11 +228,28 @@ class KeyboardHotkey:
         self.on_press = on_press
         self._handle = None
 
+    def _taken_by_other_app(self) -> bool:
+        """Hook `keyboard` tidak tahu bentrok: coba RegisterHotKey, lalu langsung lepas lagi.
+
+        Shortcut di dalam satu aplikasi (Ctrl+Shift+M di Chrome) tidak memakai RegisterHotKey, jadi
+        tidak terdeteksi. Error selain "sudah terdaftar" diabaikan: hook tetap bisa dipasang.
+        """
+        user32, last_error = _user32()
+        modifiers = 0
+        for mod in self.combo.modifiers:
+            modifiers |= _WIN_MODIFIERS[mod]
+        if user32.RegisterHotKey(None, _WIN_PROBE_ID, modifiers, _virtual_key(self.combo.key)):
+            user32.UnregisterHotKey(None, _WIN_PROBE_ID)
+            return False
+        return last_error() == _WIN_ERROR_HOTKEY_ALREADY_REGISTERED
+
     def start(self) -> Optional[str]:
         try:
             import keyboard
         except Exception as e:
             return f"library keyboard tidak tersedia ({e})"
+        if self._taken_by_other_app():
+            return "sudah dipakai aplikasi lain"
         names = [_WINDOWS_NAMES[m] for m in MODIFIER_ORDER if m in self.combo.modifiers]
         try:
             self._handle = keyboard.add_hotkey("+".join(names + [self.combo.key]), self.on_press)
