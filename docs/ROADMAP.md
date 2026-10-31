@@ -6,27 +6,14 @@
 
 ## 0. Menunggu merge
 
-| PR | Isi | Urutan |
-|---|---|---|
-| #22 | Maskot transparan di Linux (L3) | Pertama |
-| #23 | Buka aplikasi apa pun dari menu sistem + cache; rencana skill | Setelah #22 |
-| #24 | Skill buatan user (S1); spike agent visi di Linux | Setelah #23 |
-| #25 | Installer untuk dnf/pacman/zypper (L5); peta jalan ini | Setelah #24 |
-| #26 | T1: shortcut `Ctrl+Shift+M` dan `miku.py --trigger` | Setelah #25 |
-| #27 | Agent visi Fase 1: Miku membaca layar | Setelah #26 |
-| #28 | S2: "simpan ini sebagai skill" | Setelah #27 |
-| #29 | Langkah instalasi Linux di README; rencana MikuVision Setup | Setelah #28 |
-| (baru) | Installer I1: opsi baru `install.ps1` untuk wizard; rencana cek pembaruan (branch `feat/installer-options`) | Setelah #29 |
-| #21 | README lebih ringkas | Terakhir; bentrok kecil dengan #25 di teks instalasi Linux |
-
-Setelah semuanya merge dan daftar cek Windows (bagian 2) lulus: rilis **v1.5.0**.
+Tidak ada. #21–#33 masuk `main` pada 31 Okt dan dirilis sebagai **v1.5.0** (ringkasan di CHANGELOG).
 
 ## 1. Urutan berikutnya
 
 | # | Pekerjaan | OS | Rencana | Alasan urutan |
 |---|---|---|---|---|
-| 1 | Daftar cek di Windows | Windows | bagian 2 di bawah | Sejak v1.3.0, kode Windows berubah tanpa pernah dijalankan di Windows: backend dipindah (L2), jendela maskot dibungkus ulang (#22), pencarian aplikasi ditambah (#23). Selama ini hanya dites di CI |
-| 2 | Rilis v1.5.0 | keduanya | CHANGELOG | Mengumpulkan #21–#25 |
+| 1 | ~~Daftar cek di Windows~~ | Windows | bagian 2 di bawah | Selesai 31 Okt; dua baris yang gagal diperbaiki di #31–#33. Yang belum: suara oleh manusia, sebagian angka L4 |
+| 2 | ~~Rilis v1.5.0~~ | keduanya | CHANGELOG | Dirilis 31 Okt, mengumpulkan #21–#33 |
 | 3 | ~~**T1**: shortcut keyboard untuk mulai bicara~~ | keduanya | [VISION bagian 5, T1](PLAN_VISION_AGENT.md) | Selesai di Linux (31 Okt); Windows lewat daftar cek di bagian 2 |
 | 4 | ~~Agent visi Fase 1: membaca layar~~ | keduanya | VISION Fase 1 | Selesai di Linux (31 Okt). Windows: `describe_screen` lewat daftar cek di bagian 2, `find_on_screen` (UI Automation) masuk Fase 2 |
 | 5 | ~~S2: "simpan ini sebagai skill"~~ | keduanya | SKILLS S2 | Selesai (31 Okt); keputusan 2: ya, dengan konfirmasi |
@@ -35,7 +22,7 @@ Setelah semuanya merge dan daftar cek Windows (bagian 2) lulus: rilis **v1.5.0**
 | 8 | L4: benchmark Linux vs Windows | keduanya | LINUX L4 | Butuh angka Windows dari bagian 2 |
 | 9 | L5: uji di VM Fedora, Arch, Ubuntu | Linux | LINUX L5 | Installer sudah siap, belum dicoba di distro aslinya |
 | 10 | W1: Wayland | Linux | VISION, LINUX L5 | Menunggu keputusan 3 di bagian 3 |
-| 11 | **MikuVision Setup**: installer dengan antarmuka (`MikuVisionSetup.exe`), tanpa GitHub/terminal | Windows dulu, Linux menyusul | [PLAN_INSTALLER](PLAN_INSTALLER.md) | Untuk user yang repot lewat GitHub. Dikerjakan dari sesi Windows; I1 (opsi baru `install.ps1`) selesai 31 Okt, wizard (I2–I5) sebaiknya setelah daftar cek Windows lulus |
+| 11 | **MikuVision Setup**: installer dengan antarmuka (`MikuVisionSetup.exe`), tanpa GitHub/terminal | Windows dulu, Linux menyusul | [PLAN_INSTALLER](PLAN_INSTALLER.md) | Untuk user yang repot lewat GitHub. Dikerjakan dari sesi Windows; I1 (opsi baru `install.ps1`) selesai 31 Okt, daftar cek Windows selesai; berikutnya I2 (kerangka wizard) |
 | 12 | Cek pembaruan dari aplikasi: Miku memberi tahu bila ada rilis baru, satu klik ke Setup mode Perbarui | keduanya | [PLAN_INSTALLER bagian 6, fase I6](PLAN_INSTALLER.md) | Butuh `version.json` di rilis (I5) dan mode Perbarui (I4). Sekarang aplikasi bahkan belum punya nomor versi; menunggu keputusan 6 di bagian 3 |
 
 ## 2. Daftar cek di Windows
@@ -47,7 +34,7 @@ Dijalankan setelah boot ke Windows, di folder repo yang sama (`D:`). Lakukan set
 - Lulus dengan catatan:
   - urutan muat VRAM: 100% GPU, panggilan LLM pertama 1,3 s, tapi giliran pertama 3,9 s bila model perlu diminta ulang memanggil tool;
   - membaca layar: teks terbaca persis di skala 125%, tukar model ±13 s, pemuatan pertama ±30 s.
-- Skill buatan user: penyimpanan benar setelah #32, dan "mode fokus dong" menjalankan semua langkah skill bernilai tetap. Giliran "kecilkan volume ke 20 lalu putar lofi di youtube" masih hanya mengatur volume di ±1 dari 3 run (qwen3:4b), sehingga skill yang tersimpan pun hanya berisi volume. Perlu keputusan: anggap lulus untuk v1.5.0 dengan keterbatasan tercatat, atau tunggu.
+- Skill buatan user: penyimpanan benar setelah #32, dan "mode fokus dong" menjalankan semua langkah skill bernilai tetap. Giliran "kecilkan volume ke 20 lalu putar lofi di youtube" masih hanya mengatur volume di ±1 dari 3 run (qwen3:4b), sehingga skill yang tersimpan pun hanya berisi volume. Keputusan user (31 Okt): diterima untuk v1.5.0, keterbatasannya dicatat di CHANGELOG.
 - Belum diuji: bicara sungguhan ke mikrofon, dan sebagian angka L4.
 
 **Persiapan**
