@@ -94,7 +94,7 @@ def test_validate_rvc_files(tmp_path):
     model, index = tmp_path / "miku.pth", tmp_path / "miku.index"
     model.write_bytes(b"x")
     index.write_bytes(b"x")
-    selection = Selection(Path(r"C:\Apps\MikuVision"), components={"core", "brain", "rvc"})
+    selection = Selection(tmp_path / "MikuVision", components={"core", "brain", "rvc"})
     assert "Pilih file bobot" in components.validate_selection(selection, lambda p: True)
     selection.rvc_model, selection.rvc_index = str(index), str(model)
     assert "harus file .pth" in components.validate_selection(selection, lambda p: True)
