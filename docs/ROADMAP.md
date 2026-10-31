@@ -33,6 +33,7 @@ Setelah semuanya merge dan daftar cek Windows (bagian 2) lulus: rilis **v1.5.0**
 | 8 | L4: benchmark Linux vs Windows | keduanya | LINUX L4 | Butuh angka Windows dari bagian 2 |
 | 9 | L5: uji di VM Fedora, Arch, Ubuntu | Linux | LINUX L5 | Installer sudah siap, belum dicoba di distro aslinya |
 | 10 | W1: Wayland | Linux | VISION, LINUX L5 | Menunggu keputusan 3 di bagian 3 |
+| 11 | **MikuVision Setup**: installer dengan antarmuka (`MikuVisionSetup.exe`), tanpa GitHub/terminal | Windows dulu, Linux menyusul | [PLAN_INSTALLER](PLAN_INSTALLER.md) | Untuk user yang repot lewat GitHub. Dikerjakan dari sesi Windows; fase I1 (opsi baru `install.ps1`) bisa mulai kapan saja, wizard (I2–I5) sebaiknya setelah daftar cek Windows lulus |
 
 ## 2. Daftar cek di Windows
 
@@ -70,3 +71,4 @@ Dijalankan setelah boot ke Windows, di folder repo yang sama (`D:`). Lakukan set
 2. ~~S2: boleh Miku menyusun skill sendiri dari percakapan, dengan konfirmasi dulu?~~ Ya (31 Okt).
 3. Wayland (W1): perlu dikerjakan, atau cukup X11?
 4. Agent visi: tugas nyata apa yang paling ingin diotomatiskan, dan aplikasi apa yang tidak boleh disentuh (misalnya aplikasi bank)?
+5. Installer: nama, halaman lisensi, folder bawaan, halaman unduhan, dan code signing ([PLAN_INSTALLER](PLAN_INSTALLER.md) bagian 11).

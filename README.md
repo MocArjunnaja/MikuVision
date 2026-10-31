@@ -4,10 +4,11 @@
 
 # MikuVision
 
-**Asisten desktop Windows berwujud Hatsune Miku, 100% lokal.**<br>
+**Asisten desktop Windows dan Linux berwujud Hatsune Miku, 100% lokal.**<br>
 Mendengar suara Anda, berpikir dengan LLM lokal, menjalankan aksi di komputer, lalu menjawab dengan suara Miku.
 
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white)](#kebutuhan)
+[![Linux](https://img.shields.io/badge/Linux-X11%20(eksperimental)-FCC624?logo=linux&logoColor=black)](#linux-eksperimental)
 [![Python 3.10](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)](#kebutuhan)
 [![Ollama](https://img.shields.io/badge/LLM-Ollama%20%C2%B7%20qwen3-000000?logo=ollama&logoColor=white)](#pilihan-model)
 [![CUDA](https://img.shields.io/badge/GPU-CUDA%2012.8-76B900?logo=nvidia&logoColor=white)](#instalasi-cepat)
@@ -155,25 +156,37 @@ Bila drive C sempit, buat variabel environment user `HF_HOME` (misalnya `D:\hf_h
 
 ### Linux (eksperimental)
 
-Teruji di Linux Mint 22.3 (Cinnamon, X11) dengan RTX 4050. Suara dua arah, LLM, RVC, GUI, dokumen, dan aksi desktop (volume, buka/tutup aplikasi, buka folder, media) sudah jalan, semuanya tanpa sudo. Perbedaan dari Windows: WhatsApp hanya menyiapkan draf di WhatsApp Web (tekan Enter sendiri), Telegram butuh Telegram Desktop, dan maskot belum transparan. Rencana berikutnya ada di [docs/PLAN_LINUX.md](docs/PLAN_LINUX.md).
+Teruji di Linux Mint 22.3 (Cinnamon, X11) dengan RTX 4050. Yang sudah jalan, semuanya tanpa sudo:
+- suara dua arah, LLM, RVC, GUI, dan dokumen;
+- aksi desktop: volume, buka/tutup aplikasi, buka folder, media;
+- maskot transparan, shortcut `Ctrl+Shift+M`, dan membaca layar.
 
-1. Pastikan driver NVIDIA aktif: `nvidia-smi` harus menampilkan GPU. Setelah memasang driver baru, reboot dulu.
+Perbedaan dari Windows: WhatsApp hanya menyiapkan draf di WhatsApp Web (tekan Enter sendiri), dan Telegram butuh Telegram Desktop. Distro lain (Fedora, Arch, openSUSE) didukung installer tetapi belum diuji langsung. Rencana berikutnya ada di [docs/PLAN_LINUX.md](docs/PLAN_LINUX.md).
+
+1. Pastikan driver NVIDIA aktif: `nvidia-smi` harus menampilkan GPU. Setelah memasang driver baru, reboot dulu. Tanpa GPU NVIDIA, pakai `./install.sh --cpu` di langkah 2.
 2. Ambil kode, lalu jalankan installer dari folder repo:
    ```bash
-   ./install.sh
+   git clone https://github.com/MocArjunnaja/MikuVision.git
    ```
-   Installer menanyakan dulu sebelum memakai `sudo`: paket sistem lewat `apt`, `dnf`, `pacman`, atau `zypper` (git, PortAudio, xdotool, wmctrl, playerctl, xclip) dan Ollama dari skrip resminya. Opsi sama seperti versi Windows: `--yes`, `--cpu`, `--with-rvc`, `--skip-ollama`, `--skip-shortcut`, `--skip-test`, `--python-version 3.x`.
-3. Buka **MikuVision** dari menu aplikasi atau Desktop, atau jalankan `./run.sh`.
+   ```bash
+   cd MikuVision && ./install.sh
+   ```
+   - Installer menanyakan dulu sebelum memakai `sudo`. Yang dipasangnya: paket sistem lewat `apt`, `dnf`, `pacman`, atau `zypper` (git, PortAudio, xdotool, wmctrl, playerctl, xclip), dan Ollama dari skrip resminya. Ollama yang sudah terpasang, misalnya dari paket distro, dipakai apa adanya.
+   - Instalasi pertama ±7 menit di laptop pengembang, termasuk mengunduh PyTorch. Model LLM (2,5 GB) diunduh Ollama sesudahnya. Instalasi yang terputus aman diulang: langkah yang sudah beres dilewati.
+   - Opsi sama seperti versi Windows: `--yes`, `--cpu`, `--with-rvc`, `--skip-ollama`, `--skip-shortcut`, `--skip-test`, `--python-version 3.x`.
+3. **Masuk ke sesi X11.** KDE Plasma dan GNOME biasanya memakai Wayland. Pilih sesi X11/Xorg di layar login, bila tersedia. Cek dengan `echo $XDG_SESSION_TYPE`.
+4. Buka **MikuVision** dari menu aplikasi atau Desktop, atau jalankan `./run.sh`. Untuk maskot desktop: `.venv/bin/python miku.py` (repo di partisi NTFS/FAT: `~/.local/share/mikuvision/venv/bin/python miku.py`).
 
 <details>
 <summary><b>Catatan Linux</b></summary>
 
 - **Lokasi env:** bila folder repo ada di partisi Windows (NTFS/FAT, misalnya dual-boot), uv, Python 3.10, dan venv disimpan di `~/.local/share/mikuvision/` karena venv di NTFS lambat. Di partisi Linux biasa: `.tools/` dan `.venv/` di folder repo. Lokasi lain: `MIKU_VENV=/path/venv`.
-- **Sesi X11** dibutuhkan untuk aksi keyboard/mouse; di Wayland installer memberi peringatan.
-- **Distro lain:** installer mengenali keluarga Debian/Ubuntu (apt), Fedora/RHEL (dnf), Arch/Manjaro (pacman), dan openSUSE (zypper), lalu memakai nama paket distro itu. Distro selain itu: pasang paket di atas sendiri. Yang baru diuji langsung hanya Linux Mint; rinciannya di [docs/PLAN_LINUX.md](docs/PLAN_LINUX.md) bagian L5.
-- **Ollama** jalan sebagai service systemd; modelnya di `/usr/share/ollama/.ollama/models`.
+- **Sesi X11** dibutuhkan untuk maskot transparan, shortcut `Ctrl+Shift+M`, klik/ketik lewat `xdotool`, dan membaca jendela aktif. Di Wayland, installer dan Miku memberi peringatan; suara, LLM, GUI, dan dokumen tetap jalan. Pengganti shortcut di Wayland: `miku.py --trigger` (lihat [Menjalankan](#menjalankan)).
+- **Distro lain:** installer mengenali keluarga Debian/Ubuntu (apt), Fedora/RHEL (dnf), Arch/Manjaro (pacman), dan openSUSE (zypper), lalu memakai nama paket distro itu. Contohnya, compiler untuk RVC adalah `build-essential`, `gcc-c++ make`, atau `base-devel`. Distro selain itu: pasang paket di atas sendiri. Yang baru diuji langsung hanya Linux Mint; rinciannya di [docs/PLAN_LINUX.md](docs/PLAN_LINUX.md) bagian L5.
+- **Opsional:** paket `python3-pyatspi` (Debian/Ubuntu/Mint, Fedora) atau `python-atspi` (Arch) untuk "tombol apa saja di jendela ini?", dan `ollama pull qwen3-vl:4b-instruct` (3,3 GB) untuk membaca layar. Installer tidak memasang keduanya.
+- **Ollama** jalan sebagai service systemd. Model dari skrip resminya ada di `/usr/share/ollama/.ollama/models`.
 - **Cache Hugging Face** (Whisper, MeloTTS): `~/.cache/huggingface`, atau atur `HF_HOME`.
-- **Ruang disk:** ±11 GB env + cache uv, ±2 GB cache Hugging Face, ±2,5 GB model LLM.
+- **Ruang disk:** ±11 GB env + cache uv, ±2 GB cache Hugging Face, ±2,5 GB model LLM (+3,3 GB model visi bila dipasang).
 - **Menghapus:** `rm -rf ~/.local/share/mikuvision ~/.local/share/applications/mikuvision.desktop ~/Desktop/MikuVision.desktop`. Ollama dihapus terpisah.
 
 </details>
@@ -184,7 +197,7 @@ Teruji di Linux Mint 22.3 (Cinnamon, X11) dengan RTX 4050. Suara dua arah, LLM, 
 |---|---|---|
 | OS | Windows 10/11 64-bit, atau Linux x86_64 dengan X11 (eksperimental) | Windows 11, Linux Mint 22.3 |
 | GPU | Opsional (CPU bisa, tapi lambat) | NVIDIA RTX 4050 Laptop 6 GB |
-| Disk | ±12 GB | |
+| Disk | ±16 GB (+3,3 GB untuk membaca layar) | |
 | Lainnya | Mikrofon, internet saat instalasi | |
 
 ## Menjalankan
@@ -276,10 +289,12 @@ Tanpa RVC, Miku bicara memakai suara dasar MeloTTS Jepang. Untuk timbre khas Mik
 
 1. Simpan file bobot ke `models/miku_default_rvc/weights/miku_default_rvc.pth`.
 2. Simpan file index ke `models/miku_default_rvc/logs/miku_default_rvc/added_IVF4457_Flat_nprobe_1_miku_default_rvc_v2.index` (atau ubah `index_path` di `config.py` sesuai nama file Anda).
-3. Jalankan ulang `install.bat`. Installer mendeteksi model dan memasang `rvc-python`; GUI lalu menampilkan **RVC: ready**.
+3. Jalankan ulang installer: `install.bat` di Windows, `./install.sh` di Linux. Installer mendeteksi model dan memasang `rvc-python`; GUI lalu menampilkan **RVC: ready**.
 
 Catatan teknis:
-- `rvc-python` bergantung pada `fairseq 0.12.2`, yang hanya tersedia sebagai source code dan dikompilasi saat instalasi. Bila gagal, pasang [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) dengan workload **Desktop development with C++**, lalu jalankan installer lagi. Aplikasi tetap jalan tanpa RVC.
+- `rvc-python` bergantung pada `fairseq 0.12.2`, yang hanya tersedia sebagai source code dan dikompilasi saat instalasi. Bila gagal, aplikasi tetap jalan tanpa RVC. Pasang compiler-nya, lalu jalankan installer lagi:
+  - **Windows:** [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) dengan workload **Desktop development with C++**.
+  - **Linux:** installer menawarkannya sendiri (`build-essential`, `gcc-c++ make`, atau `base-devel`, sesuai distro).
 - `fairseq` tidak jalan di Python 3.11, karena itu installer memakai Python 3.10.
 - Konversi pertama mengunduh `hubert_base.pt` dan `rmvpe.pt` (sekali saja). Setelah itu ±1 detik per kalimat di RTX 4050.
 
@@ -320,10 +335,11 @@ Benchmark yang butuh GPU/Ollama ada di `experiments/` beserta hasilnya (`RESULTS
 
 | Gejala | Solusi |
 |---|---|
-| `install.bat` gagal | Baca pesan `[ERROR]` terakhir dan `logs\install-*.log`, perbaiki, lalu jalankan ulang |
-| Shortcut MikuVision tidak membuka apa-apa | Lihat `data/logs/gui.log`, atau jalankan `run.bat` untuk melihat error di konsol |
-| `Model 'qwen3:4b-instruct' tidak ditemukan` | Jalankan `ollama pull qwen3:4b-instruct`, pastikan aplikasi Ollama sedang berjalan |
-| `Gagal connect ke Ollama` | Buka aplikasi Ollama (ikon di system tray) |
+| `install.bat` / `install.sh` gagal | Baca pesan `[ERROR]` terakhir dan `logs/install-*.log`, perbaiki, lalu jalankan ulang |
+| Shortcut MikuVision tidak membuka apa-apa | Lihat `data/logs/gui.log`, atau jalankan `run.bat` (Linux: `./run.sh`) dari terminal untuk melihat error |
+| `Model 'qwen3:4b-instruct' tidak ditemukan` | Jalankan `ollama pull qwen3:4b-instruct`, pastikan Ollama sedang berjalan |
+| `Gagal connect ke Ollama` | Windows: buka aplikasi Ollama (ikon di system tray). Linux: `sudo systemctl start ollama`, atau `ollama serve` bila Ollama tidak dipasang sebagai service |
+| Linux: peringatan Wayland; maskot tidak transparan, shortcut atau klik tidak jalan | Keluar, lalu pilih sesi X11/Xorg di layar login. Cek dengan `echo $XDG_SESSION_TYPE` |
 | Error MeloTTS / `unidic` | Jalankan `python -m unidic download` |
 | `RVC unavailable` | Model RVC belum diletakkan, atau `rvc-python` gagal dipasang. Lihat [Suara Miku (RVC)](#suara-miku-rvc) |
 | `webrtcvad` gagal di-install | Pastikan memakai paket `webrtcvad-wheels` dari `requirements.txt` |
