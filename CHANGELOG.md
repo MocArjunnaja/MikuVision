@@ -30,7 +30,12 @@ Mulai v1.7.0 rilis melampirkan **`MikuVisionSetup-linux-x86_64`** di samping `Mi
 - Binary buatan lokal (Python 3.12 Mint, spec yang sama): pasang dari nol dengan pilihan bawaan dalam 5 menit 38 detik; binary menyalin dirinya ke `.tools/MikuVisionSetup`, dan entri menu menunjuk ke sana.
 - `pytest`: 685 lulus di venv aplikasi (38 dilewati); Python sistem seperti CI: 667 lulus, 56 dilewati. 3 test baru untuk environment bersih.
 - Sesudah uji, instalasi uji dihapus dan peluncur clone git di menu dan Desktop dikembalikan.
-- **Belum diuji:** jendela password `pkexec` dan distro selain Mint. Teman pengguna Arch bisa mencoba artifact `rilis-uji` (atau rilis v1.7.0); hasilnya dicatat di sini.
+- **Jendela password `pkexec`** (1 Nov, di `test/v1.7.0`):
+  - `install.sh --yes --sudo-cmd pkexec --skip-ollama --skip-shortcut --skip-test`, dengan argumen yang sama seperti dari Setup. `xclip` (terpasang, 0.13-3) disembunyikan dari PATH proses itu saja, supaya installer menganggapnya kurang.
+  - Jendela password sistem muncul dan user mengisinya. `pkexec apt-get install -y xclip` lalu menjawab "xclip is already the newest version (0.13-3). 0 upgraded, 0 newly installed", dan installer selesai dalam 21 s tanpa error.
+  - Sistem tidak berubah: versi `xclip` sama, dan riwayat apt kosong.
+  - Belum: memasang Ollama sebagai root lewat `pkexec` (Ollama sudah ada di laptop ini).
+- **Belum diuji:** distro selain Mint. Teman pengguna Arch bisa mencoba artifact `rilis-uji` (atau rilis v1.7.0); hasilnya dicatat di sini.
 
 ---
 

@@ -242,7 +242,7 @@ Workflow baru `.github/workflows/release-setup.yml`, dipicu tag `v*`:
 - **Folder aplikasi tidak boleh di NTFS/FAT.** Di sana `install.sh` menaruh venv di `~/.local/share/mikuvision/venv`, tempat yang dipakai bersama clone git di partisi Windows dan tidak ikut terhapus oleh Hapus. Folder model boleh di NTFS.
 - **Python untuk build:** Tk dari python-build-standalone (uv) tanpa Xft membuat wizard tampak rusak; Python dari distro normal. IL3 membangun binary dengan Python dari apt di Ubuntu 22.04 (glibc 2.35).
 - **Bug yang ikut ketemu:** tombol Tutup setelah Hapus tidak menutup jendela, juga di Windows (`finish()` hanya ada di halaman Selesai). Diperbaiki di kelas dasar halaman.
-- **Belum diuji:** jendela password `pkexec` (laptop uji sudah punya semua paket dan Ollama), sesi Wayland, distro selain Mint, dan binary hasil PyInstaller untuk alur sungguhan (IL3).
+- **Belum diuji:** sesi Wayland, distro selain Mint, dan memasang Ollama sebagai root lewat `pkexec`. Binary PyInstaller untuk alur sungguhan diuji di IL3. Jendela password `pkexec` untuk paket sistem diuji 1 Nov (CHANGELOG IL3): `xclip` disembunyikan dari PATH supaya dianggap kurang, lalu apt memasang ulang tanpa perubahan.
 
 **Hasil IL3** (1 Nov 2026). Binary Linux di workflow rilis, rinciannya di CHANGELOG. Keputusan dan temuan:
 - **Dibangun di kontainer `ubuntu:22.04`, bukan langsung di `ubuntu-latest`.** Binary PyInstaller hanya jalan di glibc yang sama atau lebih baru dari mesin build; Ubuntu 22.04 (glibc 2.35) mencakup Mint 21–22, Ubuntu 22.04+, Fedora, dan Arch. Runner `ubuntu-22.04` sendiri sedang dipensiunkan GitHub (mulai September 2026), sedangkan kontainer tetap tersedia. Python dan Tk dari apt, karena Tk dari uv tanpa Xft (IL2).
