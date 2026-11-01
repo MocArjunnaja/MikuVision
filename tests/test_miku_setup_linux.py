@@ -449,3 +449,44 @@ def test_setup_logs_and_relaunch_on_linux(tmp_path, monkeypatch):
     assert entry.log_dir() == tmp_path / "mikuvision" / "setup"
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     assert entry.relaunch_outside(tmp_path, ["--uninstall"]) is False  # file yang berjalan boleh dihapus
+
+
+# ───────────────────────── binary PyInstaller ─────────────────────────
+
+def test_clean_env_drops_the_pyinstaller_library_path():
+    from miku_setup.procenv import clean_env
+
+    frozen = {"PATH": "/usr/bin", "LD_LIBRARY_PATH": "/tmp/_MEIabc", "_PYI_ARCHIVE_FILE": "/x/Setup",
+              "_PYI_APPLICATION_HOME_DIR": "/tmp/_MEIabc", "_MEIPASS2": "/tmp/_MEIabc"}
+    assert clean_env(frozen) == {"PATH": "/usr/bin"}
+    assert clean_env(dict(frozen, LD_LIBRARY_PATH_ORIG="/opt/cuda/lib")) == \
+        {"PATH": "/usr/bin", "LD_LIBRARY_PATH": "/opt/cuda/lib"}
+
+
+def test_child_env_only_changes_the_frozen_linux_binary(monkeypatch):
+    from miku_setup import procenv
+
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/tmp/_MEIabc")
+    monkeypatch.setenv("_PYI_ARCHIVE_FILE", "/x/Setup")
+    assert procenv.child_env() is None  # dari kode sumber: diwarisi apa adanya
+    assert procenv.child_env({"LC_ALL": "C"})["LD_LIBRARY_PATH"] == "/tmp/_MEIabc"
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "platform", "linux")
+    env = procenv.child_env({"LC_ALL": "C"})
+    assert "LD_LIBRARY_PATH" not in env and "_PYI_ARCHIVE_FILE" not in env and env["LC_ALL"] == "C"
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert procenv.child_env() is None  # Windows tidak berubah
+
+
+@linux_only
+def test_installer_and_app_start_without_the_bundled_libraries(tmp_path, monkeypatch):
+    """install.sh dan MikuVision yang dijalankan binary tidak mewarisi /tmp/_MEI… (library Ubuntu 22.04)."""
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/tmp/_MEIabc")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    (tmp_path / "run.sh").write_text('echo "[${LD_LIBRARY_PATH:-}] [${HOME:-}]" > env.txt\n')
+    assert launch.launch(tmp_path) is None
+    deadline = time.time() + 10
+    while not (tmp_path / "env.txt").is_file() or not (tmp_path / "env.txt").read_text().strip():
+        assert time.time() < deadline, "run.sh tidak jalan"
+        time.sleep(0.05)
+    assert (tmp_path / "env.txt").read_text().split() == ["[]", f"[{os.environ['HOME']}]"]

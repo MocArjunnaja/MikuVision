@@ -1,6 +1,8 @@
 # PyInstaller: MikuVisionSetup.exe satu file tanpa jendela konsol (docs/PLAN_INSTALLER.md bagian 7).
 #     pip install -r requirements-setup.txt
 #     pyinstaller miku_setup.spec        ->  dist\MikuVisionSetup.exe
+# Di Linux spec yang sama menghasilkan dist/MikuVisionSetup (ikon diabaikan). Pakai Python dari distro, bukan
+# dari uv: Tk python-build-standalone tanpa Xft (lihat release-setup.yml, job linux).
 # Tanpa UPX: UPX sering membuat antivirus menandai exe.
 from PyInstaller.utils.hooks import collect_data_files
 

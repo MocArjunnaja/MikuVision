@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
+from .procenv import child_env
+
 APP_NAME = "MikuVision"
 PUBLISHER = "MocArjunnaja"
 ABOUT_URL = "https://github.com/MocArjunnaja/MikuVision"
@@ -206,7 +208,7 @@ def _refresh_menu(apps: Path):
     command = shutil.which("update-desktop-database")
     if command:
         try:
-            subprocess.run([command, str(apps)], capture_output=True, timeout=30)
+            subprocess.run([command, str(apps)], capture_output=True, timeout=30, env=child_env())
         except (OSError, subprocess.SubprocessError):
             pass
 

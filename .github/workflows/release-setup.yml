@@ -1,6 +1,9 @@
-# Aset rilis untuk MikuVision Setup (docs/PLAN_INSTALLER.md bagian 7): MikuVisionSetup.exe, zip kode,
-# version.json, dan SHA256SUMS. Wizard membaca ketiganya dari releases/latest/download/, tanpa GitHub API.
+# Aset rilis untuk MikuVision Setup (docs/PLAN_INSTALLER.md bagian 7): MikuVisionSetup.exe,
+# MikuVisionSetup-linux-x86_64, zip kode, version.json, dan SHA256SUMS. Wizard membaca zip, version.json, dan
+# SHA256SUMS dari releases/latest/download/, tanpa GitHub API.
 # Dipicu tag vX.Y.Z; bisa dijalankan ulang untuk tag yang sudah ada lewat "Run workflow".
+# Pull request yang mengubah Setup membangun semuanya juga, tanpa melampirkan ke rilis: hasilnya artifact
+# "rilis-uji" untuk dicoba di Windows dan Linux.
 name: release-setup
 
 on:
@@ -11,53 +14,125 @@ on:
       tag:
         description: "Tag yang sudah ada, misalnya v1.6.0"
         required: true
+  pull_request:
+    paths:
+      - ".github/workflows/release-setup.yml"
+      - "miku_setup/**"
+      - "miku_setup.spec"
+      - "MikuVisionSetup.py"
+      - "requirements-setup.txt"
 
 permissions:
   contents: write
 
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  # Pull request: checkout bawaan (commit merge), tanpa tag
+  REF: ${{ github.event_name != 'pull_request' && (github.event.inputs.tag || github.ref_name) || '' }}
+
 jobs:
+  # Binary Linux satu file (PLAN_INSTALLER IL3). Dibangun di kontainer Ubuntu 22.04: glibc 2.35 jalan juga di
+  # distro yang lebih baru (Mint 21–22, Ubuntu 22.04+, Fedora, Arch), dan Tk dari apt memakai Xft. Python dari
+  # uv (python-build-standalone) tidak dipakai: Tk-nya tanpa Xft, sehingga font kasar dan tanda centang hilang.
+  linux:
+    runs-on: ubuntu-latest
+    container: ubuntu:22.04
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Paket build
+        run: |
+          apt-get update
+          # libpython3.10: PyInstaller membawa libpython3.10.so.1.0 ke dalam binary
+          apt-get install -y --no-install-recommends ca-certificates git python3 python3-venv python3-tk \
+            libpython3.10 binutils xvfb xauth
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REF }}
+      - name: Bangun MikuVisionSetup-linux-x86_64
+        run: |
+          python3 -m venv /opt/setup
+          /opt/setup/bin/pip install -r requirements-setup.txt
+          /opt/setup/bin/python -m PyInstaller --noconfirm miku_setup.spec
+          mv dist/MikuVisionSetup dist/MikuVisionSetup-linux-x86_64
+          ls -la dist
+      - name: Uji jalan (mode uji, layar virtual)
+        shell: bash
+        run: |
+          # Masih berjalan setelah 20 detik (dihentikan timeout, kode 124) = jendela terbuka tanpa error import
+          set +e
+          xvfb-run -a timeout 20 dist/MikuVisionSetup-linux-x86_64 --dry-run
+          code=$?
+          set -e
+          echo "kode keluar: $code"
+          cat "$HOME"/.local/share/mikuvision/setup/setup-*.log
+          [ "$code" -eq 124 ]
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MikuVisionSetup-linux-x86_64
+          path: dist/MikuVisionSetup-linux-x86_64
+          if-no-files-found: error
+
+  # Exe Windows, zip kode, version.json, dan SHA256SUMS (memuat juga binary Linux), lalu lampirkan ke rilis
   build:
+    needs: linux
     runs-on: windows-latest
     defaults:
       run:
         shell: bash
     env:
-      TAG: ${{ github.event.inputs.tag || github.ref_name }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ env.REF }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
       - name: Versi dari tag
         run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "VERSION=0.0.0-pr${{ github.event.number }}" >> "$GITHUB_ENV"
+            echo "ARCHIVE_REF=HEAD" >> "$GITHUB_ENV"
+            exit 0
+          fi
           VERSION="${TAG#v}"
           if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
             echo "Tag $TAG bukan vX.Y.Z" >&2
             exit 1
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "ARCHIVE_REF=$TAG" >> "$GITHUB_ENV"
       - name: Bangun MikuVisionSetup.exe
         run: |
           python -m pip install -r requirements-setup.txt
           python -m PyInstaller --noconfirm miku_setup.spec
+      - uses: actions/download-artifact@v4
+        with:
+          name: MikuVisionSetup-linux-x86_64
+          path: release
       - name: Zip kode, version.json, dan SHA256SUMS
         run: |
           mkdir -p release
           cp dist/MikuVisionSetup.exe release/
-          git archive --format=zip --prefix="MikuVision-$VERSION/" -o "release/MikuVision-$VERSION.zip" "$TAG"
+          git archive --format=zip --prefix="MikuVision-$VERSION/" -o "release/MikuVision-$VERSION.zip" "$ARCHIVE_REF"
           python -c "import json, sys, datetime; json.dump({'version': sys.argv[1], 'date': datetime.date.today().isoformat(), 'notes_url': sys.argv[2]}, open('release/version.json', 'w'))" \
             "$VERSION" "https://github.com/${{ github.repository }}/releases/tag/$TAG"
           cd release
-          sha256sum "MikuVision-$VERSION.zip" MikuVisionSetup.exe > SHA256SUMS
+          sha256sum "MikuVision-$VERSION.zip" MikuVisionSetup.exe MikuVisionSetup-linux-x86_64 > SHA256SUMS
           cat SHA256SUMS version.json
           ls -la
       - name: Lampirkan ke rilis
+        if: github.event_name != 'pull_request'
         run: |
           if ! gh release view "$TAG" > /dev/null 2>&1; then
             gh release create "$TAG" --verify-tag --title "MikuVision $VERSION" --generate-notes
           fi
           gh release upload "$TAG" release/* --clobber
+      - name: Rilis uji untuk pull request
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rilis-uji
+          path: release

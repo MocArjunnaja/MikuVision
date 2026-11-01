@@ -2,7 +2,7 @@
 
 **Tujuan:** siapa saja bisa memasang MikuVision tanpa membuka GitHub, git, atau terminal. Caranya: unduh satu file `MikuVisionSetup.exe` (±25 MB), klik Lanjut beberapa kali, lalu Miku menyapa. Rasanya seperti installer aplikasi desktop besar (misalnya Ansys): ada pilihan folder, pilihan komponen, progres unduhan, serta Perbarui/Perbaiki/Hapus.
 
-**Status:** I1–I5 selesai (I1 dan I2 31 Okt 2026, I3–I5 1 Nov 2026); exe pertama terbit bersama rilis v1.6.0. I6 rencana. Dikerjakan di Windows dulu (fase I1–I6); Linux menyusul (fase IL). Urutan terhadap rencana lain: [`ROADMAP.md`](ROADMAP.md).
+**Status:** I1–I5 selesai (I1 dan I2 31 Okt 2026, I3–I5 1 Nov 2026); exe pertama terbit bersama rilis v1.6.0. I6 rencana. Dikerjakan di Windows dulu (fase I1–I6); Linux menyusul (fase IL): IL1–IL3 selesai 1 Nov di #40–#42, menunggu cek ulang di Windows ([`ROADMAP.md`](ROADMAP.md) bagian 2a) sebelum di-merge dan dirilis sebagai v1.7.0. Urutan terhadap rencana lain: [`ROADMAP.md`](ROADMAP.md).
 
 **Untuk yang mengerjakan:** baca bagian 1–4 untuk gambaran, lalu kerjakan fase di bagian 8 satu per satu. Tiap fase satu PR, dengan kriteria selesai yang bisa dicek. Kode installer yang sudah teruji (`install.ps1`) **dibungkus, bukan ditulis ulang**.
 
@@ -242,7 +242,12 @@ Workflow baru `.github/workflows/release-setup.yml`, dipicu tag `v*`:
 - **Folder aplikasi tidak boleh di NTFS/FAT.** Di sana `install.sh` menaruh venv di `~/.local/share/mikuvision/venv`, tempat yang dipakai bersama clone git di partisi Windows dan tidak ikut terhapus oleh Hapus. Folder model boleh di NTFS.
 - **Python untuk build:** Tk dari python-build-standalone (uv) tanpa Xft membuat wizard tampak rusak; Python dari distro normal. IL3 membangun binary dengan Python dari apt di Ubuntu 22.04 (glibc 2.35).
 - **Bug yang ikut ketemu:** tombol Tutup setelah Hapus tidak menutup jendela, juga di Windows (`finish()` hanya ada di halaman Selesai). Diperbaiki di kelas dasar halaman.
-- **Belum diuji:** jendela password `pkexec` (laptop uji sudah punya semua paket dan Ollama), sesi Wayland, distro selain Mint, dan binary hasil PyInstaller untuk alur sungguhan (IL3).
+- **Belum diuji:** sesi Wayland, distro selain Mint, dan memasang Ollama sebagai root lewat `pkexec`. Binary PyInstaller untuk alur sungguhan diuji di IL3. Jendela password `pkexec` untuk paket sistem diuji 1 Nov (CHANGELOG IL3): `xclip` disembunyikan dari PATH supaya dianggap kurang, lalu apt memasang ulang tanpa perubahan.
+
+**Hasil IL3** (1 Nov 2026). Binary Linux di workflow rilis, rinciannya di CHANGELOG. Keputusan dan temuan:
+- **Dibangun di kontainer `ubuntu:22.04`, bukan langsung di `ubuntu-latest`.** Binary PyInstaller hanya jalan di glibc yang sama atau lebih baru dari mesin build; Ubuntu 22.04 (glibc 2.35) mencakup Mint 21–22, Ubuntu 22.04+, Fedora, dan Arch. Runner `ubuntu-22.04` sendiri sedang dipensiunkan GitHub (mulai September 2026), sedangkan kontainer tetap tersedia. Python dan Tk dari apt, karena Tk dari uv tanpa Xft (IL2).
+- **Library bawaan binary tidak boleh bocor ke program lain.** Bootloader PyInstaller mengarahkan `LD_LIBRARY_PATH` ke `/tmp/_MEI…`; tanpa perbaikan, `install.sh` (curl, git) dan MikuVision yang dijalankan Setup ikut memuat library Ubuntu 22.04. Semua program yang dijalankan Setup di Linux kini memakai environment bersih (`miku_setup/procenv.py`).
+- **Pull request ikut membangun.** Perubahan Setup di PR membangun exe, binary Linux, zip, `version.json`, dan `SHA256SUMS` tanpa melampirkan ke rilis (artifact `rilis-uji`), jadi rilis tidak lagi menjadi tempat pertama build Linux dicoba.
 
 ## 9. Uji dan risiko
 

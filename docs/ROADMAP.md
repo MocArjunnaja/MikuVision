@@ -6,7 +6,7 @@
 
 ## 0. Menunggu merge
 
-Tidak ada. #21–#33 dirilis sebagai **v1.5.0** (31 Okt); #35–#38 (MikuVision Setup) dirilis sebagai **v1.6.0** (1 Nov). Ringkasan di CHANGELOG.
+MikuVision Setup untuk Linux, bertumpuk: [#40](https://github.com/MocArjunnaja/MikuVision/pull/40) (IL1) → [#41](https://github.com/MocArjunnaja/MikuVision/pull/41) (IL2) → [#42](https://github.com/MocArjunnaja/MikuVision/pull/42) (IL3). Semuanya lulus uji terima di Mint, termasuk binary dari CI. **Keputusan user (1 Nov): tunggu cek ulang di Windows (bagian 2a) dulu**, baru merge berurutan lalu rilis **v1.7.0**. Sebelumnya: #21–#33 dirilis sebagai **v1.5.0** (31 Okt); #35–#38 (MikuVision Setup) sebagai **v1.6.0** (1 Nov).
 
 ## 1. Urutan berikutnya
 
@@ -22,7 +22,7 @@ Tidak ada. #21–#33 dirilis sebagai **v1.5.0** (31 Okt); #35–#38 (MikuVision 
 | 8 | L4: benchmark Linux vs Windows | keduanya | LINUX L4 | Butuh angka Windows dari bagian 2 |
 | 9 | L5: uji di VM Fedora, Arch, Ubuntu | Linux | LINUX L5 | Installer sudah siap, belum dicoba di distro aslinya |
 | 10 | W1: Wayland | Linux | VISION, LINUX L5 | Menunggu keputusan 3 di bagian 3 |
-| 11 | **MikuVision Setup**: installer dengan antarmuka (`MikuVisionSetup.exe`), tanpa GitHub/terminal | Windows dulu, Linux menyusul | [PLAN_INSTALLER](PLAN_INSTALLER.md) | Untuk user yang repot lewat GitHub. Dikerjakan dari sesi Windows; I1 (opsi baru `install.ps1`) dan I2 (kerangka wizard, `python -m miku_setup.main --dry-run`) selesai 31 Okt; I3 (unduh rilis, runner `install.ps1`, progres, batal lalu lanjut), I4 ("Apps & features", Perbarui/Perbaiki/Hapus), dan I5 (`MikuVisionSetup.exe`, workflow rilis) selesai 1 Nov; exe pertama terbit di v1.6.0. Linux (IL): IL1 (opsi `install.sh`) dan IL2 (wizard yang sama jalan di Linux, uji terima di Mint lulus) selesai 1 Nov; IL3 (binary Linux di rilis) berikutnya, lalu rilis v1.7.0 |
+| 11 | **MikuVision Setup**: installer dengan antarmuka (`MikuVisionSetup.exe`), tanpa GitHub/terminal | Windows dulu, Linux menyusul | [PLAN_INSTALLER](PLAN_INSTALLER.md) | Untuk user yang repot lewat GitHub. Dikerjakan dari sesi Windows; I1 (opsi baru `install.ps1`) dan I2 (kerangka wizard, `python -m miku_setup.main --dry-run`) selesai 31 Okt; I3 (unduh rilis, runner `install.ps1`, progres, batal lalu lanjut), I4 ("Apps & features", Perbarui/Perbaiki/Hapus), dan I5 (`MikuVisionSetup.exe`, workflow rilis) selesai 1 Nov; exe pertama terbit di v1.6.0. Linux (IL): IL1 (opsi `install.sh`) dan IL2 (wizard yang sama jalan di Linux, uji terima di Mint lulus) selesai 1 Nov; IL3 (binary Linux di rilis, #42) selesai 1 Nov; menunggu cek ulang di Windows (bagian 2a), lalu merge #40–#42 dan rilis v1.7.0 |
 | 12 | Cek pembaruan dari aplikasi: Miku memberi tahu bila ada rilis baru, satu klik ke Setup mode Perbarui | keduanya | [PLAN_INSTALLER bagian 6, fase I6](PLAN_INSTALLER.md) | Butuh `version.json` di rilis (I5) dan mode Perbarui (I4). Sekarang aplikasi bahkan belum punya nomor versi; menunggu keputusan 6 di bagian 3 |
 
 ## 2. Daftar cek di Windows
@@ -62,6 +62,19 @@ Dijalankan setelah boot ke Windows, di folder repo yang sama (`D:`). Lakukan set
 
 **Bahan untuk rencana berikutnya**
 - Agent visi Fase 2: `find_on_screen` versi Windows butuh UI Automation (`uiautomation`, dipakai di spike Fase 0 Windows); catat apakah paket itu terpasang tanpa masalah. OCR tidak dibutuhkan di Fase 1 karena qwen3-vl membaca teks dari screenshot.
+
+## 2a. Cek ulang di Windows sebelum v1.7.0
+
+Setup untuk Linux (#40–#42) menyentuh kode yang juga dipakai Windows. Di Linux semuanya lulus (CHANGELOG IL2 dan IL3), dan CI Windows lulus; yang berikut perlu dicoba dengan exe sungguhan **sebelum #40–#42 di-merge**. Exe-nya ada di artifact **rilis-uji** dari workflow `release-setup` di PR #42 (zip `0.0.0-pr42`, `version.json`, `SHA256SUMS`), atau bangun sendiri dengan `pyinstaller miku_setup.spec` dari branch `feat/setup-linux-binary` (memuat ketiga PR).
+
+Hasilnya dicatat di entri CHANGELOG IL3 (bagian Pengujian). Bila semua lulus: merge #40 → #41 → #42, lalu rilis v1.7.0. Bila ada yang gagal: perbaiki di branch `feat/setup-linux-binary` (#42), lalu cek lagi.
+
+| Cek | Kenapa | Lulus bila |
+|---|---|---|
+| Pasang → Perbarui → Perbaiki → Hapus → pasang lagi, seperti uji terima v1.6.0 | Tanda tangan beberapa fungsi bersama berubah (`install_args`, `install_command`, `validate_selection`, `default_install_dir` menerima `platform`); perilaku Windows seharusnya sama | Semua lulus seperti v1.6.0; argumen di log tetap `-Yes -Progress -StartMenu -SkipShortcut …` |
+| Tombol **Tutup** dan **X** di halaman terakhir Hapus | Bug yang ditemukan di uji Linux: `finish()` hanya ada di halaman Selesai, jadi Tutup tidak menutup jendela (juga di Windows). Diperbaiki di #41 | Jendela tertutup |
+| **Perbarui** dari "Apps & features" → Modify (`.tools\MikuVisionSetup.exe`) | Exe satu file PyInstaller berjalan sebagai dua proses dengan exe yang sama; proses bootloader-nya ada di dalam InstallDir. Di Linux #41 mengabaikannya, kode Windows tidak diubah | Tidak muncul "Tutup MikuVision dulu (MikuVisionSetup.exe masih berjalan)". Bila muncul, terapkan aturan yang sama di `running_processes` untuk Windows |
+| Log Setup | Teks log memakai konstanta `ENTRY_PLACE`, jadi tertulis `Tercatat di "Apps & features"` (dengan tanda kutip) | Hanya beda kutip |
 
 ## 3. Keputusan yang dibutuhkan dari user
 

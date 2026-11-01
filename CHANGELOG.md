@@ -6,6 +6,48 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-11-01): binary MikuVision Setup untuk Linux di rilis (PLAN_INSTALLER IL3)
+
+Mulai v1.7.0 rilis melampirkan **`MikuVisionSetup-linux-x86_64`** di samping `MikuVisionSetup.exe`. User Linux cukup mengunduhnya, mengizinkannya dijalankan, lalu membukanya; tidak perlu git atau terminal.
+
+### Ditambahkan
+- **Job `linux` di `release-setup.yml`:** PyInstaller dengan `miku_setup.spec` yang sama, di kontainer `ubuntu:22.04` pada runner `ubuntu-latest`:
+  - glibc 2.35, jadi binary jalan di Ubuntu 22.04+, Linux Mint 21+, Fedora, dan Arch;
+  - Python 3.10 dan Tk dari apt (dengan Xft), karena Tk dari uv membuat wizard tampak rusak (IL2);
+  - uji jalan: binary dibuka dengan `--dry-run` di Xvfb dan harus masih berjalan setelah 20 detik.
+- **Job Windows** menunggu job Linux, lalu `SHA256SUMS` memuat zip, exe, dan binary Linux; ketiganya dan `version.json` dilampirkan ke rilis. Zip kode, `version.json`, dan `SHA256SUMS` tetap dibuat job Windows.
+- **Pull request** yang mengubah Setup (`miku_setup/`, spec, workflow) ikut membangun semuanya tanpa melampirkan ke rilis; hasilnya artifact `rilis-uji` (versi `0.0.0-pr<nomor>`) untuk dicoba di Windows dan Linux.
+- **Environment bersih untuk program yang dijalankan Setup** (`miku_setup/procenv.py`): binary Linux tidak lagi mewariskan `LD_LIBRARY_PATH` ke library bawaannya (Ubuntu 22.04, di `/tmp/_MEI…`) kepada `install.sh`, MikuVision, dan alat sistem. Tanpa ini curl dan git di distro yang lebih baru bisa memuat OpenSSL yang lebih lama. Dari kode sumber dan di Windows tidak berubah.
+- README: cara memasang di Linux dengan binary, termasuk izin "Allow executing file as program". Catatan menghapus instalasi git tidak lagi menyuruh `rm -rf ~/.local/share/mikuvision`, yang sekarang juga berisi instalasi Setup.
+
+### Pengujian
+- **CI di PR #42** (`release-setup`, tanpa melampirkan ke rilis): job `linux` membangun `MikuVisionSetup-linux-x86_64` (19,7 MB) di `ubuntu:22.04`, dan binary itu masih berjalan setelah 20 detik di Xvfb dengan `--dry-run`. Job Windows membangun exe, zip `0.0.0-pr42`, `version.json`, dan `SHA256SUMS` berisi tiga file; semuanya menjadi artifact `rilis-uji`. Aset rilis v1.6.0 tidak tersentuh. Percobaan pertama gagal karena kontainer belum punya `libpython3.10` (PyInstaller butuh `libpython3.10.so.1.0`), lalu diperbaiki.
+- **Binary dari CI di Linux Mint 22.3:** `sha256sum -c SHA256SUMS` cocok untuk ketiga file. Binary yang diunduh belum bisa dijalankan sebelum diberi izin, seperti yang dijelaskan README. Rilis uji disajikan `python -m http.server`, dan semua tombol diklik di jendela sungguhan lewat `xdotool`:
+  - **Perbarui** dari 1.7.0-rc2 (dipasang sebelumnya oleh binary buatan lokal) ke 0.0.0-pr42: 50 detik; salinan di `.tools` diganti binary CI.
+  - **Hapus MikuVision** dari menu, yaitu salinan di `.tools` yang menghapus dirinya sendiri: kedua proses binary itu tidak dianggap "MikuVision masih berjalan"; 0 masalah; folder, `install.json`, entri menu, dan peluncur Desktop hilang; Tutup menutup jendela.
+  - **Pasang dari nol** lewat semua halaman: 6 menit 14 detik, MikuVision terbuka dari halaman Selesai.
+  - `install.sh` dan MikuVision yang dijalankan binary tidak lagi membawa `LD_LIBRARY_PATH` atau `_PYI_*`. Sebelum perbaikan, keduanya mewarisi `LD_LIBRARY_PATH=/tmp/_MEI…`; di MikuVision folder itu sudah terhapus begitu Setup ditutup.
+- Binary buatan lokal (Python 3.12 Mint, spec yang sama): pasang dari nol dengan pilihan bawaan dalam 5 menit 38 detik; binary menyalin dirinya ke `.tools/MikuVisionSetup`, dan entri menu menunjuk ke sana.
+- `pytest`: 685 lulus di venv aplikasi (38 dilewati); Python sistem seperti CI: 667 lulus, 56 dilewati. 3 test baru untuk environment bersih.
+- Sesudah uji, instalasi uji dihapus dan peluncur clone git di menu dan Desktop dikembalikan.
+- **Jendela password `pkexec`** (1 Nov, di `test/v1.7.0`):
+  - `install.sh --yes --sudo-cmd pkexec --skip-ollama --skip-shortcut --skip-test`, dengan argumen yang sama seperti dari Setup. `xclip` (terpasang, 0.13-3) disembunyikan dari PATH proses itu saja, supaya installer menganggapnya kurang.
+  - Jendela password sistem muncul dan user mengisinya. `pkexec apt-get install -y xclip` lalu menjawab "xclip is already the newest version (0.13-3). 0 upgraded, 0 newly installed", dan installer selesai dalam 21 s tanpa error.
+  - Sistem tidak berubah: versi `xclip` sama, dan riwayat apt kosong.
+  - Belum: memasang Ollama sebagai root lewat `pkexec` (Ollama sudah ada di laptop ini).
+- **Cek ulang di Windows** (1 Nov; Windows 11, RTX 4050, skala 125%), dengan exe dari artifact `rilis-uji` PR #42 dan rilis uji yang disajikan `python -m http.server`:
+  - `install.ps1` pada `test/v1.7.0`: kode 0, `miku.py --test` lulus. `pytest` 704 lulus, 95 dilewati (sama dengan CI #42 dan #43).
+  - **Perbarui** (exe baru, instalasi 1.6.0-i4b): 1 menit 24 detik, argumen tetap `-Yes -Progress -StartMenu -SkipShortcut`, `data/` utuh, exe di `.tools` diganti.
+  - **Perbaiki dari Modify** (exe di `.tools`): exe PR #42 yang pertama menolak dengan "Tutup MikuVision dulu (MikuVisionSetup.exe masih berjalan)". Exe satu file di Windows juga dua proses, dan pengecualian "exe yang sama" dari IL2 hanya berlaku di Linux. Bug ini sudah ada sejak v1.6.0; uji v1.6.0 menjalankan Perbaiki dari exe di luar InstallDir, jadi tidak tertangkap. Diperbaiki untuk semua OS (`running_processes`, 2 test baru; tanpa perbaikan test `win32` gagal). Dengan exe dari build sesudahnya: masuk Perbaiki langsung, 1 menit 23 detik, kode 0. Versi terbaru dibaca dari GitHub (1.6.0).
+  - **Hapus** lewat `UninstallString` (salinan di Temp): 0 masalah; registry dan Start Menu hilang; shortcut Desktop clone git dan model di D: tidak tersentuh. **Tutup** dan **X** di halaman terakhir menutup jendela (diuji di dua kali Hapus).
+  - **Pasang lagi** ke folder yang tinggal berisi `data/`: 9,5 menit dari nol, kode 0, tercatat lagi.
+  - Log hanya berbeda di tanda kutip `Tercatat di "Apps & features"`.
+  - Teks di bawah "Hapus juga percakapan…" terpotong di Windows ("dipasang d"); lebar 470 px sekarang berlaku untuk semua OS.
+  - `notes_url` di `version.json` build pull request menjadi `releases/tag/42/merge` (tidak dipakai wizard; rilis bertag tidak terpengaruh).
+- **Belum diuji:** distro selain Mint. Teman pengguna Arch bisa mencoba artifact `rilis-uji` (atau rilis v1.7.0); hasilnya dicatat di sini.
+
+---
+
 ## Belum dirilis (2026-11-01): MikuVision Setup jalan di Linux (PLAN_INSTALLER IL2)
 
 Wizard yang sama dengan Windows (`miku_setup/`) sekarang memasang, memperbarui, memperbaiki, dan menghapus MikuVision di Linux, memakai opsi `install.sh` dari IL1. Perilaku di Windows tidak berubah, kecuali perbaikan tombol Tutup di bawah. Binary Linux untuk user menyusul di IL3; sampai saat itu Setup dijalankan dari kode sumber dengan Python sistem yang sudah memasang `requirements-setup.txt`: `python3 MikuVisionSetup.py`.
