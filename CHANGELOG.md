@@ -6,9 +6,19 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
-## Belum dirilis: panggil tool atau tanya balik
+## v1.9.0 (2026-11-01): ringkasan rilis
 
-Branch `feat/call-or-ask`. 「ミュートして」 dan 「一時停止して」 kini langsung dijalankan, bukan dijawab "apa yang di-mute/di-pause?"; sebaliknya "cari video di youtube" atau 「グーグルで検索して」 tanpa kata kunci dijawab dengan pertanyaan, bukan pencarian dengan kata kunci karangan.
+Rilis ini ([#53](https://github.com/MocArjunnaja/MikuVision/pull/53), [#54](https://github.com/MocArjunnaja/MikuVision/pull/54)) mengubah cara Miku bertindak: menutup tab browser dan jendela lewat suara dengan pengaman baru untuk aksi yang merusak, dan memutuskan kapan memanggil tool atau bertanya balik menurut kriteria When2Call.
+
+- **User lama:** tidak ada yang perlu diubah; `data/` tetap. Aksi berisiko kini juga dicatat di `data/logs/actions_YYYYMMDD.jsonl`.
+- **Menutup tab** butuh Chrome/Edge/Brave yang dibuka dengan `--remote-debugging-port=9222` (README, bagian "Menutup"); tanpa itu Miku menyebut jendela browser yang cocok dan tidak menutup apa pun.
+- **Perilaku yang berubah:** perintah lengkap (「ミュートして」, 「一時停止して」, "skip lagu ini") langsung dijalankan; permintaan tanpa informasi wajib ("cari video di youtube", 「メッセージを送って」) ditanya balik. Mengetik atau menekan tombol ke terminal yang sedang aktif ditolak, begitu juga hotkey seperti `win+r` dan `alt+f4`.
+- **Diuji gabungan:** 864 test lulus; bench panggil/tanya 50/50 dan 25/25; perintah tutup 14/14; laporan harian, musik mood, dan regresi setara v1.8.0 di hari yang sama.
+- **Belum termasuk:** kategori "tidak bisa" dari When2Call (tidak ada tool yang cocok). 「ミュートして」 masih sesekali ditanya balik (7/10 tanpa skill user, 9–10/10 dengan skill; v1.8.0 8/10 tanpa skill).
+
+## v1.9.0 (2026-11-01): panggil tool atau tanya balik
+
+[#54](https://github.com/MocArjunnaja/MikuVision/pull/54): 「ミュートして」 dan 「一時停止して」 kini langsung dijalankan, bukan dijawab "apa yang di-mute/di-pause?"; sebaliknya "cari video di youtube" atau 「グーグルで検索して」 tanpa kata kunci dijawab dengan pertanyaan, bukan pencarian dengan kata kunci karangan.
 
 **Dasar:** When2Call (Ross dkk., NAACL 2025, [arXiv 2504.18851](https://arxiv.org/abs/2504.18851)) membagi keputusan model menjadi empat: memanggil tool, bertanya balik, mengaku tidak bisa, atau menjawab langsung. Bertanya balik hanya benar bila parameter **wajib** dari tool yang cocok tidak ada di permintaan; memanggil tool padahal parameter wajibnya hilang disebut *parameter hallucination*. Paper itu juga mencatat bahwa model Qwen jarang mengaku tidak bisa dan malah menjawab langsung atau bertanya balik, dan bahwa menambah contoh "jangan panggil" bisa membuat model terlalu berhati-hati. Prompt MikuVision hanya punya aturan "tanya bila ambigu", tanpa batas kapan sebuah perintah dianggap ambigu.
 
@@ -38,11 +48,9 @@ Branch `feat/call-or-ask`. 「ミュートして」 dan 「一時停止して」
 - 20 test baru (`tests/test_call_or_ask.py`): kriteria dan contoh ada di kedua prompt dan aturan lama hilang; perintah media memuat tool audio; pertanyaan balik tanpa skill tidak di-retry, janji tanpa tool call tetap di-retry; 「何を検索しますか？」 bukan janji. Mutasi (kondisi retry lama) membuat test pertanyaan balik gagal. `pytest` penuh: 864 lulus, 100 dilewati.
 - **Belum dicakup:** kategori "tidak bisa" dari When2Call (tidak ada tool yang cocok, misalnya "matikan Bluetooth"); Miku tetap boleh mencari di Google untuk permintaan seperti itu.
 
----
+## v1.9.0 (2026-11-01): menutup tab/jendela, dan audit aksi yang merusak
 
-## Belum dirilis: menutup tab/jendela, dan audit aksi yang merusak
-
-Branch `feat/close-and-safety`. Miku kini bisa menutup tab browser ("tutup tab youtube", 「YouTube閉じて」) dan satu jendela menurut judulnya, dan setiap tool yang bisa menghapus, menimpa, atau menutup sesuatu diaudit.
+[#53](https://github.com/MocArjunnaja/MikuVision/pull/53): Miku kini bisa menutup tab browser ("tutup tab youtube", 「YouTube閉じて」) dan satu jendela menurut judulnya, dan setiap tool yang bisa menghapus, menimpa, atau menutup sesuatu diaudit.
 
 ### Ditambahkan
 - **`close_browser_tab`**: menutup tab yang judul atau alamatnya mengandung kata yang disebut ("youtube" menutup `youtube.com` dan `m.youtube.com`), lewat Chrome DevTools Protocol (`localhost:9222`, sama dengan `browser_media_control`). Butuh Chrome/Edge/Brave yang dibuka dengan `--remote-debugging-port=9222`; tanpa itu Miku menjelaskan caranya, menyebut jendela browser yang cocok, dan **tidak** menutup apa pun (menutup jendelanya berarti semua tab lain ikut tertutup). Kata yang cocok dengan semua tab ("tab", "browser", "タブ", satu huruf) ditolak. Firefox belum didukung (tidak punya endpoint CDP ini).

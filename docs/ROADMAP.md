@@ -6,9 +6,7 @@
 
 ## 0. Menunggu merge
 
-Tidak ada. #21–#33 dirilis sebagai **v1.5.0** (31 Okt); #35–#38 (MikuVision Setup) sebagai **v1.6.0** dan #40–#43 (Setup untuk Linux, "Oke Miku") sebagai **v1.7.0** (1 Nov); cek keamanan #45 dan #47 sebagai **v1.7.1** (1 Nov); Build Tools untuk RVC #48 sebagai **v1.7.2** (1 Nov); pengaturan user dan kebutuhan perangkat #50 serta 「次の曲にして」 #51 sebagai **v1.8.0** (1 Nov). Ringkasan di CHANGELOG.
-
-Belum di-PR: `feat/close-and-safety` (menutup tab/jendela lewat suara, audit aksi yang merusak, pengaman terminal), rencana **v1.9.0**.
+Tidak ada. #21–#33 dirilis sebagai **v1.5.0** (31 Okt); #35–#38 (MikuVision Setup) sebagai **v1.6.0** dan #40–#43 (Setup untuk Linux, "Oke Miku") sebagai **v1.7.0** (1 Nov); cek keamanan #45 dan #47 sebagai **v1.7.1** (1 Nov); Build Tools untuk RVC #48 sebagai **v1.7.2** (1 Nov); pengaturan user dan kebutuhan perangkat #50 serta 「次の曲にして」 #51 sebagai **v1.8.0** (1 Nov); menutup tab/jendela dan pengaman aksi #53 serta "panggil tool atau tanya balik" #54 sebagai **v1.9.0** (1 Nov). Ringkasan di CHANGELOG.
 
 ## 1. Urutan berikutnya
 
@@ -26,8 +24,8 @@ Belum di-PR: `feat/close-and-safety` (menutup tab/jendela lewat suara, audit aks
 | 10 | W1: Wayland | Linux | VISION, LINUX L5 | Menunggu keputusan 3 di bagian 3 |
 | 11 | **MikuVision Setup**: installer dengan antarmuka (`MikuVisionSetup.exe`), tanpa GitHub/terminal | Windows dulu, Linux menyusul | [PLAN_INSTALLER](PLAN_INSTALLER.md) | Untuk user yang repot lewat GitHub. Dikerjakan dari sesi Windows; I1 (opsi baru `install.ps1`) dan I2 (kerangka wizard, `python -m miku_setup.main --dry-run`) selesai 31 Okt; I3 (unduh rilis, runner `install.ps1`, progres, batal lalu lanjut), I4 ("Apps & features", Perbarui/Perbaiki/Hapus), dan I5 (`MikuVisionSetup.exe`, workflow rilis) selesai 1 Nov; exe pertama terbit di v1.6.0. Linux (IL): IL1 (opsi `install.sh`) dan IL2 (wizard yang sama jalan di Linux, uji terima di Mint lulus) selesai 1 Nov; IL3 (binary Linux di rilis, #42) selesai 1 Nov; menunggu cek ulang di Windows (bagian 2a), lalu merge #40–#42 dan rilis v1.7.0 |
 | 12 | Cek pembaruan dari aplikasi: Miku memberi tahu bila ada rilis baru, satu klik ke Setup mode Perbarui | keduanya | [PLAN_INSTALLER bagian 6, fase I6](PLAN_INSTALLER.md) | Butuh `version.json` di rilis (I5) dan mode Perbarui (I4). Sekarang aplikasi bahkan belum punya nomor versi; menunggu keputusan 6 di bagian 3 |
-| 13 | Menutup tab browser/jendela lewat suara + audit keamanan aksi yang merusak | keduanya | CHANGELOG `feat/close-and-safety` | Selesai di branch (bench tutup 42/42, pengaman terminal); PR setelah v1.8.0, rilis v1.9.0 |
-| 14 | Keputusan "panggil tool vs tanya balik": 「ミュートして」, 「一時停止して」 masih ditanya balik | keduanya | CHANGELOG v1.8.0; When2Call (arXiv 2504.18851) | Prompt hanya punya aturan "tanya bila ambigu". Coba dulu aturan penyeimbang di prompt (perintah media/volume/jendela langsung dijalankan) dan kategori "harus panggil vs boleh tanya" di `bench_skills.py`; bila kurang, router deterministik untuk perintah baku |
+| 13 | ~~Menutup tab browser/jendela lewat suara + audit keamanan aksi yang merusak~~ | keduanya | CHANGELOG v1.9.0 | Selesai (v1.9.0, #53): perintah tutup 14/14, pengaman terminal dan hotkey, log aksi berisiko |
+| 14 | ~~Keputusan "panggil tool vs tanya balik"~~ | keduanya | CHANGELOG v1.9.0; When2Call (arXiv 2504.18851) | Selesai (v1.9.0, #54): aturan prompt menurut kriteria When2Call, retry yang tidak menimpa pertanyaan balik, kategori `call_or_ask` di `bench_skills.py` (50/50 harus panggil, 25/25 harus tanya). Router deterministik tidak diperlukan. Sisa: kategori "tidak bisa"; 「ミュートして」 sesekali masih ditanya balik |
 
 ## 2. Daftar cek di Windows
 
