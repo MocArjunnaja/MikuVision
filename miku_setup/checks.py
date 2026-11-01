@@ -495,6 +495,30 @@ def run_internet() -> List[CheckResult]:
     return [check_internet(errors)]
 
 
+# Komponen compiler C++ Visual Studio yang dipakai setuptools untuk mengompilasi fairseq (RVC)
+VC_TOOLS = "Microsoft.VisualStudio.Component.VC.Tools.x86.x64"
+
+
+def find_build_tools(environ: Optional[Dict[str, str]] = None, run: Callable = subprocess.run) -> bool:
+    """Compiler C++ Visual Studio (Community, Build Tools, dsb.) sudah ada, lewat vswhere.
+
+    Di luar Windows selalu True: install.sh memasang compiler lewat paket sistem.
+    """
+    if sys.platform != "win32":
+        return True
+    environ = os.environ if environ is None else environ
+    base = Path(environ.get("ProgramFiles(x86)") or r"C:\Program Files (x86)")
+    vswhere = base / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
+    if not vswhere.is_file():
+        return False
+    try:
+        result = run([str(vswhere), "-products", "*", "-requires", VC_TOOLS, "-property", "installationPath"],
+                     capture_output=True, timeout=30, creationflags=_NO_WINDOW)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
 def find_ollama(environ: Optional[Dict[str, str]] = None) -> Optional[str]:
     environ = os.environ if environ is None else environ
     found = shutil.which("ollama")

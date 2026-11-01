@@ -20,6 +20,7 @@ class SetupState:
     results: List[CheckResult] = field(default_factory=list)
     gpu: bool = True
     ollama_installed: bool = False
+    build_tools_present: Optional[bool] = None  # dicek sekali saat RVC pertama kali dicentang (Windows)
     install_ok: Optional[bool] = None   # None = belum selesai
     last_error: str = ""
     warnings: List[str] = field(default_factory=list)

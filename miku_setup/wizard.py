@@ -34,6 +34,7 @@ class Wizard(ctk.CTk):
         # Bisa diganti test supaya tidak bergantung pada komputer yang menjalankannya
         self.check_functions = checks.SYSTEM_CHECKS if check_functions is None else check_functions
         self.find_ollama = checks.find_ollama
+        self.find_build_tools = checks.find_build_tools
         self.free_bytes = checks.free_bytes
         # Linux: yang dipasang install.sh dengan hak root (halaman 4 meminta izin dulu); Windows: tidak ada
         self.root_needs = checks.root_needs if sys.platform != "win32" else lambda rvc, ollama_installed: []

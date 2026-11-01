@@ -17,8 +17,8 @@ SHELLS = [s for s in ("powershell", "pwsh") if shutil.which(s)]
 pytestmark = pytest.mark.skipif(sys.platform != "win32" or not SHELLS,
                                 reason="installer Windows, butuh PowerShell")
 
-ALL_STEPS = ["Test-Prerequisites", "Set-ModelDir", "Copy-RvcModel", "Install-Uv", "Install-PythonEnv",
-             "Install-PythonPackages", "Install-Unidic", "Test-Imports", "Install-OllamaModel",
+ALL_STEPS = ["Test-Prerequisites", "Set-ModelDir", "Copy-RvcModel", "Install-BuildTools", "Install-Uv",
+             "Install-PythonEnv", "Install-PythonPackages", "Install-Unidic", "Test-Imports", "Install-OllamaModel",
              "Install-VisionModel", "Show-RvcStatus", "New-Shortcuts", "Invoke-SelfTest"]
 
 
@@ -91,7 +91,7 @@ DEFAULT_STEPS = ["Test-Prerequisites", "Install-Uv", "Install-PythonEnv", "Insta
 
 @pytest.mark.parametrize("flags, expected", [
     ("", DEFAULT_STEPS),
-    ("-ModelDir D:\\m -RvcModel a.pth -RvcIndex a.index -WithVision -StartMenu", ALL_STEPS),
+    ("-ModelDir D:\\m -RvcModel a.pth -RvcIndex a.index -WithVision -StartMenu -InstallBuildTools", ALL_STEPS),
     ("-SkipOllama -WithVision", [s for s in DEFAULT_STEPS if s not in ("Install-OllamaModel", "Invoke-SelfTest")]),
     ("-SkipTest", DEFAULT_STEPS[:-1]),
     ("-SkipShortcut", [s for s in DEFAULT_STEPS if s != "New-Shortcuts"]),
@@ -210,3 +210,47 @@ def test_driver_cuda_version(tmp_path, header, expected):
 def test_file_lock_error(tmp_path, output, locked):
     out = _source(tmp_path, f"Test-FileLockError '{_q(output)}'")
     assert out.strip() == str(locked)
+
+
+# Visual Studio Build Tools untuk RVC: winget diganti fungsi pencatat, Test-BuildTools dikendalikan test
+_BUILD_TOOLS_STUBS = "\n".join([
+    "$script:calls = @()",
+    "function winget { $script:calls += ($args -join ' '); $global:LASTEXITCODE = $script:wingetExit }",
+    "$script:present = @(__PRESENT__)",
+    "function Test-BuildTools { $v = $script:present[0]; if ($script:present.Count -gt 1) "
+    "{ $script:present = $script:present[1..($script:present.Count - 1)] }; return $v }",
+    "$script:wingetExit = __EXIT__",
+    "",
+])
+
+
+def _build_tools(tmp_path, present, exit_code=0, flags="-Yes", extra=""):
+    body = (_BUILD_TOOLS_STUBS.replace("__PRESENT__", present).replace("__EXIT__", str(exit_code)) + extra +
+            "Install-BuildTools\n'CALLS=' + ($script:calls -join '|')")
+    out = _source(tmp_path, body, flags)
+    log = (tmp_path / "install.log").read_text(encoding="utf-8")
+    return out.strip().splitlines()[-1][len("CALLS="):], log
+
+
+def test_build_tools_already_present_is_skipped(tmp_path):
+    calls, log = _build_tools(tmp_path, "$true")
+    assert calls == "" and "sudah ada" in log
+
+
+def test_build_tools_installed_with_winget_cpp_workload_only(tmp_path):
+    calls, log = _build_tools(tmp_path, "$false, $true")
+    assert calls.startswith("install --id Microsoft.VisualStudio.2022.BuildTools -e --source winget")
+    assert "--override --wait --passive --norestart --add Microsoft.VisualStudio.Workload.VCTools" in calls
+    assert "--accept-package-agreements" in calls and "Visual Studio Build Tools siap" in log
+
+
+def test_build_tools_restart_code_is_a_warning(tmp_path):
+    _, log = _build_tools(tmp_path, "$false, $true", exit_code=3010)
+    assert "siap" in log and "minta restart" in log and "[ERROR]" not in log
+
+
+def test_build_tools_failure_or_refusal_never_stops_the_install(tmp_path):
+    calls, log = _build_tools(tmp_path, "$false, $false", exit_code=1602)
+    assert calls and "tidak terpasang (exit 1602" in log and "[ERROR]" not in log
+    calls, log = _build_tools(tmp_path, "$false", extra="function Confirm-Action { return $false }\n")
+    assert calls == "" and "tidak dipasang" in log

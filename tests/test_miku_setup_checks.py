@@ -1,5 +1,7 @@
 """MikuVision Setup: cek sistem dari keluaran perintah (tanpa menjalankan perintahnya)."""
 
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -115,3 +117,26 @@ def test_model_locations_follow_user_variables():
 
 def test_format_gb():
     assert checks.format_gb(12_345_678_901) == "12,3 GB"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="vswhere Visual Studio hanya di Windows")
+def test_find_build_tools_uses_vswhere(tmp_path):
+    environ = {"ProgramFiles(x86)": str(tmp_path)}
+    assert checks.find_build_tools(environ) is False  # vswhere tidak ada: Visual Studio belum pernah dipasang
+    vswhere = tmp_path / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
+    vswhere.parent.mkdir(parents=True)
+    vswhere.write_bytes(b"")
+    calls = []
+
+    def run(output):
+        def fake(command, **kwargs):
+            calls.append(command)
+            return subprocess.CompletedProcess(command, 0, stdout=output, stderr=b"")
+        return fake
+    assert checks.find_build_tools(environ, run=run(b"C:\\VS\\BuildTools\r\n")) is True
+    assert calls[-1][1:] == ["-products", "*", "-requires", checks.VC_TOOLS, "-property", "installationPath"]
+    assert checks.find_build_tools(environ, run=run(b"")) is False  # Visual Studio tanpa workload C++
+
+    def broken(command, **kwargs):
+        raise OSError("vswhere rusak")
+    assert checks.find_build_tools(environ, run=broken) is False
