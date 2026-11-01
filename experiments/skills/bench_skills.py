@@ -137,9 +137,9 @@ def main(runs: int, only: str = ""):
         try:
             for text, want in REGRESSION:
                 for _ in range(runs):
-                    start = time.time()
+                    start = time.perf_counter()
                     brain, reply, calls = run(text)
-                    latencies.append(time.time() - start)
+                    latencies.append(time.perf_counter() - start)
                     names = [c["action"] for c in calls]
                     no_skill += not brain.turn_user_skills
                     ok += want in names

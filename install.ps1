@@ -157,11 +157,25 @@ function Write-ProgressEvent {
     [Console]::Out.WriteLine("##MIKU " + ($Data | ConvertTo-Json -Compress))
 }
 
+# Antivirus/indexer kadang mengunci file log sesaat (terlihat saat ollama pull mencetak progres
+# cepat): coba lagi sebentar, lalu lewati baris itu daripada menampilkan error ke user.
+function Add-LogLine {
+    param([string]$Text)
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+        try {
+            Add-Content -Path $LogFile -Value $Text -Encoding UTF8 -ErrorAction Stop
+            return
+        } catch {
+            Start-Sleep -Milliseconds 50
+        }
+    }
+}
+
 function Write-Log {
     # -NoEvent: baris penutup error (jejak stack, lokasi log) tidak menimpa pesan error di wizard
     param([string]$Message, [string]$Level = "INFO", [switch]$NoEvent)
     $line = "[{0}] [{1}] {2}" -f (Get-Date -Format "HH:mm:ss"), $Level, $Message
-    Add-Content -Path $LogFile -Value $line -Encoding UTF8
+    Add-LogLine $line
     switch ($Level) {
         "WARN"  { Write-Host $line -ForegroundColor Yellow }
         "ERROR" { Write-Host $line -ForegroundColor Red }
@@ -204,7 +218,7 @@ function Invoke-Native {
             # PowerShell 5.1 menampilkan baris stderr kosong sebagai nama tipe exception
             if ($text -eq "System.Management.Automation.RemoteException") { $text = "" }
             $lines.Add($text)
-            Add-Content -Path $LogFile -Value "    $text" -Encoding UTF8
+            Add-LogLine "    $text"
             if (-not $Quiet) { Write-Host "    $text" }
         }
         return $LASTEXITCODE
@@ -701,6 +715,12 @@ function Install-OllamaFromWebsite {
 
 function Get-ConfigValue {
     param([string]$Name)
+    # data\settings.yaml (pengaturan user, tetap ada setelah Perbarui) menimpa config.py
+    $settings = Join-Path $Root "data\settings.yaml"
+    if (Test-Path $settings) {
+        $match = Select-String -Path $settings -Pattern "^\s*$Name\s*:\s*[`"']?([^`"'#\s]+)" | Select-Object -First 1
+        if ($match) { return $match.Matches[0].Groups[1].Value }
+    }
     $match = Select-String -Path (Join-Path $Root "config.py") -Pattern "^\s*$Name\s*=\s*`"([^`"]+)`"" | Select-Object -First 1
     if (-not $match) { Stop-Install "$Name tidak ditemukan di config.py." }
     return $match.Matches[0].Groups[1].Value

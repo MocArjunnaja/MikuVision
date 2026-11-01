@@ -78,11 +78,15 @@ Setup yang dibuka lagi (atau **Modify** di "Apps & features") menawarkan **Perba
 
 </details>
 
-| Kebutuhan | Minimum | Teruji |
+| Kebutuhan | Minimum yang terbukti | Catatan |
 |---|---|---|
-| OS | Windows 10/11 64-bit, atau Linux x86_64 dengan X11 | Windows 11, Linux Mint 22.3 |
-| GPU | Opsional (CPU bisa, tapi lambat) | NVIDIA RTX 4050 Laptop 6 GB |
-| Lainnya | Mikrofon, ±16 GB disk (+3,3 GB untuk membaca layar), internet saat instalasi | |
+| OS | Windows 10/11 64-bit, atau Linux x86_64 dengan X11 | Diuji: Windows 11, Linux Mint 22.3 |
+| GPU | NVIDIA 6 GB (RTX 4050 Laptop) | Semua fitur menyala memakai 5,5–5,9 GB VRAM. Tanpa GPU NVIDIA tetap jalan di CPU, tetapi lambat dan belum diukur |
+| RAM | 16 GB | Proses MikuVision ±3,4 GB |
+| Disk | ±16 GB (+3,3 GB untuk membaca layar, +7 GB untuk Build Tools bila RVC di Windows) | |
+| Lainnya | Mikrofon, internet saat instalasi | Setelah terpasang semuanya jalan offline |
+
+Rincian per komponen (LLM, Whisper, MeloTTS, RVC, model visi), pilihan model untuk GPU lebih besar atau tanpa GPU, dan cara menggantinya: [docs/CUSTOMIZE.md](docs/CUSTOMIZE.md).
 
 ## Menjalankan
 
@@ -119,7 +123,9 @@ Setup yang dibuka lagi (atau **Modify** di "Apps & features") menawarkan **Perba
 
 ## Pilihan model
 
-Atur `OLLAMA_MODEL` di `config.py`. Benchmark di RTX 4050, 10 perintah Jepang/Indonesia:
+Model dan pengaturan lain bisa diganti tanpa mengubah kode: salin [`settings.example.yaml`](settings.example.yaml) ke `data/settings.yaml`, lalu ubah barisnya, misalnya `OLLAMA_MODEL: qwen3:8b` (butuh GPU di atas 6 GB: di RTX 4050 6 GB model ini tidak muat dan justru lebih lambat). File di `data/` tetap ada setelah Perbarui maupun `git pull`, dan installer mengunduh model yang Anda pilih (Setup → Perbaiki, atau `install.bat` / `./install.sh`). Panduan lengkap dan angka per model: [docs/CUSTOMIZE.md](docs/CUSTOMIZE.md).
+
+Benchmark LLM di RTX 4050, 10 perintah Jepang/Indonesia:
 
 | Model | Tool call tepat | Latensi median | Catatan |
 |---|---|---|---|
