@@ -6,6 +6,40 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis: panggil tool atau tanya balik
+
+Branch `feat/call-or-ask`. 「ミュートして」 dan 「一時停止して」 kini langsung dijalankan, bukan dijawab "apa yang di-mute/di-pause?"; sebaliknya "cari video di youtube" atau 「グーグルで検索して」 tanpa kata kunci dijawab dengan pertanyaan, bukan pencarian dengan kata kunci karangan.
+
+**Dasar:** When2Call (Ross dkk., NAACL 2025, [arXiv 2504.18851](https://arxiv.org/abs/2504.18851)) membagi keputusan model menjadi empat: memanggil tool, bertanya balik, mengaku tidak bisa, atau menjawab langsung. Bertanya balik hanya benar bila parameter **wajib** dari tool yang cocok tidak ada di permintaan; memanggil tool padahal parameter wajibnya hilang disebut *parameter hallucination*. Paper itu juga mencatat bahwa model Qwen jarang mengaku tidak bisa dan malah menjawab langsung atau bertanya balik, dan bahwa menambah contoh "jangan panggil" bisa membuat model terlalu berhati-hati. Prompt MikuVision hanya punya aturan "tanya bila ambigu", tanpa batas kapan sebuah perintah dianggap ambigu.
+
+### Diubah
+- **Aturan prompt "panggil atau tanya"** (ID dan JA) menggantikan aturan "feedback loop" ("tanya bila kurang jelas atau ambigu"): tanya balik hanya bila tool yang cocok butuh informasi yang tidak ada di ucapan dan tidak bisa ditentukan dengan wajar (penerima/isi pesan, topik video); perintah lengkap langsung dijalankan; mute/unmute = suara sistem, pause/lanjutkan/skip/lagu berikutnya/sebelumnya = media yang sedang diputar; kata "video"/「動画」 saja bukan kata kunci.
+- **Retry "missed tool" tidak lagi menimpa pertanyaan balik.** Sebelumnya, bila ucapan user berupa perintah dan model tidak memanggil tool, Miku selalu mengulang dengan "panggil tool sekarang", termasuk saat model sudah benar bertanya "video apa?". Akibatnya model mengarang kata kunci (`youtube_search(query="video")`). Pertanyaan balik kini dibiarkan, kecuali skill buatan user yang aktif tidak boleh bertanya atau detailnya sudah disebut user (perilaku lama untuk skill tetap).
+- Bentuk tanya 「〜しますか？」 tidak lagi dibaca sebagai janji aksi. 「何を検索しますか？」 dulu cocok dengan pola janji `検索…ます`, sehingga retry tetap jalan.
+- Skill audio juga dipicu oleh 音楽, 曲, 止めて, スキップ. 「音楽を止めて」 sebelumnya tidak cocok dengan pemicu mana pun, sehingga semua skill dikirim (±4.500 token prompt) dan model memanggil `describe_screen` untuk "melihat apa yang diputar".
+- `bench_skills.py call_or_ask`: 10 perintah yang harus langsung memanggil tool (mute, unmute, pause, lanjutkan, skip, lagu sebelumnya/berikutnya; JA dan ID) dan 5 yang harus ditanya balik (pesan tanpa penerima, pencarian tanpa kata kunci). Kegagalan dicatat per jenis: tanya balik, tool lain, atau parameter karangan.
+
+### Pengujian
+- **Pemilihan aturan** (`qwen3:4b-instruct`, 5× per kalimat, kontrol sistem palsu):
+
+  | Varian | Harus panggil | Harus tanya |
+  |---|---|---|
+  | Prompt lama, kode lama | 37/50 | 15/25 |
+  | Aturan lama dipertahankan + kriteria ditambahkan | 41/50 | 23/25 |
+  | Aturan diganti kriteria When2Call | 46/50 | 16/25 |
+  | Prompt lama, retry + pemicu baru | 36/50 | 23/25 |
+  | Aturan diganti, retry + pemicu baru | 47/50 | 20/25 |
+  | **Aturan diganti dengan contoh dwibahasa, retry + pemicu + regex tanya baru (dipakai)** | **50/50** | **25/25** |
+
+  Mempertahankan aturan lama melemahkan efeknya (41 vs 46), sesuai trade-off di paper. Retry baru sendirian menaikkan "harus tanya", tetapi pertanyaan yang tidak perlu ("apa yang di-mute?") tidak lagi tertolong, jadi butuh aturan prompt. Contoh dwibahasa menutup `query="video"` dari ucapan Indonesia di persona Jepang.
+- **Regresi** (`bench_skills.py 5`, dibandingkan v1.8.0 di hari yang sama): laporan harian 46/50 (v1.8.0 45/50), musik mood 45/50 (46/50), regresi 46/50 dan 46/50 (47/50 dan 49/50), median latensi 3,02 s (3,09 / 2,99 s). Selisih regresi berasal dari 「ミュートして」 yang sangat bervariasi di kedua versi; diulang 10× tanpa skill user: 7/10 di branch ini, 8/10 di v1.8.0, dan 9–10/10 dengan skill user. Skenario laporan dua giliran yang meleset (balasan obrolan tanpa tool) juga meleset di v1.8.0. Median prompt 1.920 token (v1.8.0 1.674): aturan baru dan dua tool tutup dari #53.
+- `bench_close.py`: 14/14 perintah tutup, regresi 10/10.
+- Deskripsi tool `mute` dengan contoh frasa diuji (38/40 vs 37/40 dengan deskripsi lama, 10× per kalimat) dan **tidak** dipakai karena tidak ada beda berarti.
+- 20 test baru (`tests/test_call_or_ask.py`): kriteria dan contoh ada di kedua prompt dan aturan lama hilang; perintah media memuat tool audio; pertanyaan balik tanpa skill tidak di-retry, janji tanpa tool call tetap di-retry; 「何を検索しますか？」 bukan janji. Mutasi (kondisi retry lama) membuat test pertanyaan balik gagal. `pytest` penuh: 864 lulus, 100 dilewati.
+- **Belum dicakup:** kategori "tidak bisa" dari When2Call (tidak ada tool yang cocok, misalnya "matikan Bluetooth"); Miku tetap boleh mencari di Google untuk permintaan seperti itu.
+
+---
+
 ## Belum dirilis: menutup tab/jendela, dan audit aksi yang merusak
 
 Branch `feat/close-and-safety`. Miku kini bisa menutup tab browser ("tutup tab youtube", 「YouTube閉じて」) dan satu jendela menurut judulnya, dan setiap tool yang bisa menghapus, menimpa, atau menutup sesuatu diaudit.

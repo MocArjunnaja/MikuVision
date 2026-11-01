@@ -2,7 +2,7 @@
 
 Satu giliran berjalan lewat run_turn (termasuk langkah skill berikutnya), tetapi tool
 TIDAK dieksekusi: kontrol sistem palsu hanya mencatat dan menjawab sukses. Jalankan dari root repo:
-    python experiments/skills/bench_skills.py [runs] [laporan_harian|musik_mood|regression]
+    python experiments/skills/bench_skills.py [runs] [laporan_harian|musik_mood|regression|call_or_ask]
 """
 import json
 import statistics
@@ -58,6 +58,18 @@ REGRESSION = [
     ("ミュートして", "mute"), ("buka folder downloads", FOLDER), ("勉強モードにして", "run_routine"),
 ]
 
+# Panggil vs tanya (When2Call, arXiv 2504.18851): tanya balik hanya benar bila tool yang cocok butuh
+# informasi wajib yang tidak ada di ucapan. Perintah lengkap harus langsung memanggil tool.
+MEDIA = ("media_control", "browser_media_control")
+MUST_CALL = [
+    ("ミュートして", ("mute",)), ("ミュート解除して", ("mute",)), ("mute dong", ("mute",)),
+    ("一時停止して", MEDIA), ("音楽を止めて", MEDIA), ("pause lagunya", MEDIA),
+    ("lanjutkan lagunya", MEDIA), ("前の曲に戻して", MEDIA), ("skip lagu ini", MEDIA), ("次の曲にして", MEDIA),
+]
+# Penerima, isi pesan, atau kata kunci tidak disebut: menebaknya berarti mengarang parameter
+MUST_ASK = ["メッセージを送って", "kirim pesan WhatsApp dong", "tolong carikan video di youtube",
+            "グーグルで検索して", "Telegramで連絡して"]
+
 
 def new_brain():
     brain = AIBrain(MemoryManager(Path(tempfile.mkdtemp())))
@@ -105,8 +117,34 @@ def judge_music(volume, words, calls):
     return True, ""
 
 
+def bench_call_or_ask(runs: int) -> dict:
+    """Akurasi per kategori; meleset dihitung per jenis: tanya balik, tool lain, atau parameter karangan."""
+    result = {}
+    for label, cases in (("must_call", MUST_CALL), ("must_ask", [(text, ASK) for text in MUST_ASK])):
+        ok, misses = 0, {}
+        for text, want in cases:
+            for _ in range(runs):
+                _, reply, calls = run(text)
+                names = [c["action"] for c in calls]
+                asked = not calls and ("?" in reply or "？" in reply)
+                if want == ASK:
+                    hit, miss = asked, "tool_call" if calls else "no_question"
+                else:
+                    hit, miss = any(n in want for n in names), "ask" if asked else "other"
+                ok += hit
+                if not hit:
+                    misses[miss] = misses.get(miss, 0) + 1
+                    print(f"   MISS [{label}] {text!r}: calls={names} reply={reply[:60]!r}", flush=True)
+        result[label] = {"correct": f"{ok}/{len(cases) * runs}", "misses": misses}
+        print(label, result[label], flush=True)
+    return result
+
+
 def main(runs: int, only: str = ""):
     summary, tokens = {}, {"with_skills": [], "without_skills": []}
+    if only == "call_or_ask":
+        print(json.dumps(bench_call_or_ask(runs), ensure_ascii=False))
+        return
 
     for label, cases, judge in (
         ("laporan_harian", REPORT, lambda case, reply, calls: judge_report(case[1], reply, calls)),
