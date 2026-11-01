@@ -1,6 +1,6 @@
 """MikuVision Setup di Linux (PLAN_INSTALLER IL2): cek sistem, argumen install.sh, catatan instalasi, Hapus.
 
-Fungsi murni dites di semua OS; yang memakai path dan proses Linux dilewati di Windows.
+Fungsi murni dites di semua OS; yang memakai path ("/home/...") dan proses Linux dilewati di Windows.
 """
 
 import json
@@ -130,6 +130,7 @@ tmpfs /run tmpfs rw 0 0
 """
 
 
+@linux_only
 @pytest.mark.parametrize("path, mount", [
     ("/usr/share/ollama/.ollama/models", ("/", "ext4")),
     ("/home/arjun/.local/share/mikuvision/app", ("/home", "ext4")),
@@ -161,6 +162,7 @@ def test_default_install_dir_on_linux():
         Path("/data/mikuvision/app")
 
 
+@linux_only
 def test_install_args_on_linux():
     assert components.install_args(Selection(Path("/a")), platform="linux") == \
         ["--yes", "--progress", "--menu-entry", "--skip-shortcut", "--sudo-cmd", "pkexec"]
@@ -179,10 +181,12 @@ def test_install_args_use_options_that_install_sh_has():
         assert re.search(rf"^\s+{re.escape(option)}(\|-y)?\)", install_sh, re.M), option
 
 
+@linux_only
 def test_install_command_on_linux_runs_install_sh_with_bash():
     assert runner.install_command(Path("/a b"), ["--yes"], platform="linux") == ["bash", "/a b/install.sh", "--yes"]
 
 
+@linux_only
 @pytest.mark.parametrize("install_dir, model_dir, problem", [
     ("/home/a/Miku$Vision", None, "tidak boleh berisi karakter"),
     ("/home/a/100%", None, "tidak boleh berisi karakter"),
@@ -198,6 +202,7 @@ def test_validate_folders_on_linux(install_dir, model_dir, problem):
     assert problem in components.validate_selection(selection, writable, platform="linux", filesystem=filesystem)
 
 
+@linux_only
 def test_models_may_live_on_a_windows_partition():
     selection = Selection(Path("/home/a/MikuVision"), model_dir=Path("/media/a/Data/models"))
     filesystem = lambda path: "fuseblk" if str(path).startswith("/media") else "ext4"  # noqa: E731
