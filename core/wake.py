@@ -62,18 +62,31 @@ def match_wake_phrase(text: str) -> Optional[str]:
     return rest.strip()
 
 
-def wake_phrase_end(words: List[Tuple[str, float, float]]) -> Optional[float]:
-    """Detik akhir wake phrase dari kata + waktunya (VoiceInput.last_words), None bila tidak ada."""
+def _wake_words(words) -> Optional[List[tuple]]:
+    """Kata-kata (dari VoiceInput.last_words) yang membentuk wake phrase pertama, None bila tidak ada."""
     text, spans = "", []
-    for word, _, end in words:
-        word = unicodedata.normalize("NFKC", word)
-        spans.append((len(text), len(text) + len(word), end))
+    for item in words:
+        word = unicodedata.normalize("NFKC", item[0])
+        spans.append((len(text), len(text) + len(word), item))
         text += word
     match = WAKE_PATTERN.search(text)
     if not match:
         return None
-    last = match.end() - 1
-    return next((end for start, stop, end in spans if start <= last < stop), None)
+    return [item for start, stop, item in spans if start < match.end() and stop > match.start()]
+
+
+def wake_phrase_end(words) -> Optional[float]:
+    """Detik akhir wake phrase dari kata + waktunya (VoiceInput.last_words), None bila tidak ada."""
+    found = _wake_words(words)
+    return found[-1][2] if found else None
+
+
+def wake_phrase_confidence(words) -> Optional[float]:
+    """Peluang terendah Whisper di antara kata-kata wake phrase, None bila tidak ada atau tanpa peluang."""
+    found = _wake_words(words)
+    if not found or any(len(item) < 4 for item in found):
+        return None
+    return min(item[3] for item in found)
 
 
 class SpeechSegmenter:

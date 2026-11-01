@@ -84,11 +84,12 @@ def test_forced_language_skips_detection():
 
 
 def test_word_timestamps_are_kept_for_the_chosen_decode():
-    word = lambda w, start, end: SimpleNamespace(word=w, start=start, end=end)
+    word = lambda w, start, end, p: SimpleNamespace(word=w, start=start, end=end, probability=p)
     vi = make([("id", 0.9)], {"id": [SimpleNamespace(**vars(seg(" Oke Miku, buka Notepad")), words=[
-        word(" Oke", 0.3, 0.5), word(" Miku,", 0.5, 0.9), word(" buka", 1.1, 1.3), word(" Notepad", 1.3, 1.8)])]})
+        word(" Oke", 0.3, 0.5, 0.9), word(" Miku,", 0.5, 0.9, 0.7), word(" buka", 1.1, 1.3, 0.95),
+        word(" Notepad", 1.3, 1.8, 0.99)])]})
     vi.transcribe(SPEECH, lang="id", word_timestamps=True, verbose_logging=False)
-    assert vi.last_words[1] == (" Miku,", 0.5, 0.9)
+    assert vi.last_words[1] == (" Miku,", 0.5, 0.9, 0.7)
     assert vi.model.decoded  # decode memang terjadi
 
 

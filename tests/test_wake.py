@@ -51,6 +51,14 @@ def test_not_a_wake_phrase(text):
     assert match_wake_phrase(text) is None
 
 
+def test_wake_phrase_confidence_is_the_weakest_wake_word():
+    from core.wake import wake_phrase_confidence
+    words = [(" Oke", 0.3, 0.55, 0.92), (" Miku,", 0.55, 0.9, 0.41), (" buka", 1.2, 1.4, 0.2)]
+    assert wake_phrase_confidence(words) == 0.41  # "buka" bukan bagian wake phrase
+    assert wake_phrase_confidence([(" Buka", 0.1, 0.3, 0.9)]) is None
+    assert wake_phrase_confidence([(" Oke", 0.3, 0.55), (" Miku", 0.55, 0.9)]) is None  # tanpa peluang
+
+
 def test_wake_phrase_end_from_word_timestamps():
     words = [(" Oke", 0.3, 0.55), (" Miku,", 0.55, 0.9), (" buka", 1.2, 1.4), (" Notepad", 1.4, 1.9)]
     assert wake_phrase_end(words) == 0.9

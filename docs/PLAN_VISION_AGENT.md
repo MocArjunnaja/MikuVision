@@ -214,11 +214,11 @@ Untuk Fase 2:
   | Ukuran | Target | Hasil |
   |---|---|---|
   | "Oke Miku" terdeteksi | ≥ 9/10 | Suara user (mic 20%): 10/10 live, 9/10 rekaman diputar ulang. Sintetis: 20/20 bersih, 20/20 mic laptop, 19/20 sangat berisik |
-  | Pemicu palsu | ≤ 1 per jam | 0: 20 kalimat biasa dari suara user, 128 kalimat sintetis termasuk jebakan, 9,7 menit obrolan sambung |
+  | Pemicu palsu | ≤ 1 per jam | 0: 20 kalimat biasa dari suara user, 128 kalimat sintetis termasuk jebakan, 9,7 menit obrolan sambung, 20 menit musik/video dari speaker |
   | GPU saat tidak ada suara | diam | 5 menit derau: Whisper tidak jalan; mikrofon sungguhan: GPU median 0%, CPU 3% |
 
 - Syarat: volume mic tidak terlalu tinggi. Di laptop uji, 30% memberi 2–5/10 dan 20% memberi 9–10/10; Miku memberi peringatan bila derau mic terlalu tinggi.
-- Belum: musik yang diputar, Windows (masuk daftar cek Windows), dan openWakeWord (belum perlu, karena Whisper hanya jalan saat ada ucapan).
+- Belum: Windows (masuk daftar cek Windows), suara orang lain, dan openWakeWord (belum perlu, karena Whisper hanya jalan saat ada ucapan).
 
 ### Fase 4: Pemicu layar & belajar routine
 - Pemantauan ringan (OCR berkala, bukan VLM): "kalau unduhan selesai, buka foldernya", "kalau muncul error X, bacakan".

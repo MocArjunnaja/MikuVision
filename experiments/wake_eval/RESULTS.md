@@ -9,7 +9,7 @@ Diukur 1 Nov 2026 di laptop pengembang: RTX 4050 Laptop 6 GB, Linux Mint 22.3, f
 | Suara sungguhan (user, mic laptop 20%), live, putaran terakhir | "Oke Miku" **10/10**, perintah yang ikut terucap benar semua; kalimat biasa 5/5 tidak memicu |
 | Rekaman putaran yang sama, diputar ulang 4× | **9/10** terdeteksi, 8/10 dengan perintah benar (Whisper berbeda dari live, lihat bawah) |
 | Suara sintetis (edge-tts) | 20/20 bersih, 20/20 mic laptop, 19/20 sangat berisik |
-| Pemicu palsu | **0**: 128 klip kalimat biasa termasuk jebakan ("Oke, menurut aku…", "Oke, minggu ini…"), 9,7 menit obrolan sambung, 20 kalimat biasa dari suara user |
+| Pemicu palsu | **0**: 128 klip kalimat biasa termasuk jebakan ("Oke, menurut aku…", "Oke, minggu ini…"), 9,7 menit obrolan sambung, 20 kalimat biasa dari suara user, **20 menit musik/video dari speaker** |
 | Tidak ada yang bicara | Whisper tidak jalan (5 menit derau sintetis); mic sungguhan: CPU proses 3–4%, GPU median 0% |
 
 Pengaturan yang dipakai: VAD webrtcvad mode 3 dengan pre-roll 0,8 s; cek wake dengan Whisper bahasa tetap `id`, beam 1, prompt `"Oke Miku."`, dan cap waktu kata; perintah dipotong sesudah wake phrase lalu ditranskripsi dengan deteksi bahasa; perintah ditahan 0,6 s untuk lanjutan sesudah jeda.
@@ -82,4 +82,18 @@ Rekaman putaran 6 diputar ulang 4×: 7/10 sebelum ejaan "emigu"/"amiku" diterima
 
 **Volume mic penting.** Di 30% (derau RMS ±0,02) hasilnya 2–5/10; di 20% (±0,007) 9–10/10. Panduan untuk user: turunkan volume input sampai derau ruangan kecil, sekitar 20% di laptop ini.
 
-**Belum diuji:** musik yang sedang diputar, suara orang lain, dan Windows.
+## Musik dan video
+
+`live_idle.py` dengan pengaturan aplikasi, mic laptop 20%. User memutar musik dan video dari speaker, tanpa mengucapkan "Oke Miku". Sesi kedua direkam (`--record`, di folder sementara di luar repo) untuk dianalisis ulang.
+
+| Sesi | Ucapan terdengar | Panggilan Whisper (waktu) | Pemicu | CPU proses | GPU |
+|---|---|---|---|---|---|
+| 1 (10 menit) | 20 | 171 (16,7 s) | **0** | 2,8% | median 0% |
+| 2 (10 menit, direkam) | 174 | 242 (72,5 s, ±12%) | **0** | 4,4% | median 0% |
+
+- Whisper berhalusinasi pada musik: "Oke" saja 35×, "Terima kasih" 27×, "Jangan lupa like, share dan subscribe ya", dan "Miku" 5× (sebagian dari lirik). "Oke" diduga dipancing prompt `"Oke Miku."`. Keduanya tidak pernah muncul berurutan, jadi tidak ada yang cocok pola.
+- Rekaman sesi 2 diputar ulang 2× (`confidence_scan.py`): 243 cek, 0 cocok pola.
+- **Filter keyakinan tidak dipasang.** Peluang terendah Whisper di kata wake phrase pada "Oke Miku" sungguhan (rekaman putaran 6) hanya 0,02–0,52, median 0,25. Pada musik tidak ada satu pun kecocokan untuk dibandingkan. Ambang apa pun akan membuang "Oke Miku" sungguhan tanpa manfaat yang terukur. `wake_phrase_confidence` dan `confidence_scan.py` disimpan untuk data berikutnya.
+- Risiko yang tersisa: lagu yang liriknya sungguh berbunyi "oke Miku" akan memicu, sama seperti orang yang mengucapkannya.
+
+**Belum diuji:** suara orang lain, dan Windows.

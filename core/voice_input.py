@@ -40,8 +40,8 @@ class VoiceInput:
         self._stream = None
         self._lock = threading.Lock()
         self.last_language: Optional[str] = None  # bahasa hasil transcribe() terakhir
-        # (kata, mulai, selesai) dalam detik, dari transcribe(word_timestamps=True) terakhir
-        self.last_words: List[Tuple[str, float, float]] = []
+        # (kata, mulai, selesai, peluang) dari transcribe(word_timestamps=True) terakhir; waktu dalam detik
+        self.last_words: List[Tuple[str, float, float, float]] = []
         
     def initialize(self) -> bool:
         """Load Whisper model"""
@@ -171,7 +171,7 @@ class VoiceInput:
     def _decode(self, audio: np.ndarray, language: str, use_initial_prompt: bool, beam_size: int,
                 vad_min_silence_ms: int, vad_speech_pad_ms: int, vad_threshold: float,
                 prompt: Optional[str] = None, word_timestamps: bool = False,
-                ) -> Tuple[str, float, List[Tuple[str, float, float]]]:
+                ) -> Tuple[str, float, List[Tuple[str, float, float, float]]]:
         """Satu kali decoding: teks bersih, rata-rata log-probability per token, dan kata + waktunya."""
         if prompt is None and use_initial_prompt:
             prompt = WHISPER_PROMPTS.get(language, WHISPER_INITIAL_PROMPT)
@@ -197,7 +197,8 @@ class VoiceInput:
             if (seg.no_speech_prob > 0.6 and seg.avg_logprob < -1.0) or seg.compression_ratio > 2.4:
                 continue
             kept.append(seg.text)
-            words.extend((w.word, w.start, w.end) for w in (getattr(seg, "words", None) or []))
+            words.extend((w.word, w.start, w.end, getattr(w, "probability", 1.0))
+                         for w in (getattr(seg, "words", None) or []))
             duration = max(seg.end - seg.start, 0.1)
             logprob += seg.avg_logprob * duration
             weight += duration
