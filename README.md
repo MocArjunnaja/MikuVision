@@ -33,6 +33,7 @@ Mendengar suara Anda, berpikir dengan LLM lokal, menjalankan aksi di komputer, l
 | **LLM lokal** | `qwen3:4b-instruct` lewat Ollama dengan tool calling, balasan ±1 detik di RTX 4050 |
 | **Aman** | Aksi berisiko (kirim pesan, menutup aplikasi) selalu minta konfirmasi; aplikasi ditutup dengan sopan seperti tombol ✕ |
 | **Ingatan, routine & skill** | Memori jangka panjang (`"ingat ya, ..."`), lanjutkan sesi lama, satu perintah untuk banyak aksi (`"jalankan mode belajar"`), dan skill yang disimpan dari percakapan (`"simpan ini sebagai skill"`) |
+| **"Oke Miku"** | Panggil Miku dengan suara, tanpa menyentuh keyboard: "Oke Miku" saja, atau langsung dengan perintahnya ("Oke Miku, kecilkan volume ke tiga puluh"). Pendengarnya jalan di komputer Anda; Whisper hanya bekerja saat ada ucapan |
 | **Maskot** | Sprite Miku beranimasi sesuai emosi, di GUI maupun sebagai maskot desktop; `Ctrl+Shift+M` untuk mulai bicara dari aplikasi mana pun |
 | **Privat** | Semua berjalan di komputer Anda; riwayat dan memori di `data/`, tidak pernah ikut ke git |
 
@@ -43,7 +44,7 @@ Mendengar suara Anda, berpikir dengan LLM lokal, menjalankan aksi di komputer, l
 > [!NOTE]
 > Exe belum ditandatangani, jadi Windows SmartScreen bisa menampilkan "Windows protected your PC". Klik **More info → Run anyway**. Kode aplikasi yang diunduh Setup dari GitHub dicocokkan dengan SHA256 di rilis yang sama.
 
-Setup yang dibuka lagi (atau **Modify** di "Apps & features") menawarkan **Perbarui**, **Perbaiki**, dan **Hapus**. Hapus menyimpan percakapan, memori, skill, dan model kecuali Anda mencentangnya.
+Setup yang dibuka lagi (atau **Modify** di "Apps & features") menawarkan **Perbarui**, **Perbaiki**, dan **Hapus**. Hapus menyimpan percakapan, memori, skill, dan model kecuali Anda mencentangnya. Folder aplikasi dan folder model harus baru atau kosong (bukan langsung `D:\` atau folder berisi file lain), karena Hapus membersihkan isi folder aplikasi dan subfolder model yang dibuat Setup.
 
 **Linux, paling mudah (mulai v1.7.0):** unduh **`MikuVisionSetup-linux-x86_64`** dari [rilis terbaru](https://github.com/MocArjunnaja/MikuVision/releases/latest), izinkan file itu dijalankan, lalu buka. Setup yang sama memeriksa komputer dan memasang semuanya ke `~/.local/share/mikuvision/app`. Bila perlu memasang paket sistem atau Ollama, Setup meminta izin dulu, lalu password Anda lewat jendela sistem (bukan terminal). Sesudahnya **MikuVision Setup** di menu aplikasi menawarkan Perbarui, Perbaiki, dan Hapus, dan **Hapus MikuVision** langsung membuka halaman Hapus.
 
@@ -87,11 +88,13 @@ Setup yang dibuka lagi (atau **Modify** di "Apps & features") menawarkan **Perba
 
 | Mode | Perintah | Keterangan |
 |---|---|---|
-| GUI | Shortcut / menu **MikuVision** | Jendela chat + tombol **Hold to Speak**, atau `Ctrl+Shift+M` (tekan sekali untuk mulai merekam, sekali lagi untuk selesai) |
-| Suara + maskot | `python miku.py` | Seret maskot Miku, atau tekan `Ctrl+Shift+M` dari aplikasi mana pun, lalu langsung bicara |
+| GUI | Shortcut / menu **MikuVision** | Jendela chat + tombol **Hold to Speak**, `Ctrl+Shift+M` (tekan sekali untuk mulai merekam, sekali lagi untuk selesai), atau "Oke Miku" bila tombol **Wake Phrase** menyala |
+| Suara + maskot | `python miku.py` | Ucapkan "Oke Miku", seret maskot Miku, atau tekan `Ctrl+Shift+M` dari aplikasi mana pun, lalu langsung bicara |
 | Teks | `python miku.py --text` | Paling mudah untuk mencoba pertama kali; `--resume` melanjutkan sesi terakhir (di GUI: tombol **↺ Sesi lalu**) |
 
 `python` di sini adalah Python dari env installer: `.venv\Scripts\python.exe` di Windows, `~/.local/share/mikuvision/venv/bin/python` atau `.venv/bin/python` di Linux.
+
+**"Oke Miku".** Di mode suara (dan GUI dengan **Wake Phrase** menyala) Miku mendengarkan terus. Ucapkan "Oke Miku", tunggu 「はい、何でしょうか？」, lalu sampaikan permintaannya; atau ucapkan sekaligus. Kalimat lain hanya tampil sebagai `(terdengar: …)` dan tidak diproses. Volume input mikrofon menentukan: bila muncul `Volume mikrofon terlalu tinggi` atau "Oke Miku" sering tidak dikenali, atur volume input di pengaturan Suara (laptop uji: ±20% di Linux, 45% di Windows). Matikan dengan `WAKE_PHRASE_ENABLED = False` di `config.py`.
 
 **Shortcut untuk mulai bicara.** `Ctrl+Shift+M` aktif selama Miku jalan, di Windows dan Linux X11. Ganti kombinasinya lewat `WAKE_HOTKEY` di `config.py` (harus memakai Ctrl, Alt, atau Super), atau matikan dengan `HOTKEY_ENABLED = False`. Di Wayland, atau bila kombinasinya sudah dipakai aplikasi lain, pasang perintah ini sebagai shortcut di pengaturan keyboard desktop; ia hanya meminta Miku yang sedang jalan untuk mendengarkan (±0,2 s):
 
@@ -143,6 +146,7 @@ Langkah 1–3 bisa sekaligus: `install.bat -RvcModel <file.pth> -RvcIndex <file.
 
 - Riwayat percakapan, log per giliran, dan memori jangka panjang tersimpan di `data/`, yang diabaikan git. Hapus memori dengan "lupakan …" atau `/forget`.
 - Dokumen buatan Miku tersimpan di `Desktop/Miku_Documents/`. Fitur WhatsApp memakai `data/contacts_db.json` berformat `{"nama": "62812xxxx"}` yang Anda buat sendiri.
+- Di mode suara mikrofon terbuka terus untuk mendengar "Oke Miku" (`WAKE_PHRASE_ENABLED`). Audionya diproses di komputer Anda dan tidak disimpan; yang terdengar hanya ditampilkan di konsol sebagai `(terdengar: …)` (matikan dengan `WAKE_SHOW_HEARD = False`).
 - Rekaman mic tidak disimpan, kecuali Anda menyalakan `DEBUG_DUMP_AUDIO` di `config.py` untuk debugging.
 - Screenshot untuk membaca layar hanya diambil saat Anda bertanya tentang layar, hanya ada di memori, dan dikirim ke Ollama lokal. Jawaban model visi tercatat di riwayat seperti hasil tool lain.
 
@@ -155,6 +159,7 @@ Langkah 1–3 bisa sekaligus: `install.bat -RvcModel <file.pth> -RvcIndex <file.
 | `Gagal connect ke Ollama` / model tidak ditemukan | Pastikan Ollama berjalan (Windows: ikon di system tray; Linux: `sudo systemctl start ollama` atau `ollama serve`), lalu `ollama pull qwen3:4b-instruct` |
 | Balasan LLM lambat | `ollama ps` harus menunjukkan `100% GPU`; bila tidak, tutup aplikasi lain yang memakai VRAM lalu buka ulang MikuVision |
 | Suara Miku kadang jadi suara MeloTTS biasa | VRAM penuh (`CUDA out of memory` di `data/logs/gui.log`); tutup aplikasi lain yang memakai GPU NVIDIA |
+| "Oke Miku" tidak dikenali, atau `Volume mikrofon terlalu tinggi` | Atur volume input mikrofon (Windows: Settings → System → Sound → Input; Linux: pengaturan Suara) lalu coba lagi. Uji cepat tanpa menjalankan aksi apa pun: `python experiments/wake_eval/live_guided.py` |
 | Ucapan sering salah dengar | Set `DEBUG_DUMP_AUDIO = True`, ulangi, lalu cek rekaman di `data/debug_audio/`. Untuk bahasa Inggris, tambahkan `"en"` ke `WHISPER_LANGUAGES` |
 | Whisper sangat lambat | Tanpa GPU, ganti `WHISPER_MODEL` di `config.py` ke `small` |
 | `Shortcut Ctrl+Shift+M tidak dipasang: sudah dipakai aplikasi lain` | Ganti `WAKE_HOTKEY` di `config.py`, atau pakai `miku.py --trigger` sebagai shortcut desktop. Hindari tombol Super di Cinnamon |
@@ -171,7 +176,7 @@ Langkah 1–3 bisa sekaligus: `install.bat -RvcModel <file.pth> -RvcIndex <file.
 pytest
 ```
 
-Test tidak membutuhkan mikrofon, GPU, maupun Ollama, dan berjalan otomatis di GitHub Actions (Ubuntu dan Windows). Installer berantarmuka yang sedang dibuat (`miku_setup/`, [docs/PLAN_INSTALLER.md](docs/PLAN_INSTALLER.md)) bisa dicoba tanpa memasang apa pun: `python -m miku_setup.main --dry-run`. Catatan perubahan dan angka pengujian ada di [CHANGELOG.md](CHANGELOG.md); urutan kerja berikutnya di [docs/ROADMAP.md](docs/ROADMAP.md); benchmark yang butuh GPU di `experiments/`.
+Test tidak membutuhkan mikrofon, GPU, maupun Ollama, dan berjalan otomatis di GitHub Actions (Ubuntu dan Windows). MikuVision Setup (`miku_setup/`, [docs/PLAN_INSTALLER.md](docs/PLAN_INSTALLER.md)) bisa dicoba tanpa memasang apa pun: `python -m miku_setup.main --dry-run`; exe dan binary Linux dibangun dengan `pyinstaller miku_setup.spec` (`requirements-setup.txt`). Catatan perubahan dan angka pengujian ada di [CHANGELOG.md](CHANGELOG.md); urutan kerja berikutnya di [docs/ROADMAP.md](docs/ROADMAP.md); benchmark yang butuh GPU di `experiments/`.
 
 ## Lisensi & kredit
 

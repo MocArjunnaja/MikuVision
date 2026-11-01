@@ -123,3 +123,43 @@ def test_install_args_use_options_that_install_ps1_has():
                           rvc_model="x.pth", rvc_index="x.index")
     for option in (a for a in components.install_args(selection, platform="win32") if a.startswith("-")):
         assert re.search(rf"\[(switch|string)\]\${option[1:]}\b", install_ps1), option
+
+
+def _folder_check(tmp_path, install_dir, model_dir=None):
+    selection = components.Selection(install_dir, model_dir=model_dir)
+    return components.validate_selection(selection, lambda p: True, home=tmp_path / "home")
+
+
+def _fill(folder, *names):
+    for name in names:
+        path = folder / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x")
+    return folder
+
+
+def test_app_folder_must_be_new_empty_or_mikuvision(tmp_path):
+    assert _folder_check(tmp_path, tmp_path / "baru" / "MikuVision") is None
+    (tmp_path / "kosong").mkdir()
+    assert _folder_check(tmp_path, tmp_path / "kosong") is None
+    assert _folder_check(tmp_path, _fill(tmp_path / "sisa", "data/memory.json", "logs/a.log")) is None
+    assert _folder_check(tmp_path, _fill(tmp_path / "lama", "gui.py", "miku_setup/__init__.py", ".venv/x")) is None
+    problem = _folder_check(tmp_path, _fill(tmp_path / "Documents", "skripsi.docx"))
+    assert "sudah berisi file lain" in problem and str(tmp_path / "Documents" / "MikuVision") in problem
+    assert "clone git" in _folder_check(tmp_path, _fill(tmp_path / "repo", ".git/HEAD", "gui.py", "miku_setup/x"))
+
+
+def test_drive_root_and_home_are_refused(tmp_path):
+    root = Path(tmp_path.anchor)
+    assert "tidak boleh langsung" in _folder_check(tmp_path, root)
+    (tmp_path / "home").mkdir()
+    assert "tidak boleh langsung" in _folder_check(tmp_path, tmp_path / "home")
+    assert "Folder model tidak boleh langsung" in _folder_check(tmp_path, tmp_path / "app", model_dir=root)
+
+
+def test_model_folder_must_be_empty_or_hold_only_model_subfolders(tmp_path):
+    ok = _fill(tmp_path / "models", "ollama/blobs/a", "huggingface/hub/b")
+    assert _folder_check(tmp_path, tmp_path / "app", model_dir=ok) is None
+    problem = _folder_check(tmp_path, tmp_path / "app", model_dir=_fill(tmp_path / "D", "film/a.mkv"))
+    assert "Folder model sudah berisi file lain" in problem
+

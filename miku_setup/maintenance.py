@@ -23,7 +23,7 @@ from typing import Callable, List, Optional
 from . import registry
 from .checks import model_env_file, parse_env_file
 from .launch import MENU_ENTRY, desktop_dir
-from .components import Selection
+from .components import APP_MARKERS, MODEL_SUBDIRS, Selection, is_protected_folder, looks_like_app_folder
 from .registry import APP_NAME, InstalledApp
 
 log = logging.getLogger("miku_setup")
@@ -269,20 +269,37 @@ def remove_installation(app: InstalledApp, plan: RemovalPlan, progress: Callable
     progress(f"Menghapus {install_dir}")
     app_problems = []
     if install_dir.is_dir():
-        for child in sorted(install_dir.iterdir()):
-            if child.name == USER_DATA and not plan.data:
-                continue
-            problem = remove_tree(child)
-            app_problems += [problem] if problem else []
-        if not any(install_dir.iterdir()):
-            install_dir.rmdir()
+        if is_protected_folder(install_dir) or not looks_like_app_folder(install_dir):
+            # Entri registry yang menunjuk ke folder lain (diubah tangan, atau instalasi lama di folder berisi
+            # file user): jangan hapus isinya
+            app_problems.append(f"{install_dir}: tidak tampak seperti folder MikuVision, jadi tidak dihapus")
+        else:
+            children = [child for child in sorted(install_dir.iterdir())
+                        if child.name != USER_DATA or plan.data]
+            # Tanda MikuVision dihapus terakhir dan hanya bila yang lain bersih, supaya Hapus yang diulang
+            # (file terkunci) masih mengenali foldernya
+            for child in [c for c in children if c.name not in APP_MARKERS]:
+                problem = remove_tree(child)
+                app_problems += [problem] if problem else []
+            if not app_problems:
+                for child in [c for c in children if c.name in APP_MARKERS]:
+                    problem = remove_tree(child)
+                    app_problems += [problem] if problem else []
+            if not any(install_dir.iterdir()):
+                install_dir.rmdir()
     problems += app_problems
 
     if plan.models and app.model_dir:
-        progress(f"Menghapus model di {app.model_dir}")
-        names = model_env_vars_inside(app.model_dir, user_env)
-        problem = remove_tree(Path(app.model_dir)) if Path(app.model_dir).exists() else None
-        problems += [problem] if problem else []
+        model_dir = Path(app.model_dir)
+        progress(f"Menghapus model di {model_dir}")
+        names = model_env_vars_inside(model_dir, user_env)
+        # Hanya yang dibuat installer; file lain di folder itu milik user
+        for sub in MODEL_SUBDIRS:
+            if (model_dir / sub).exists():
+                problem = remove_tree(model_dir / sub)
+                problems += [problem] if problem else []
+        if model_dir.is_dir() and not any(model_dir.iterdir()):
+            model_dir.rmdir()
         if names:
             delete_user_env(names)
             log.info("Variabel user dihapus: %s", ", ".join(names))

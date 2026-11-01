@@ -281,7 +281,8 @@ def home(tmp_path, monkeypatch):
 
 def fake_install(root: Path) -> InstalledApp:
     install_dir = root / "share" / "mikuvision" / "app"
-    for name in ("install.sh", "run.sh", "gui.py", ".venv/bin/python", ".tools/mikuvision.png", "data/memory.json"):
+    for name in ("install.sh", "run.sh", "gui.py", "miku_setup/__init__.py", ".venv/bin/python", ".tools/mikuvision.png",
+                 "data/memory.json"):
         path = install_dir / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"x")

@@ -25,6 +25,8 @@ def fake_install(root: Path) -> InstalledApp:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"x" * 1000)
     (install_dir / ".tools" / "mikuvision.ico").chmod(0o444)  # file read-only tetap terhapus
+    (install_dir / "miku_setup").mkdir()
+    (install_dir / "miku_setup" / "__init__.py").write_bytes(b"")
     model_dir = root / "models"
     (model_dir / "ollama" / "blobs").mkdir(parents=True)
     (model_dir / "ollama" / "blobs" / "sha256-1").write_bytes(b"m")
@@ -199,6 +201,8 @@ def test_locked_files_keep_the_registry_entry_for_another_try(tmp_path, monkeypa
     problems, entry_deleted, _ = _remove(app, RemovalPlan())
     assert len(problems) == 1 and ".venv" in problems[0]
     assert not entry_deleted and (app.install_dir / ".venv").exists()
+    # Tanda MikuVision dibiarkan, jadi Hapus yang diulang masih mengenali foldernya
+    assert (app.install_dir / "gui.py").is_file() and (app.install_dir / "miku_setup").is_dir()
 
 
 def test_running_processes_only_lists_programs_from_the_install_folder(tmp_path, monkeypatch):
@@ -236,3 +240,26 @@ def test_the_setup_exe_own_bootloader_is_not_counted(tmp_path, monkeypatch, plat
     monkeypatch.setattr(sys, "executable", str(setup_exe))
     monkeypatch.setattr(sys, "platform", platform)
     assert maintenance.running_processes(install_dir) == ["pythonw.exe"]
+
+
+def test_uninstall_refuses_a_folder_that_is_not_mikuvision(tmp_path):
+    """Entri registry yang menunjuk ke folder berisi file user: isinya tidak disentuh."""
+    folder = tmp_path / "Documents"
+    (folder / "skripsi").mkdir(parents=True)
+    (folder / "skripsi" / "bab1.docx").write_bytes(b"penting")
+    (folder / "install.ps1").write_bytes(b"x")  # cukup untuk read_installed, tapi bukan MikuVision
+    problems, entry_deleted, _ = _remove(InstalledApp(folder, "1.6.0"), RemovalPlan(data=True))
+    assert len(problems) == 1 and "tidak tampak seperti folder MikuVision" in problems[0]
+    assert (folder / "skripsi" / "bab1.docx").read_bytes() == b"penting" and not entry_deleted
+
+
+def test_model_removal_only_deletes_what_the_installer_made(tmp_path):
+    app = fake_install(tmp_path)
+    (app.model_dir / "huggingface" / "hub").mkdir(parents=True)
+    (app.model_dir / "foto-liburan").mkdir()
+    (app.model_dir / "foto-liburan" / "pantai.jpg").write_bytes(b"jpg")
+    problems, _, _ = _remove(app, RemovalPlan(models=True))
+    assert problems == []
+    assert not (app.model_dir / "ollama").exists() and not (app.model_dir / "huggingface").exists()
+    assert (app.model_dir / "foto-liburan" / "pantai.jpg").read_bytes() == b"jpg"
+

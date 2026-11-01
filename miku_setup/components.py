@@ -142,7 +142,7 @@ def space_needed(selection: Selection, gpu: bool, ollama_installed: bool,
 
 
 def validate_selection(selection: Selection, is_writable: Callable[[Path], bool], platform: str = sys.platform,
-                       filesystem: Callable[[Path], str] = filesystem_of) -> Optional[str]:
+                       filesystem: Callable[[Path], str] = filesystem_of, home: Optional[Path] = None) -> Optional[str]:
     """Pesan untuk user bila pilihan di halaman 4 belum bisa dipakai, atau None. Ruang disk dicek terpisah."""
     linux = platform != "win32"
     folders = [("Folder aplikasi", selection.install_dir)]
@@ -164,6 +164,10 @@ def validate_selection(selection: Selection, is_writable: Callable[[Path], bool]
             if linux:
                 return f"{label} tidak bisa ditulis: {text}. Pilih folder di dalam folder home Anda"
             return f"{label} tidak bisa ditulis: {text}. Pilih folder lain (bukan C:\\Program Files)"
+    for label, folder in folders:
+        problem = _folder_use_problem(label, Path(str(folder)), folder is selection.install_dir, home)
+        if problem:
+            return problem
     if linux and filesystem(Path(selection.install_dir)) in WINDOWS_FILESYSTEMS:
         return (f"Folder aplikasi ada di partisi Windows (NTFS/FAT): Python env di sana lambat dan tidak didukung. "
                 f"Pilih folder di partisi Linux, misalnya {default_install_dir(platform=platform)}")
@@ -176,6 +180,60 @@ def validate_selection(selection: Selection, is_writable: Callable[[Path], bool]
             if Path(path).suffix.lower() != ext or not Path(path).is_file():
                 return f"File {label} RVC harus file {ext} yang ada: {path}"
     return None
+
+
+# Yang dibuat installer di dalam folder model (-ModelDir / --model-dir); hanya ini yang dihapus Hapus
+MODEL_SUBDIRS = ("ollama", "huggingface")
+# Ada di setiap instalasi MikuVision (zip rilis memuat keduanya untuk semua OS)
+APP_MARKERS = ("gui.py", "miku_setup")
+# Sisa di folder aplikasi sesudah Hapus yang menyimpan data user
+APP_LEFTOVERS = {"data", "logs"}
+
+
+def is_protected_folder(folder: Path, home: Optional[Path] = None) -> bool:
+    """Akar drive/filesystem atau folder home: tidak pernah jadi folder aplikasi atau model, karena Hapus
+    menghapus isinya."""
+    home = Path.home() if home is None else Path(home)
+    try:
+        folder, home = Path(folder).resolve(), home.resolve()
+    except OSError:
+        folder = Path(folder)
+    return folder.parent == folder or folder == home
+
+
+def looks_like_app_folder(folder: Path) -> bool:
+    """Folder berisi MikuVision (atau sisanya sesudah Hapus), bukan folder lain atau clone git."""
+    folder = Path(folder)
+    try:
+        names = {entry.name for entry in folder.iterdir()}
+    except OSError:
+        return False
+    if ".git" in names:
+        return False
+    return all(marker in names for marker in APP_MARKERS) or names <= APP_LEFTOVERS
+
+
+def _folder_use_problem(label: str, folder: Path, app: bool, home: Optional[Path]) -> Optional[str]:
+    """Folder yang sudah berisi file lain tidak boleh dipakai: Hapus nanti menghapus isinya."""
+    suggestion = folder / ("MikuVision" if app else "MikuVision-models")
+    if is_protected_folder(folder, home):
+        return f"{label} tidak boleh langsung {folder}. Pilih folder baru di dalamnya, misalnya {suggestion}"
+    if not folder.is_dir():
+        return None
+    try:
+        names = {entry.name for entry in folder.iterdir()}
+    except OSError:
+        return None  # izin dicek is_writable
+    if not names:
+        return None
+    if app and ".git" in names:
+        return (f"{label} adalah clone git. Untuk clone pakai install.bat atau install.sh; "
+                f"untuk Setup pilih folder baru, misalnya {suggestion}")
+    if app and looks_like_app_folder(folder):
+        return None
+    if not app and names <= set(MODEL_SUBDIRS):
+        return None
+    return f"{label} sudah berisi file lain: {folder}. Pilih folder kosong, misalnya {suggestion}"
 
 
 def is_writable(folder: Path) -> bool:
