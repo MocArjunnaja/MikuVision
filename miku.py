@@ -75,7 +75,9 @@ from core.commands import handle_command
 from core.conversation import ToolResult, run_turn
 from core.turn_log import TurnLogger
 from core.hotkey import ListenTriggers
-from config import DATA_DIR, CHARACTERS, DEFAULT_CHARACTER, TURN_LOG_DIR, WAKE_HOTKEY, HOTKEY_ENABLED
+from core.wake import WakeListener, match_wake_phrase, wake_phrase_end
+from config import (DATA_DIR, CHARACTERS, DEFAULT_CHARACTER, TURN_LOG_DIR, WAKE_HOTKEY, HOTKEY_ENABLED,
+                    WAKE_PHRASE_ENABLED, WAKE_CHECK_LANGUAGE, WAKE_CHECK_PROMPT, WAKE_SHOW_HEARD)
 
 
 class MikuCLI:
@@ -99,17 +101,15 @@ class MikuCLI:
 
         # Hover / Drag interactive mode
         self._interaction_event = threading.Event()
-        # "mascot" (diseret) atau "shortcut" (Ctrl+Shift+M / --trigger): shortcut langsung merekam
+        # "mascot" (diseret), "shortcut" (Ctrl+Shift+M / --trigger): langsung merekam,
+        # atau "wake" ("Oke Miku"; perintah yang diucapkan sekaligus ada di _wake_command)
         self._interaction_source: Optional[str] = None
         self.triggers: Optional[ListenTriggers] = None
+        self.wake: Optional[WakeListener] = None
+        self._wake_command = ""
+        self._handling = False  # sedang merekam/memproses satu permintaan
 
-        self.wake_trigger_language_hint = self.character.lang
-        self.wake_conversation_language_hint = None
-        self.wake_silence_timeout_sec = 3.0
         self.wake_max_utterance_sec = 18.0
-        self.last_conversation_activity = 0.0
-        self._wake_stop_event = threading.Event()
-        self._wake_thread: Optional[threading.Thread] = None
 
         print(f"[MikuVision] Selected character: {self.character.display_name}")
         print(f"[MikuVision] Language: {self.character.lang}")
@@ -267,6 +267,36 @@ class MikuCLI:
         self._interaction_source = "shortcut"
         self._interaction_event.set()
 
+    def _on_wake_phrase(self, command: str):
+        """"Oke Miku" terdengar (dari thread pendengar); command = sisa kalimat sesudahnya."""
+        self._wake_command = command
+        self._interaction_source = "wake"
+        self._interaction_event.set()
+
+    @staticmethod
+    def _on_wake_heard(text: str):
+        """Yang terdengar oleh pendengar "Oke Miku"; wake phrase sendiri dicetak oleh alur utama."""
+        if match_wake_phrase(text) is None:
+            print(f"   (terdengar: {text!r})", flush=True)
+
+    def _wake_busy(self) -> bool:
+        """Jangan mendengarkan "Oke Miku" saat Miku merekam, memproses, atau bicara."""
+        return self._handling or bool(self.voice_output and self.voice_output.is_speaking)
+
+    def _transcribe_wake(self, audio) -> str:
+        """Cek "Oke Miku": satu bahasa tetap dan beam 1, karena jalan untuk setiap ucapan. Prompt-nya
+        "Oke Miku." saja; prompt kosakata membuat Whisper mengarang "Buka Google Chrome"."""
+        return self.voice_input.transcribe(audio, lang=WAKE_CHECK_LANGUAGE, beam_size=1,
+                                           prompt=WAKE_CHECK_PROMPT, word_timestamps=True,
+                                           verbose_logging=False)
+
+    def _wake_phrase_end(self):
+        """Detik akhir "Oke Miku" di audio yang baru dicek (perintah dipotong dari situ)."""
+        return wake_phrase_end(self.voice_input.last_words)
+
+    def _transcribe_wake_command(self, audio) -> str:
+        return self.voice_input.transcribe(audio, languages=[self.character.lang, "id"], verbose_logging=False)
+
     def _on_avatar_quit(self):
         """Callback from avatar window when user right-clicks and hits Exit"""
         print("\n[Exit requested from mascot context menu]")
@@ -302,19 +332,30 @@ class MikuCLI:
 
         self.triggers = ListenTriggers(self._on_listen_trigger, WAKE_HOTKEY, hotkey_enabled=HOTKEY_ENABLED)
         trigger_messages = self.triggers.start()
+        if WAKE_PHRASE_ENABLED:
+            self.wake = WakeListener(self._transcribe_wake, self._on_wake_phrase, is_busy=self._wake_busy,
+                                     transcribe_command=self._transcribe_wake_command,
+                                     wake_end=self._wake_phrase_end,
+                                     on_warning=lambda message: print(f"[Oke Miku] {message}"),
+                                     on_heard=self._on_wake_heard if WAKE_SHOW_HEARD else None)
+            error = self.wake.start()
+            if error:
+                trigger_messages.append(f"\"Oke Miku\" tidak aktif: {error}.")
+                self.wake = None
 
         print("\n" + "="*50)
+        ways = ["drag the Miku mascot"]
         if self.triggers.hotkey_active:
-            print(f"💡 HOW TO USE: Drag the Miku mascot or press {self.triggers.hotkey.combo} to talk!")
-        else:
-            print("💡 HOW TO USE: Drag the Miku mascot on your screen to talk!")
+            ways.append(f"press {self.triggers.hotkey.combo}")
+        if self.wake:
+            ways.append('say "Oke Miku"')
+        print(f"💡 HOW TO USE: {' / '.join(ways)} to talk!")
         print("="*50 + "\n")
         for message in trigger_messages:
             print(f"[Shortcut] {message}")
 
         print("Press Ctrl+C to exit.\n")
 
-        import time
         while True:
             try:
                 # Clear any lingering events before waiting to avoid accidental queueing
@@ -334,87 +375,100 @@ class MikuCLI:
                     break
                     
                 self._interaction_event.clear()
-
-                if self._interaction_source == "shortcut":
-                    # Shortcut: langsung merekam, tanpa sapaan (±1-2 s TTS + RVC), jadi user
-                    # bisa bicara begitu menekan; maskot berganti ekspresi "listening"
-                    print("\n[Shortcut pressed]")
-                else:
-                    # Feedback: Miku acknowledges the interaction
-                    print("\n[User interacted with Miku]")
-                    if self.avatar_window:
-                        self.avatar_window.set_emotion("happy")
-
-                    trigger_phrase = "はい、何でしょうか？" # "Yes, what is it?"
-                    self.voice_output.speak(trigger_phrase, blocking=True)
-
-                    # Give a small pause to avoid hearing her own echo
-                    time.sleep(0.3)
-
-                # Miku starts listening for user request
-                if self.avatar_window:
-                    self.avatar_window.set_emotion("listening")
-                print("🎤 Listening... (speak now, waiting 3s for silence)")
-                
-                audio = self.voice_input.listen_until_silence(
-                    max_duration=self.wake_max_utterance_sec,
-                    silence_duration=2.5, # Slightly faster so you don't wait too long
-                    min_duration=0.5,
-                    speech_threshold=0.015, # Tingkatkan sedikit karena noise luar ramai
-                    quiet=True
-                )
-                
-                if len(audio) == 0:
-                    print("... No audio captured.")
-                    if self.avatar_window:
-                        self.avatar_window.set_emotion("confused")
-                        time.sleep(2.0)
-                        self.avatar_window.set_emotion("neutral")
-                    continue
-                
-                print("⏳ Transcribing...")
-                if self.avatar_window:
-                    self.avatar_window.set_emotion("thinking")
-                    
-                # Bahasa dideteksi di antara bahasa karakter dan Indonesia; frasa halusinasi
-                # Whisper ("ご視聴ありがとうございました" dll.) sudah dibuang di VoiceInput
-                text = self.voice_input.transcribe(audio, languages=[self.character.lang, "id"])
-
-                if text:
-                    print(f"You: {text}\n")
-                    self._process_ai_response(text)
-                else:
-                    print("[Pesan Anda kosong, terlalu kecil, atau gagal dikenali (Could not transcribe)]\n")
-                    
-                    # ADAPTIVE FEEDBACK: Karakter memberikan respons kebingungan ("apa kamu bilang?") secara otonom
-                    import random
-                    lang = getattr(self.character, 'lang', 'id')
-                    if lang == "ja":
-                        feedbacks = [
-                            "ん？もう一回言ってくれる？",
-                            "ええっと、よく聞こえなかったみたい。もう一回お願い！",
-                            "ごめんなさい、ちょっと聞き取れなかったの。"
-                        ]
-                    else:
-                        feedbacks = [
-                            "Maaf, suaranya kurang jelas. Bisa diulangi?",
-                            "Eh, ngomong apa barusan? Tolong diulangi ya.",
-                            "Hmm? Aku kurang dengar nih, ulangi sekali lagi dong!"
-                        ]
-                    
-                    fallback_msg = random.choice(feedbacks)
-                    if self.avatar_window:
-                        self.avatar_window.set_emotion("confused")
-                    
-                    # Miku akan bersuara langsung dari pipeline VITS RVC (jika ada) menggunakan VoiceOutput
-                    self.voice_output.speak(fallback_msg)
-
-                if self.avatar_window:
-                    self.avatar_window.set_emotion("neutral")
-                    
+                self._handling = True
+                self._handle_interaction()
             except KeyboardInterrupt:
                 print("\n[Goodbye!]")
                 break
+            finally:
+                self._handling = False
+
+    def _handle_interaction(self):
+        """Satu permintaan: sapa (bila perlu), rekam, transkripsi, proses."""
+        if self._interaction_source == "wake" and self._wake_command:
+            # "Oke Miku, buka Notepad": perintahnya sudah terdengar, langsung diproses
+            print(f"\n[Oke Miku] You: {self._wake_command}\n")
+            self._process_ai_response(self._wake_command)
+            if self.avatar_window:
+                self.avatar_window.set_emotion("neutral")
+            return
+
+        if self._interaction_source == "shortcut":
+            # Shortcut: langsung merekam, tanpa sapaan (±1-2 s TTS + RVC), jadi user
+            # bisa bicara begitu menekan; maskot berganti ekspresi "listening"
+            print("\n[Shortcut pressed]")
+        else:
+            # Feedback: Miku acknowledges the interaction
+            print("\n[Oke Miku]" if self._interaction_source == "wake" else "\n[User interacted with Miku]")
+            if self.avatar_window:
+                self.avatar_window.set_emotion("happy")
+
+            trigger_phrase = "はい、何でしょうか？" # "Yes, what is it?"
+            self.voice_output.speak(trigger_phrase, blocking=True)
+
+            # Give a small pause to avoid hearing her own echo
+            time.sleep(0.3)
+
+        # Miku starts listening for user request
+        if self.avatar_window:
+            self.avatar_window.set_emotion("listening")
+        print("🎤 Listening... (speak now, waiting 3s for silence)")
+        
+        audio = self.voice_input.listen_until_silence(
+            max_duration=self.wake_max_utterance_sec,
+            silence_duration=2.5, # Slightly faster so you don't wait too long
+            min_duration=0.5,
+            speech_threshold=0.015, # Tingkatkan sedikit karena noise luar ramai
+            quiet=True
+        )
+        
+        if len(audio) == 0:
+            print("... No audio captured.")
+            if self.avatar_window:
+                self.avatar_window.set_emotion("confused")
+                time.sleep(2.0)
+                self.avatar_window.set_emotion("neutral")
+            return
+        
+        print("⏳ Transcribing...")
+        if self.avatar_window:
+            self.avatar_window.set_emotion("thinking")
+            
+        # Bahasa dideteksi di antara bahasa karakter dan Indonesia; frasa halusinasi
+        # Whisper ("ご視聴ありがとうございました" dll.) sudah dibuang di VoiceInput
+        text = self.voice_input.transcribe(audio, languages=[self.character.lang, "id"])
+
+        if text:
+            print(f"You: {text}\n")
+            self._process_ai_response(text)
+        else:
+            print("[Pesan Anda kosong, terlalu kecil, atau gagal dikenali (Could not transcribe)]\n")
+            
+            # ADAPTIVE FEEDBACK: Karakter memberikan respons kebingungan ("apa kamu bilang?") secara otonom
+            import random
+            lang = getattr(self.character, 'lang', 'id')
+            if lang == "ja":
+                feedbacks = [
+                    "ん？もう一回言ってくれる？",
+                    "ええっと、よく聞こえなかったみたい。もう一回お願い！",
+                    "ごめんなさい、ちょっと聞き取れなかったの。"
+                ]
+            else:
+                feedbacks = [
+                    "Maaf, suaranya kurang jelas. Bisa diulangi?",
+                    "Eh, ngomong apa barusan? Tolong diulangi ya.",
+                    "Hmm? Aku kurang dengar nih, ulangi sekali lagi dong!"
+                ]
+            
+            fallback_msg = random.choice(feedbacks)
+            if self.avatar_window:
+                self.avatar_window.set_emotion("confused")
+            
+            # Miku akan bersuara langsung dari pipeline VITS RVC (jika ada) menggunakan VoiceOutput
+            self.voice_output.speak(fallback_msg)
+
+        if self.avatar_window:
+            self.avatar_window.set_emotion("neutral")
 
     @staticmethod
     def _print_tool_result(result: ToolResult):
@@ -451,6 +505,8 @@ class MikuCLI:
         """Cleanup resources"""
         if self.triggers:
             self.triggers.stop()
+        if self.wake:
+            self.wake.stop()
         if self.avatar_window:
             cleanup_avatar_window()
         if self.voice_input:

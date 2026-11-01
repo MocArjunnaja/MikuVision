@@ -40,6 +40,8 @@ class VoiceInput:
         self._stream = None
         self._lock = threading.Lock()
         self.last_language: Optional[str] = None  # bahasa hasil transcribe() terakhir
+        # (kata, mulai, selesai, peluang) dari transcribe(word_timestamps=True) terakhir; waktu dalam detik
+        self.last_words: List[Tuple[str, float, float, float]] = []
         
     def initialize(self) -> bool:
         """Load Whisper model"""
@@ -167,9 +169,12 @@ class VoiceInput:
         return rank_languages(probabilities, languages)
 
     def _decode(self, audio: np.ndarray, language: str, use_initial_prompt: bool, beam_size: int,
-                vad_min_silence_ms: int, vad_speech_pad_ms: int, vad_threshold: float) -> Tuple[str, float]:
-        """Satu kali decoding. Mengembalikan teks bersih dan rata-rata log-probability per token."""
-        prompt = WHISPER_PROMPTS.get(language, WHISPER_INITIAL_PROMPT) if use_initial_prompt else None
+                vad_min_silence_ms: int, vad_speech_pad_ms: int, vad_threshold: float,
+                prompt: Optional[str] = None, word_timestamps: bool = False,
+                ) -> Tuple[str, float, List[Tuple[str, float, float, float]]]:
+        """Satu kali decoding: teks bersih, rata-rata log-probability per token, dan kata + waktunya."""
+        if prompt is None and use_initial_prompt:
+            prompt = WHISPER_PROMPTS.get(language, WHISPER_INITIAL_PROMPT)
         segments, _ = self.model.transcribe(
             audio,
             language=language,
@@ -178,6 +183,7 @@ class VoiceInput:
             temperature=(0.0, 0.2, 0.4),  # suhu naik hanya bila hasil suhu 0 berulang/ragu
             condition_on_previous_text=False,
             no_speech_threshold=0.6,
+            word_timestamps=word_timestamps,
             vad_filter=True,
             vad_parameters=dict(
                 min_silence_duration_ms=vad_min_silence_ms,
@@ -185,17 +191,19 @@ class VoiceInput:
                 threshold=vad_threshold,
             ),
         )
-        kept, logprob, weight = [], 0.0, 0.0
+        kept, words, logprob, weight = [], [], 0.0, 0.0
         for seg in segments:
             # Aturan bawaan Whisper untuk segmen tanpa ucapan, plus teks yang berulang-ulang
             if (seg.no_speech_prob > 0.6 and seg.avg_logprob < -1.0) or seg.compression_ratio > 2.4:
                 continue
             kept.append(seg.text)
+            words.extend((w.word, w.start, w.end, getattr(w, "probability", 1.0))
+                         for w in (getattr(seg, "words", None) or []))
             duration = max(seg.end - seg.start, 0.1)
             logprob += seg.avg_logprob * duration
             weight += duration
         text = clean_transcript("".join(kept) if language == "ja" else " ".join(kept), language)
-        return text, (logprob / weight if weight else -99.0)
+        return text, (logprob / weight if weight else -99.0), words
 
     def transcribe(
         self,
@@ -208,16 +216,20 @@ class VoiceInput:
         vad_threshold: float = 0.5,
         beam_size: int = 5,
         verbose_logging: bool = True,
+        prompt: Optional[str] = None,
+        word_timestamps: bool = False,
     ) -> str:
         """Audio -> teks.
 
         ``lang`` memaksa satu bahasa. Tanpa ``lang``, bahasa dideteksi di antara ``languages``
         (bawaan WHISPER_LANGUAGES) sebelum transkripsi; bila deteksi ragu, dua bahasa teratas
-        ditranskripsi dan dipilih yang lebih yakin.
+        ditranskripsi dan dipilih yang lebih yakin. ``prompt`` menggantikan prompt kosakata bawaan.
+        ``word_timestamps`` mengisi ``last_words`` (kata dan waktunya di audio masukan).
         """
         if self.model is None:
             raise RuntimeError("Model not initialized")
         self.last_language = None
+        self.last_words = []
         if audio is None or len(audio) == 0:
             return ""
 
@@ -230,7 +242,7 @@ class VoiceInput:
             ranked = self.detect_language(audio, candidates)
             tries = ranked[:1] if ranked[0][1] >= LANGUAGE_CONFIDENT else ranked[:2]
             vad = dict(vad_min_silence_ms=vad_min_silence_ms, vad_speech_pad_ms=vad_speech_pad_ms,
-                       vad_threshold=vad_threshold)
+                       vad_threshold=vad_threshold, prompt=prompt, word_timestamps=word_timestamps)
             results = [(*self._decode(audio, language, use_initial_prompt, beam_size, **vad), language)
                        for language, _ in tries]
             results = [r for r in results if r[0]]
@@ -238,8 +250,9 @@ class VoiceInput:
                 if verbose_logging:
                     print("[VoiceInput] Tidak ada ucapan yang dikenali")
                 return ""
-            text, logprob, language = max(results, key=lambda r: r[1])
+            text, logprob, words, language = max(results, key=lambda r: r[1])
             self.last_language = language
+            self.last_words = words
 
             if verbose_logging:
                 odds = ", ".join(f"{code}={p:.2f}" for code, p in ranked)

@@ -7,6 +7,7 @@
 - Fase 0 Linux selesai (31 Okt 2026): [`experiments/vision_linux/RESULTS.md`](../experiments/vision_linux/RESULTS.md). AT-SPI2 menggantikan UI Automation, `xdotool` menggerakkan mouse dan keyboard, dan shortcut global lewat XGrabKey sudah teruji.
 - T1 selesai di Linux (31 Okt 2026): `Ctrl+Shift+M` dan `miku.py --trigger` di maskot dan GUI, hasil di bagian 5. Bagian Windows menunggu daftar cek Windows.
 - Fase 1 selesai di Linux (31 Okt 2026): `describe_screen` dan `find_on_screen` di `core/vision/`, hasil di bagian 5. Windows: `describe_screen` menunggu daftar cek, `find_on_screen` (UI Automation) belum ada.
+- T2 selesai di Linux (1 Nov 2026): "Oke Miku" di mode suara dan GUI, hasil di bagian 5 dan [`experiments/wake_eval/RESULTS.md`](../experiments/wake_eval/RESULTS.md). Suara user: 10/10 di putaran terakhir. Belum diuji di Windows.
 - Berikutnya: Fase 2 (aksi satu langkah berbasis elemen). Urutan semua rencana: [`ROADMAP.md`](ROADMAP.md).
 
 ---
@@ -85,7 +86,7 @@ Dua cara memulai, keduanya berakhir di alur yang sama: dengar satu ucapan → ST
 |---|---|---|
 | **Shortcut keyboard** (T1) | Default `Ctrl+Shift+M` (`WAKE_HOTKEY` di config, bisa diganti). Ditekan → Miku langsung mendengarkan satu ucapan (tanpa sapaan seperti saat maskot diseret). Linux X11: XGrabKey pada root window, tanpa root. Windows: library `keyboard` (sudah dependency). | **Selesai di Linux** (`core/hotkey.py`): maskot 10/10, jeda median 30 ms; GUI 5/5. `Super+M` tidak sampai (diambil Cinnamon), jadi hindari tombol Super. Bila kombinasi sudah dipakai aplikasi lain, Miku memberi tahu dan jalan tanpa shortcut. |
 | **Cadangan universal** | `python miku.py --trigger` mengirim sinyal ke Miku yang sedang jalan lewat socket lokal. User memasangnya sebagai shortcut di pengaturan keyboard desktop. | Jalan di semua desktop, termasuk Wayland |
-| **"Oke Miku"** (T2) | GUI sudah punya mode wake phrase: potongan audio 2–3 s terus ditranskripsi Whisper. Untuk mode suara (maskot) perlu gerbang VAD dulu, supaya Whisper hanya jalan saat ada suara. Bila masih berat, ganti ke model wake word khusus (openWakeWord, CPU). | Target: ≥ 9/10 "Oke Miku" terdeteksi, ≤ 1 pemicu palsu per jam obrolan/musik, GPU diam saat tidak ada suara |
+| **"Oke Miku"** (T2) | `core/wake.py`: gerbang VAD, lalu Whisper hanya untuk segmen ucapan; dipakai mode suara dan GUI (bagian 5, T2) | Selesai di Linux: suara user 10/10, 0 pemicu palsu, GPU diam saat hening |
 
 Keamanan saat tanpa tangan: maskot menunjukkan sedang mendengarkan atau mengendalikan layar, `Esc` dan mouse ke pojok kiri atas menghentikan agent, dan aksi berisiko tetap dikonfirmasi lewat suara ("ya"/"tidak").
 
@@ -199,8 +200,25 @@ Untuk Fase 2:
 - Daftar langkah dan hasilnya disimpan di memori sesi, jadi user bisa bertanya "sampai mana tadi?".
 - Contoh tugas: nyalakan Bluetooth; ganti wallpaper; buka email terbaru di Outlook; ekspor dokumen Word ke PDF.
 
-### T2: "Oke Miku" di mode suara
-- Wake phrase dari GUI dipindah ke alur bersama, dengan gerbang VAD. Diukur: tingkat deteksi, pemicu palsu per jam, beban GPU/CPU saat diam.
+### T2: "Oke Miku" di mode suara (selesai di Linux, 1 Nov 2026)
+- `core/wake.py`, dipakai mode suara (`WAKE_PHRASE_ENABLED`, bawaan nyala) dan tombol Wake Phrase di GUI:
+  - mikrofon terus terbuka, tetapi gerbang VAD (webrtcvad mode 3, CPU) memotong audio jadi segmen ucapan; saat hening Whisper tidak jalan;
+  - tiap segmen dicek sekali, ucapan panjang per jendela 2,5 s;
+  - cek wake phrase memakai satu bahasa tetap (`WAKE_CHECK_LANGUAGE = "id"`), beam 1, dan prompt `"Oke Miku."`; 0,8 s audio sebelum segmen ikut dicek;
+  - perintah yang diucapkan sekaligus ("Oke Miku, buka Notepad") dipotong sesudah kata "Miku" (cap waktu kata), ditranskripsi dengan deteksi bahasa, lalu langsung diproses; jeda singkat di tengah perintah ditunggu 0,6 s;
+  - "Oke Miku" saja: Miku menjawab 「はい、何でしょうか？」 lalu merekam, seperti saat maskot diseret;
+  - selama Miku merekam, memproses, atau bicara (ditambah 0,5 s), audio dibuang, supaya Miku tidak mendengar suaranya sendiri.
+- GUI: potongan tetap 1,8 s dan "jendela percakapan" 25 s diganti pendengar yang sama. Tiap permintaan diawali "Oke Miku".
+- Hasil (set uji sintetis, `experiments/wake_eval`):
+
+  | Ukuran | Target | Hasil |
+  |---|---|---|
+  | "Oke Miku" terdeteksi | ≥ 9/10 | Suara user (mic 20%): 10/10 live, 9/10 rekaman diputar ulang. Sintetis: 20/20 bersih, 20/20 mic laptop, 19/20 sangat berisik |
+  | Pemicu palsu | ≤ 1 per jam | 0: 20 kalimat biasa dari suara user, 128 kalimat sintetis termasuk jebakan, 9,7 menit obrolan sambung, 20 menit musik/video dari speaker |
+  | GPU saat tidak ada suara | diam | 5 menit derau: Whisper tidak jalan; mikrofon sungguhan: GPU median 0%, CPU 3% |
+
+- Syarat: volume mic tidak terlalu tinggi. Di laptop uji, 30% memberi 2–5/10 dan 20% memberi 9–10/10; Miku memberi peringatan bila derau mic terlalu tinggi.
+- Belum: Windows (masuk daftar cek Windows), suara orang lain, dan openWakeWord (belum perlu, karena Whisper hanya jalan saat ada ucapan).
 
 ### Fase 4: Pemicu layar & belajar routine
 - Pemantauan ringan (OCR berkala, bukan VLM): "kalau unduhan selesai, buka foldernya", "kalau muncul error X, bacakan".

@@ -6,6 +6,81 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-11-01): "Oke Miku" di mode suara (T2)
+
+Cukup ucapkan **"Oke Miku"** untuk mulai bicara, tanpa menyeret maskot atau menekan shortcut. Perintah boleh langsung menyusul ("Oke Miku, buka Notepad"). Diuji dengan suara user: 10/10 di putaran terakhir.
+
+### Ditambahkan
+- `core/wake.py`:
+  - **Gerbang suara.** Mikrofon terus terbuka, tetapi gerbang VAD (webrtcvad mode 3, CPU) memotong audio jadi segmen ucapan, dan Whisper hanya jalan untuk segmen itu; saat hening Whisper tidak jalan sama sekali. 0,8 s audio sebelum segmen ikut disimpan, supaya awal kata tidak terpotong.
+  - **Pengecekan.** Tiap segmen dicek sekali; ucapan panjang tanpa jeda dicek per jendela 2,5 s (tumpang tindih 1 s). Cek memakai satu bahasa tetap (`WAKE_CHECK_LANGUAGE = "id"`), beam 1, dan prompt `WAKE_CHECK_PROMPT = "Oke Miku."`. Tanpa prompt itu, Whisper berbahasa Indonesia menulis "Miku" sebagai "minggu", "menurut", atau "me too".
+  - **Perintah yang ikut terucap.**
+    - Audio dipotong di akhir kata "Miku" (cap waktu kata Whisper), lalu ditranskripsi sendiri dengan deteksi bahasa. Tanpa ini, "Oke Miku, buka Notepad" ikut terdeteksi sebagai bahasa Jepang (「ブカ、Notepad」).
+    - Perintah ditahan 0,6 s; bila user melanjutkan sesudah jeda singkat, kedua bagian digabung.
+  - **Ejaan yang diterima:**
+    - "Oke/OK/Okay/Okey Miku", 「オッケー、ミク」, 「オーケーミク」, "Miku-chan"/「ミクちゃん」;
+    - salah dengar "migu", "niku", "mitu", "migo", "Miuku", "emigu", "amiku";
+    - wake phrase yang tertulis dua kali dibuang.
+  - **Tidak mendengar diri sendiri.** Selama Miku merekam, memproses, atau bicara (ditambah 0,5 s), audio dibuang.
+  - **Peringatan mic.** Muncul sekali bila derau 3 detik pertama terlalu tinggi (RMS > 0,05): "turunkan volume input ke sekitar 20–30%".
+  - **Yang terdengar ditampilkan.** Di mode suara, ucapan yang bukan "Oke Miku" dicetak sebagai `(terdengar: '…')` (`WAKE_SHOW_HEARD`), supaya kelihatan bahwa Miku mendengar tetapi tidak mengenali wake phrase-nya. Di uji pertama di aplikasi, 6 menit tanpa keluaran apa pun membuat tidak jelas apakah user belum mencoba atau tidak terdengar.
+- `VoiceInput.transcribe`: `prompt` (menggantikan prompt kosakata) dan `word_timestamps` (mengisi `last_words` dengan kata, waktu, dan peluangnya).
+- **Mode suara** (`python miku.py`): aktif bawaan (`WAKE_PHRASE_ENABLED` di `config.py`).
+  - "Oke Miku" saja → Miku menjawab 「はい、何でしょうか？」 lalu merekam.
+  - "Oke Miku, …" → perintahnya langsung diproses.
+  - Pesan cara pakai menyebut ketiga cara: seret maskot, shortcut, atau "Oke Miku".
+- `experiments/wake_eval/`:
+  - set uji edge-tts dan evaluasinya (`make_set.py`, `run_eval.py`);
+  - uji mikrofon tanpa ucapan (`live_idle.py`);
+  - uji suara berpandu dengan opsi rekam (`live_guided.py`) dan pemutar ulang rekaman (`replay.py`);
+  - hasil di `RESULTS.md`.
+
+### Diubah
+- **GUI, tombol Wake Phrase:** memakai pendengar yang sama.
+  - Sebelumnya potongan tetap 1,8 s terus ditranskripsi Whisper walau tidak ada yang bicara, dan "Oke Miku" yang jatuh di batas potongan bisa terlewat.
+  - "Jendela percakapan" 25 s dengan potongan 4 s dihapus: tiap permintaan diawali "Oke Miku", lalu direkam sampai user diam.
+- `tests/conftest.py`: pendengar "Oke Miku" di test memakai stream mikrofon palsu. Sebelumnya, di venv aplikasi (`sounddevice` asli), test mode suara bisa membuka mikrofon sungguhan.
+
+### Pengujian
+- **Suara user, mic laptop:**
+  - putaran 1 (mic 30%, belum diperbaiki) 5/10, putaran 4 (mic 20% + prompt) 9/10, putaran terakhir 10/10 dengan semua perintah benar ("Buka, notepad", "Kecilkan volume ke 30", 「メモ帳を開いて」);
+  - kalimat biasa tidak pernah memicu (20/20 di semua putaran);
+  - rekaman putaran terakhir yang diputar ulang: "Oke Miku" terdeteksi 9/10.
+- **Set sintetis:**
+  - wake phrase 20/20 bersih, 20/20 mic laptop, 19/20 sangat berisik (SNR 5 dB);
+  - 0 pemicu palsu dari 128 kalimat biasa (termasuk jebakan "Oke, menurut aku…", "Oke, minggu ini…", "Oke, mie ayamnya…") dan 9,7 menit obrolan sambung;
+  - 5 menit derau ruangan: Whisper tidak jalan.
+- **Mic sungguhan, 3–5 menit tanpa "Oke Miku":** 0 pemicu, CPU proses 3–4%, GPU median 0%.
+- **Musik dan video dari speaker, 2 × 10 menit:**
+  - 0 pemicu, CPU proses 3–4%, GPU median 0%;
+  - Whisper berhalusinasi "Oke" 35× dan "Miku" 5×, tetapi tidak pernah berurutan;
+  - filter keyakinan Whisper tidak dipasang: pada "Oke Miku" sungguhan keyakinannya 0,02–0,52, dan pada musik tidak ada kecocokan untuk dibandingkan (`experiments/wake_eval/confidence_scan.py`).
+- **Aplikasi sungguhan** (`python miku.py`, mic 20%), oleh user, semuanya lewat "Oke Miku" lalu perintah:
+  - "Buka Youtube" → YouTube terbuka;
+  - "Buka YouTube, dan carikan video dari …" → video diputar;
+  - "Ubah volume ke 60%" → volume 60%;
+  - "Buat dokumen yang berisi … tentang kamu" → dokumen Word dibuat.
+
+  Waktu LLM 1–3 s per perintah (dokumen 12 s). Permintaan ketiga dan keempat terjadi sesudah video dibuka. Pemicu palsu dari suara video belum diukur, karena saat itu baris "(terdengar: …)" belum ada.
+- **Volume mic menentukan:** mic internal laptop uji semula 100% (Capture +30 dB dan Internal Mic Boost +30 dB), sehingga derau ruangan hampir penuh (RMS 0,69). Di 30% hasilnya 2–5/10, di 20% 9–10/10.
+- `pytest`: 674 lulus di venv aplikasi (73 test di `tests/test_wake.py`, 1 baru di `tests/test_voice_input.py`); Python sistem seperti CI: 653 lulus, 59 dilewati. `test_without_dry_run_the_wizard_installs_for_real` gagal dan menggantung di venv aplikasi di Linux karena `winreg`, sudah begitu di `main` sebelum perubahan ini; dukungan Linux untuk wizard ada di #41.
+
+- **Windows** (1 Nov; Windows 11, RTX 4050, mic laptop "Microphone Array (Realtek)" di 45%, `test/v1.7.0`), oleh user:
+  - Level mic: derau ruangan RMS 0,0000, tanpa peringatan "Volume mikrofon terlalu tinggi".
+  - Uji berpandu (`live_guided.py`): skor 8/10. Wake phrase sendiri tertangkap 9/10: sekali Whisper menulis "Opi Miku buka notepad", dan sekali wake phrase tertangkap tetapi perintah Jepang tertulis katakana ("メモチョウ、アイティ", keterbatasan di bawah). Kalimat biasa 5/5 tidak memicu. Perintah sekaligus: "volume ke 30" dan "Putar lagu di YouTube" langsung diproses.
+  - `python miku.py`: "Oke Miku" lalu sapaan 「はい、何でしょうか？」, lalu "buka Notepad" → Notepad terbuka (dua kali); "Kecilkan volume ke 30" → volume 30%; "(terdengar: 'Oke, Rigo')" tidak memicu. Pendengar dan perekam membuka mic bersamaan tanpa error. Ctrl+Shift+M dan menyeret maskot tetap mulai merekam; `--trigger` juga (uji terpisah). Keluar lewat menu maskot tanpa error.
+  - GUI: tombol Wake Phrase dan model visi (memahami tangkapan layar) jalan, menurut user.
+  - Diam 3 menit dengan pendengar aktif: CPU proses 6,5% dari satu inti (0,4% dari 16 inti), GPU 0%.
+  - Speaker laptop yang memutar "Okay Miku" (suara sintetis Windows) hampir tidak terdengar di mic (RMS puncak 0,005), jadi pemicu dari speaker sendiri tidak terukur di sini.
+  - Belum terlihat: "Oke Miku" saat Miku sedang bicara, dan mic dipakai aplikasi lain setelah keluar.
+
+### Keterbatasan diketahui
+- Belum diuji dengan suara orang lain. Di Windows baru satu laptop dan satu suara.
+- Lagu yang liriknya berbunyi "oke Miku" akan memicu Miku, sama seperti orang yang mengucapkannya.
+- Perintah berbahasa Jepang yang diucapkan sekaligus kadang tertulis katakana ("メモチョウ、ハイテ") saat rekaman diputar ulang.
+
+---
+
 ## Belum dirilis (2026-11-01): binary MikuVision Setup untuk Linux di rilis (PLAN_INSTALLER IL3)
 
 Mulai v1.7.0 rilis melampirkan **`MikuVisionSetup-linux-x86_64`** di samping `MikuVisionSetup.exe`. User Linux cukup mengunduhnya, mengizinkannya dijalankan, lalu membukanya; tidak perlu git atau terminal.
