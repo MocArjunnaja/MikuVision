@@ -6,7 +6,7 @@
 
 ## 0. Menunggu merge
 
-Tidak ada. #21–#33 dirilis sebagai **v1.5.0** (31 Okt); #35–#38 (MikuVision Setup) sebagai **v1.6.0** dan #40–#43 (Setup untuk Linux, "Oke Miku") sebagai **v1.7.0** (1 Nov); cek keamanan #45 sebagai **v1.7.1** (1 Nov). Ringkasan di CHANGELOG.
+Tidak ada. #21–#33 dirilis sebagai **v1.5.0** (31 Okt); #35–#38 (MikuVision Setup) sebagai **v1.6.0** dan #40–#43 (Setup untuk Linux, "Oke Miku") sebagai **v1.7.0** (1 Nov); cek keamanan #45 dan #47 sebagai **v1.7.1** (1 Nov); Build Tools untuk RVC #48 sebagai **v1.7.2** (1 Nov). Ringkasan di CHANGELOG.
 
 ## 1. Urutan berikutnya
 

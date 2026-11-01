@@ -6,7 +6,9 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
-## Belum dirilis (2026-11-01): Setup memasang Visual Studio Build Tools untuk suara RVC
+## v1.7.2 (2026-11-01): Setup memasang Visual Studio Build Tools untuk suara RVC
+
+Rilis kecil ([#48](https://github.com/MocArjunnaja/MikuVision/pull/48)): suara RVC di Windows tanpa menyiapkan compiler C++ sendiri. Aplikasi MikuVision tidak berubah; tanpa RVC tidak ada yang berbeda.
 
 ### Ditambahkan
 - **RVC tanpa menyiapkan compiler sendiri (Windows).** `fairseq` (dependency `rvc-python`) harus dikompilasi; tanpa compiler C++, RVC dilewati dan Miku memakai suara MeloTTS. Keputusan user (1 Nov): Setup memasang Visual Studio Build Tools otomatis, bukan wheel `fairseq` buatan sendiri.
