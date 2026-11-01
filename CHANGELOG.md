@@ -6,6 +6,27 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-11-01): cek keamanan, folder Setup yang aman, README "Oke Miku"
+
+### Diperbaiki
+- **Setup tidak lagi memakai folder yang sudah berisi file lain.** Sebelumnya folder aplikasi boleh folder apa pun yang bisa ditulis (misalnya `D:\` atau `Documents`), dan Hapus lalu menghapus seluruh isinya kecuali `data/`. Folder model juga: "Hapus juga model" menghapus seluruh folder itu.
+  - Halaman 4 sekarang menolak akar drive/filesystem dan folder home. Folder aplikasi harus baru, kosong, berisi MikuVision, atau sisa Hapus (`data/`, `logs/`); clone git ditolak (pakai `install.bat`/`install.sh`). Folder model harus baru, kosong, atau hanya berisi `ollama/` dan `huggingface/`.
+  - Hapus menolak folder yang tidak tampak seperti MikuVision (tanpa `gui.py` dan `miku_setup/`), dan menghapus kedua tanda itu paling akhir, supaya Hapus yang diulang (file terkunci) tetap mengenali foldernya.
+  - "Hapus juga model" hanya menghapus `ollama/` dan `huggingface/` di folder model, lalu foldernya bila sudah kosong.
+- `.gitignore`: `logs/` (rekaman konsol uji seperti `logs/oke-miku-uji.txt` sebelumnya tidak ter-ignore karena bukan `*.log`), `hasil*.json` dari uji suara berpandu, `build/` dan `dist/` dari PyInstaller, `.ruff_cache/`, dan `.claude/worktrees/`.
+- Exe Setup: Pillow 12.1.1 → 12.3.0 (versi terakhir yang mendukung Python 3.10). Pillow 13 butuh Python 3.11; Setup hanya membuka sprite PNG bawaannya, jadi celah decoder Pillow tidak terjangkau.
+- Workflow `release-setup`: izin bawaan hanya baca; hanya job yang melampirkan ke rilis yang boleh menulis.
+- README: "Oke Miku" di Fitur, Menjalankan, Data & privasi (mikrofon terbuka terus di mode suara, diproses lokal, tidak disimpan), dan Troubleshooting; aturan folder Setup.
+
+### Pengujian dan cek
+- 5 test baru (folder aplikasi/model, akar drive dan home, folder bukan MikuVision tidak dihapus, model hanya subfolder installer) dan 1 test diperluas (tanda dihapus terakhir). Tiga mutasi (validasi folder dimatikan, pengaman Hapus dimatikan, Hapus model seluruh folder) masing-masing membuat test gagal.
+- Exe dibangun ulang dengan Pillow 12.3.0 dan terbuka di `--dry-run` (masih berjalan setelah 15 s).
+- **Riwayat git (136 commit):** tidak ada token GitHub, Hugging Face, OpenAI, AWS, atau private key. Satu-satunya temuan adalah kunci API web YouTube publik dari `youtube_res.html` (dihapus di `ec09647`; 5 alert secret scanning sudah ditutup sebagai false positive). Tidak ada nomor telepon atau file data user yang pernah di-commit.
+- **GitHub:** secret scanning dan push protection aktif. Dependabot alerts belum aktif.
+- **`pip-audit`** pada venv aplikasi (202 paket): `transformers` 4.27.4 (dipatok MeloTTS/RVC; celahnya terutama saat memuat model tak tepercaya, sedangkan MikuVision hanya memuat model dari Hugging Face resmi), `pillow` 12.3.0, `filelock`, `setuptools`, dan `hydra-core`. Belum dinaikkan karena butuh uji ulang suara dan RVC.
+
+---
+
 ## v1.7.0 (2026-11-01): ringkasan rilis
 
 **MikuVision Setup untuk Linux** dan **"Oke Miku"**. Rilis ini melampirkan `MikuVisionSetup-linux-x86_64` di samping `MikuVisionSetup.exe`: user Linux cukup mengunduh, mengizinkannya dijalankan, lalu membukanya. Di mode suara dan GUI, Miku kini bisa dipanggil dengan mengucapkan "Oke Miku", sendiri atau langsung dengan perintahnya ("Oke Miku, kecilkan volume ke tiga puluh"); shortcut `Ctrl+Shift+M` dan menyeret maskot tetap jalan. Rinciannya ada di entri v1.7.0 di bawah, satu per bagian.

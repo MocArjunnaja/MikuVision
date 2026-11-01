@@ -16,6 +16,9 @@ contacts_db.json
 temp_audio/
 *.wav
 *.log
+# Log installer dan rekaman konsol uji (logs/oke-miku-uji.txt), hasil uji suara berpandu
+logs/
+hasil*.json
 
 # ── Model lokal berukuran besar ──
 # RVC (.pth/.index) dipasang manual, lihat README "Suara Miku (RVC)"
@@ -25,6 +28,10 @@ temp_audio/
 *.safetensors
 *.gguf
 
+# ── Build MikuVision Setup (pyinstaller miku_setup.spec) ──
+build/
+dist/
+
 # ── Rahasia ──
 .env
 *.pem
@@ -32,6 +39,9 @@ temp_audio/
 
 # ── Editor / OS ──
 .vscode/
+.ruff_cache/
+# Worktree sesi Claude Code
+.claude/worktrees/
 .idea/
 Thumbs.db
 Desktop.ini
