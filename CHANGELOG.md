@@ -6,6 +6,43 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-11-01): opsi `install.sh` untuk MikuVision Setup di Linux (PLAN_INSTALLER IL1)
+
+Rencana: fase IL di [`docs/PLAN_INSTALLER.md`](docs/PLAN_INSTALLER.md). `install.sh` sekarang bisa dijalankan wizard seperti `install.ps1`; tanpa opsi baru perilakunya tetap sama.
+
+### Ditambahkan
+- **`--progress`**: selain log biasa, satu baris `##MIKU {json}` per kejadian, dengan format yang sama dengan `install.ps1 -Progress` (`step` {index, total, title}, `warn`/`error` {message}, `done` {ok}).
+  - Total langkah dihitung dari `install_steps`; setiap fungsi langkah memanggil `step` tepat sekali (dicek test).
+  - Baris penutup error ("Instalasi berhenti…", lokasi log) tidak dipancarkan, jadi `error` terakhir selalu penyebabnya.
+- **Kode keluar** seperti `install.ps1`: 0 selesai, 1 gagal yang dijelaskan (`die`), 2 error tak terduga (trap EXIT, misalnya variabel tak terdefinisi di bawah `set -u`). Dihentikan dengan Ctrl+C atau SIGTERM: 130.
+- **`--model-dir DIR`**: cache Hugging Face (Whisper, MeloTTS) di `DIR/huggingface`. Model Ollama pindah ke `DIR/ollama` hanya bila Ollama dijalankan user sendiri; Ollama milik user yang sedang jalan dengan lokasi lama dimatikan lalu dinyalakan lagi.
+  - Pilihan ini dicatat di `~/.config/environment.d/60-mikuvision.conf` (setara variabel user di Windows, berlaku di sesi login berikutnya). `run.sh` dan `install.sh` membacanya, jadi berlaku sejak MikuVision dibuka lagi; nilai yang sudah ada di environment tidak ditimpa.
+  - **Ollama yang berjalan sebagai layanan sistem** (installer resmi: user `ollama`, model di home user itu) tidak dipindah. Memindahkannya butuh `chown` ke user `ollama` dan drop-in systemd, folder di dalam `/home` biasanya tidak bisa dibaca user lain, dan menghapusnya kelak butuh root. Installer menyebut lokasi modelnya sebagai peringatan.
+- **`--with-vision`**: unduh juga `VISION_MODEL` dari `config.py` setelah model utama.
+- **`--rvc-model PTH --rvc-index INDEX`**: salin model RVC milik user ke `models/miku_default_rvc` (index dengan nama tetap yang dibaca `config.py`, dicek test). Ekstensi tidak peka huruf besar-kecil, sama seperti `install.ps1`.
+- **`--menu-entry`**: peluncur di menu aplikasi. Bersama `--skip-shortcut`: hanya di menu, tanpa Desktop (dipakai wizard, setara `-StartMenu -SkipShortcut`). Tanpa opsi baru tetap seperti sebelumnya: menu dan Desktop, atau tidak sama sekali dengan `--skip-shortcut`.
+- **`--sudo-cmd CMD`**: perintah untuk hak root (bawaan `sudo`). Untuk wizard tanpa terminal: `pkexec` (jendela password grafis). Dengan `--sudo-cmd` selain `sudo`, skrip resmi Ollama dijalankan sebagai root sekaligus, supaya password hanya diminta sekali untuk langkah itu.
+- `--self-check` (tersembunyi, untuk test): tiga baris `##MIKU` lalu keluar, log di `$TMPDIR`.
+
+### Pengujian
+- `tests/test_install_sh.py`: 54 test (28 baru):
+  - self-check, baris progres hanya dengan `--progress`, tanda kutip dan backslash di JSON;
+  - `die` → `error` + `done` dan kode 1; error tak terduga → kode 2;
+  - daftar langkah per kombinasi opsi, satu `step` per fungsi langkah;
+  - nama index RVC dan nama model sama dengan `config.py`;
+  - salin RVC dan tiga penolakannya;
+  - `--model-dir`, file environment.d, dan peringatan lokasi lama;
+  - Ollama layanan sistem (model tidak dipindah) dan Ollama milik user (dimatikan lalu dinyalakan dengan `OLLAMA_MODELS` baru);
+  - peluncur hanya-menu, `--sudo-cmd`, dan `run.sh` yang mengekspor folder model.
+
+  Test memakai `XDG_CONFIG_HOME`, log, dan folder RVC sementara, sehingga tidak menyentuh konfigurasi atau model asli.
+- `pytest`: 628 lulus di venv aplikasi. Satu yang gagal, `test_without_dry_run_the_wizard_installs_for_real` (`No module named 'winreg'`), juga gagal di `main`: test wizard GUI belum pernah jalan di Linux, dan diperbaiki di IL2. Python sistem seperti CI: 612 lulus, 54 dilewati.
+- **Uji sungguhan** di Linux Mint 22.3 (repo di NTFS, instalasi yang sudah ada), stdout dibaca dengan `miku_setup.runner.parse_progress`:
+  - `--yes --progress --skip-shortcut --with-vision`: kode keluar 0 dalam 55 s; 10 langkah dengan indeks 1–10 berurutan dan total 10; model visi yang sudah ada tidak diunduh lagi; `miku.py --test` lulus; `done ok`.
+  - `--model-dir` ke folder sementara (dengan `XDG_CONFIG_HOME` sementara): `HF_HOME` pindah, peringatan "Ollama berjalan sebagai layanan sistem; modelnya tetap di /usr/share/ollama/.ollama/models" sebagai baris `warn`, kode keluar 0. `~/.config/environment.d` asli tidak tersentuh.
+
+---
+
 ## v1.6.0 (2026-11-01): ringkasan rilis
 
 **MikuVision Setup**: installer berantarmuka untuk Windows. Unduh `MikuVisionSetup.exe` dari rilis ini, klik Lanjut, dan Miku terpasang tanpa git atau terminal. Setup yang dibuka lagi (atau Modify di "Apps & features") menawarkan Perbarui, Perbaiki, dan Hapus. Aplikasi MikuVision sendiri tidak berubah sejak v1.5.0; `install.bat`/`install.sh` tetap jalan seperti biasa. Rinciannya ada di entri v1.6.0 di bawah, satu per bagian.

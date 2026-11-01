@@ -13,6 +13,18 @@ echo "  MikuVision - Hatsune Miku Edition"
 echo "================================================"
 echo
 
+# Folder model dari install.sh --model-dir (HF_HOME, OLLAMA_MODELS). environment.d baru terbaca di
+# sesi login berikutnya, jadi dibaca di sini juga; yang sudah ada di environment tidak ditimpa
+env_file="${XDG_CONFIG_HOME:-$HOME/.config}/environment.d/60-mikuvision.conf"
+if [ -r "$env_file" ]; then
+    while IFS='=' read -r key value; do
+        case "$key" in
+            HF_HOME|OLLAMA_MODELS)
+                if [ -z "${!key:-}" ] && [ -n "$value" ]; then export "$key=$value"; fi ;;
+        esac
+    done <"$env_file"
+fi
+
 # Pakai env dari install.sh bila ada (lokasinya sama dengan yang dipilih install.sh);
 # selain itu python dari env yang sedang aktif
 for python in \
