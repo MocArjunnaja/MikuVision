@@ -36,7 +36,7 @@ Kamu adalah AI UI-Agent Otonom yang mengendalikan sistem komputer.
 3. Setelah menerima hasil tool (pesan role tool), beritahu pengguna hasilnya.
 4. SELALU mulai kalimat respons akhirmu dengan tag emosi. Emosi: neutral, happy, excited, thinking, confused, sad, embarrassed, annoyed.
 5. [TOLERANSI TYPO]: Pengguna menggunakan Voice-to-Text (A.I. Transcription). Maklumi jika ada kata-kata yang typo, terdengar salah, atau fonetiknya mirip (misal: "buka kron" -> maksudnya "buka chrome", "krim we a" -> "kirim WA"). Tarik kesimpulan logis dari maksud aslinya!
-6. [FEEDBACK LOOP]: Jika perintah pengguna kurang jelas, terlalu ambigu, atau kekurangan parameter (misal: "tolong kirim pesan ini" tanpa menyebut nama / "tolong cari video" tanpa memberi judul), JANGAN MENEBAK ASAL. Bertanyalah kepada pengguna dengan ramah untuk memperjelas konteks sebelum mengeksekusi tool. Buat percakapan mengalir (Two-way communication).
+6. [PANGGIL ATAU TANYA]: Tanya balik HANYA bila tool yang cocok butuh informasi yang tidak ada di ucapan user dan tidak bisa ditentukan dengan wajar: "kirim pesan" / "Telegramで連絡して" tanpa penerima atau isinya, "cari video" / 「動画を探して」 tanpa topik (tanya "video apa?"; jangan memakai kata "video" atau "動画" saja sebagai query). Perintah yang informasinya lengkap langsung dijalankan tanpa bertanya. Perintah untuk keadaan saat ini tidak butuh informasi tambahan: mute/unmute = suara sistem; pause, lanjutkan, skip, lagu berikutnya/sebelumnya = media yang sedang diputar. Jangan bertanya "apa yang di-mute/di-pause?".
 7. [JANGAN KLAIM PALSU]: Jika user meminta aksi, panggil tool-nya SAAT ITU JUGA, jangan menunggu apa pun. Jangan pernah bilang aksi "akan/sudah dibuka/ditutup/diatur" tanpa memanggil tool. Jika tidak ada tool yang cocok, katakan jujur bahwa kamu belum bisa melakukannya.
 8. Hanya pakai tool yang ada di definisi tools, dengan nama fungsi dan nama parameter persis seperti definisinya.
 """
@@ -51,7 +51,7 @@ FUNCTION_CALL_PROMPT_JA = """
 4. 常に返答の最初に感情タグを付けてください。(例: [EMOTION:happy] わかりました！実行します！)
 5. 【絶対厳守】: あなたのセリフ（返答）は必ず自然な「日本語」のみで行い、インドネシア語や中国語でのテキスト生成は絶対に避けてください。
 6. [音声入力の許容]: ユーザーは音声認識(Voice-to-Text)を使用しています。誤字脱字や発音が似た単語の間違い(例: "chrome" が "kron" になる等)がある場合、元の意図を文脈から推測してください。
-7. [フィードバックループ]: ユーザーの指示が曖昧だったり、必要な情報が不足している場合（例: 名前を指定せずに「メッセージを送って」と言うなど）、ツールを無理に実行せずにユーザーに優しく質問を返して詳細を確認してください。一方通行ではなく、自然な会話のキャッチボールを心がけてください。
+7. [呼び出すか質問するか]: 質問を返すのは、使うツールに必要な情報がユーザーの発言になく、常識的にも決められないときだけです: 宛先や本文のない「メッセージを送って」「Telegramで連絡して」、何を探すか言っていない「動画を探して」「cari video di youtube」（「何の動画？」と聞く。「動画」「video」だけを検索語にしない）。必要な情報がそろった依頼は、聞き返さずにすぐツールを呼び出してください。今の状態への操作に追加の情報はいりません: ミュート/ミュート解除 = システムの音、一時停止・再開・スキップ・次の曲・前の曲 = いま再生中のメディア。「何をミュートしますか？」「何を一時停止しますか？」と聞き返さないでください。
 8. 【嘘の完了報告の禁止】: 操作を頼まれたら、何も待たずにその場で必ずツールを呼び出してください。ツールを呼び出さずに「開くね」「閉じました」「設定します」などと言ってはいけません。対応するツールがない操作は、正直に「それはまだできないよ」と伝えてください。
 9. 使えるツールは関数定義(tools)に書かれているものだけです。関数名と引数名は定義どおりに使ってください。
 """
@@ -84,10 +84,11 @@ class LLMUsage:
                 "completion_tokens": self.completion_tokens,
                 "llm_seconds": round(self.total_seconds, 2)}
 
-# Janji/klaim aksi tanpa tool call: "メモ帳を開きますね！", "Aku akan membuka Notepad"
+# Janji/klaim aksi tanpa tool call: "メモ帳を開きますね！", "Aku akan membuka Notepad".
+# Bentuk tanya ("何を検索しますか？") bukan janji
 _ACTION_CLAIM_JA = re.compile(
-    r"(開|閉|設定|検索|再生|停止|変更|作成|作り|作っ|書き|送信|下げ|上げ|起動|終了|調整|ミュート)[^。！!？?\n]{0,6}(ます|ました)"
-    r"|を[^。！!？?\n]{0,10}に(します|しました)"  # 音量を30にします
+    r"(開|閉|設定|検索|再生|停止|変更|作成|作り|作っ|書き|送信|下げ|上げ|起動|終了|調整|ミュート)[^。！!？?\n]{0,6}(ます|ました)(?!か)"
+    r"|を[^。！!？?\n]{0,10}に(します|しました)(?!か)"  # 音量を30にします
 )
 _ACTION_CLAIM_ID = re.compile(
     r"\b(akan|sudah|telah|berhasil)\b[^.!?\n]{0,25}\b(mem|men|meng|meny|me)\w+", re.IGNORECASE
@@ -165,6 +166,11 @@ def _requests_action(text: str) -> bool:
 
 def _asks_question(text: str) -> bool:
     return "?" in text or "？" in text
+
+
+def _asks_back(text: str) -> bool:
+    """Balasan berupa pertanyaan balik ("video apa?", "kirim ke siapa?"), bukan janji aksi."""
+    return _asks_question(text) and not _claims_action(text)
 
 
 def _strip_thinking(text: str) -> str:
@@ -600,12 +606,18 @@ class AIBrain:
 
             # Model kecil kadang hanya berjanji ("メモ帳を開きますね！", "閉じたよ！") tanpa
             # memanggil tool. Coba sekali lagi bila user meminta aksi atau model mengklaimnya.
-            # Skill yang petunjuknya menyuruh bertanya dulu ("kegiatanmu hari ini apa saja?") tidak
-            # dipaksa memanggil tool, kecuali user sudah memberi detail atau balasannya berjanji ("日報を作りますね！")
-            skill_asks = (any(s.may_ask and not user_skills.details_given(s, user_input)
-                              for s in self.turn_user_skills)
-                          and _asks_question(clean_response) and not _claims_action(clean_response))
-            if not function_calls and not skill_asks and (
+            # Pertanyaan balik tidak dipaksa jadi tool call: "cari video" tanpa topik yang dijawab
+            # "video apa?" lalu diulang dengan "panggil tool sekarang" membuat model mengarang query
+            # (When2Call, arXiv 2504.18851). Kapan boleh bertanya diatur prompt sistem. Pengecualian:
+            # skill user yang aktif tidak boleh bertanya, atau detailnya sudah diberikan user.
+            asks_back = _asks_back(clean_response)
+            skill_wants_tool = any(not s.may_ask or user_skills.details_given(s, user_input)
+                                   for s in self.turn_user_skills)
+            # Skill yang petunjuknya menyuruh bertanya dulu ("kegiatanmu hari ini apa saja?") tetap aktif
+            # satu giliran lagi, kecuali user sudah memberi detail
+            skill_asks = asks_back and any(s.may_ask and not user_skills.details_given(s, user_input)
+                                           for s in self.turn_user_skills)
+            if not function_calls and (not asks_back or skill_wants_tool) and (
                     _requests_action(user_input) or _claims_action(clean_response)):
                 # Dua strategi, berhenti di yang pertama berhasil. Hasil benchmark: (1) unggul
                 # di perintah tunggal, (2) unggul di tengah percakapan yang sudah memuat tool call.

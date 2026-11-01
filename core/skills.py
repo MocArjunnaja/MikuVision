@@ -27,7 +27,7 @@ def _p(pattern: str) -> "re.Pattern[str]":
 SKILLS: Tuple[Skill, ...] = (
     Skill("audio", "Audio & media", "Volume, mute, play/pause/next",
           ("get_volume", "set_volume", "mute", "media_control"),
-          _p(r"音量|ボリューム|ミュート|音を|再生|停止|一時停止|次の曲|前の曲"
+          _p(r"音量|ボリューム|ミュート|音を|音楽|曲|再生|停止|止めて|スキップ"
              r"|volume|suara|\bmute|unmute|lagu|musik|play|pause|next|prev")),
     Skill("apps", "Aplikasi & folder", "Buka/tutup aplikasi, jendela, tab browser, dan folder",
           ("open_application", "close_application", "close_window", "close_browser_tab", "open_folder"),
