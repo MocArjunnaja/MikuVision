@@ -17,7 +17,7 @@ Tidak ada. #21–#33 dirilis sebagai **v1.5.0** (31 Okt); #35–#38 (MikuVision 
 | 3 | ~~**T1**: shortcut keyboard untuk mulai bicara~~ | keduanya | [VISION bagian 5, T1](PLAN_VISION_AGENT.md) | Selesai di Linux (31 Okt); Windows lewat daftar cek di bagian 2 |
 | 4 | ~~Agent visi Fase 1: membaca layar~~ | keduanya | VISION Fase 1 | Selesai di Linux (31 Okt). Windows: `describe_screen` lewat daftar cek di bagian 2, `find_on_screen` (UI Automation) masuk Fase 2 |
 | 5 | ~~S2: "simpan ini sebagai skill"~~ | keduanya | SKILLS S2 | Selesai (31 Okt); keputusan 2: ya, dengan konfirmasi |
-| 6 | T2: "Oke Miku" di mode suara | keduanya | VISION T2 | Perlu gerbang VAD dan pengukuran pemicu palsu |
+| 6 | ~~T2: "Oke Miku" di mode suara~~ | keduanya | VISION T2 | Selesai di Linux (1 Nov; `feat/wake-phrase`): 20/20 terdeteksi, 0 pemicu palsu, GPU diam saat hening. Belum: suara manusia, musik, Windows |
 | 7 | Agent visi Fase 2–3: Miku menggerakkan mouse/keyboard | keduanya | VISION Fase 2–3 | Memakai strategi gabungan dari spike Linux |
 | 8 | L4: benchmark Linux vs Windows | keduanya | LINUX L4 | Butuh angka Windows dari bagian 2 |
 | 9 | L5: uji di VM Fedora, Arch, Ubuntu | Linux | LINUX L5 | Installer sudah siap, belum dicoba di distro aslinya |

@@ -141,6 +141,13 @@ VISION_NUM_GPU: Optional[int] = 999
 # atau Super; hindari Super di Cinnamon (diambil desktop). Cadangan: `python miku.py --trigger`.
 WAKE_HOTKEY = "ctrl+shift+m"
 HOTKEY_ENABLED = True
+# "Oke Miku" di mode suara (`python miku.py`): mikrofon terus terbuka, tetapi Whisper hanya jalan
+# saat ada ucapan (core/wake.py). Audio hanya diproses di komputer ini dan tidak disimpan.
+# Di GUI wake phrase dinyalakan lewat tombol "Wake Phrase".
+WAKE_PHRASE_ENABLED = True
+# Bahasa tetap untuk mengecek wake phrase (beam 1): 0,26 s per cek, sepertiga dari deteksi bahasa,
+# dengan akurasi sama (experiments/wake_eval). Perintah sesudahnya tetap dengan deteksi bahasa.
+WAKE_CHECK_LANGUAGE = "id"
 STOP_HOTKEY = "ctrl+shift+s"
 
 

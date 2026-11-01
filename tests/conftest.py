@@ -90,6 +90,21 @@ def _no_real_hotkey(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_microphone(monkeypatch):
+    """Pendengar "Oke Miku" tidak boleh membuka mikrofon sungguhan: stream palsu yang diam."""
+    from core import wake
+
+    class SilentStream:
+        def stop(self):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(wake, "_open_input_stream", lambda sample_rate, callback: SilentStream())
+
+
+@pytest.fixture(autouse=True)
 def _no_real_screen(monkeypatch):
     """Test tidak boleh mengambil screenshot, membaca pohon aksesibilitas, atau memanggil model visi."""
     from core.vision import capture, model, ui_tree

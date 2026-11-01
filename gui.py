@@ -42,12 +42,14 @@ from core.commands import handle_command
 from core.conversation import ToolResult, run_turn
 from core.turn_log import TurnLogger
 from core.hotkey import ListenTriggers
+from core.wake import WakeListener
 
 from config import (
     DATA_DIR,
     TURN_LOG_DIR,
     WAKE_HOTKEY,
     HOTKEY_ENABLED,
+    WAKE_CHECK_LANGUAGE,
     CHARACTERS,
     DEFAULT_CHARACTER,
     EMOTIONS,
@@ -231,15 +233,9 @@ class MikuGUIv4(ctk.CTk):
         self.is_processing = False
         self.message_queue = queue.Queue()
 
-        # Wake phrase mode ("Oke Miku")
+        # Wake phrase mode ("Oke Miku"), lewat tombol Wake Phrase
         self.wake_word_mode = False
-        self.wake_phrase_variants = ["oke miku", "ok miku", "okay miku", "okey miku"]
-        self.wake_listen_chunk_sec = 1.8
-        self.conversation_chunk_sec = 4.0
-        self.conversation_timeout_sec = 25.0
-        self.last_conversation_activity = 0.0
-        self._wake_stop_event = threading.Event()
-        self._wake_thread: Optional[threading.Thread] = None
+        self.wake: Optional[WakeListener] = None
 
         # Shortcut global (Ctrl+Shift+M) dan `miku.py --trigger`; dipasang saat semua siap
         self.triggers: Optional[ListenTriggers] = None
@@ -573,91 +569,77 @@ class MikuGUIv4(ctk.CTk):
     def _enable_controls(self):
         self.message_queue.put(("enable", None))
 
-    @staticmethod
-    def _normalize_text(text: str) -> str:
-        cleaned = re.sub(r"[^a-zA-Z0-9\s]", " ", text.lower())
-        cleaned = re.sub(r"\s+", " ", cleaned).strip()
-        return cleaned
-
-    def _is_wake_phrase(self, text: str) -> bool:
-        normalized = self._normalize_text(text)
-        return any(phrase in normalized for phrase in self.wake_phrase_variants)
-
     def _toggle_wake_word_mode(self):
         if not self.voice_input:
             self._add_chat_message("System", "⚠ Voice input belum siap.", "⚠")
             return
 
-        self.wake_word_mode = not self.wake_word_mode
-        if self.wake_word_mode:
+        if not self.wake_word_mode:
+            self.wake = WakeListener(self._transcribe_wake, self._on_wake_phrase, is_busy=self._wake_busy,
+                                     transcribe_command=self._transcribe_wake_command)
+            error = self.wake.start()
+            if error:
+                self.wake = None
+                self._add_chat_message("System", f"⚠ \"Oke Miku\" tidak aktif: {error}.", "⚠")
+                return
+            self.wake_word_mode = True
             self.wake_btn.configure(text=_tk_text("🗣 Wake Phrase: ON"))
             self._update_status("🟢 Wake mode aktif (ucap: Oke Miku)")
-            self._wake_stop_event.clear()
-            self._wake_thread = threading.Thread(target=self._wake_word_worker, daemon=True)
-            self._wake_thread.start()
         else:
+            self.wake_word_mode = False
+            if self.wake:
+                self.wake.stop()
+                self.wake = None
             self.wake_btn.configure(text=_tk_text("🗣 Wake Phrase: OFF"))
-            self._wake_stop_event.set()
             self._update_status("🟢 Ready")
 
         self._apply_theme()
 
-    def _wake_word_worker(self):
-        while self.wake_word_mode and not self._wake_stop_event.is_set():
-            if self.is_processing or self.is_listening:
-                time.sleep(0.2)
-                continue
+    def _wake_busy(self) -> bool:
+        """Jangan mendengarkan "Oke Miku" saat Miku merekam, memproses, atau bicara."""
+        return self.is_listening or self.is_processing or bool(self.voice_output and self.voice_output.is_speaking)
 
-            heard = self.voice_input.listen_and_transcribe(duration=self.wake_listen_chunk_sec)
-            if not heard:
-                continue
+    def _transcribe_wake(self, audio) -> str:
+        """Cek "Oke Miku": satu bahasa tetap dan beam 1, karena jalan untuk setiap ucapan."""
+        return self.voice_input.transcribe(audio, lang=WAKE_CHECK_LANGUAGE, beam_size=1, verbose_logging=False)
 
-            if self._is_wake_phrase(heard):
-                self._add_chat_message("You", f"🎤 {heard}", "")
-                self._start_wake_conversation()
+    def _transcribe_wake_command(self, audio) -> str:
+        lang = getattr(self.current_character, "lang", None)
+        return self.voice_input.transcribe(audio, languages=[lang, "id"], verbose_logging=False)
 
-        self.last_conversation_activity = 0.0
+    def _on_wake_phrase(self, command: str):
+        """Dari thread pendengar: diteruskan ke thread UI lewat antrean."""
+        self.message_queue.put(("wake", command))
 
-    def _start_wake_conversation(self):
-        self.last_conversation_activity = time.time()
-        self.message_queue.put(("avatar", "excited"))
-        self._add_chat_message(
-            self.current_character.display_name,
-            "[Wake] Hai! Miku siap. Silakan lanjut bicara ya.",
-            self.current_character.expressions.get("excited", "🎉")
-        )
-        if self.voice_output:
-            self.voice_output.speak("Hai, Miku siap. Silakan lanjut bicara.", blocking=False)
+    def _on_wake(self, command: str):
+        """"Oke Miku" terdengar. Perintah yang diucapkan sekaligus langsung diproses."""
+        if self.is_listening or self.is_processing:
+            return
+        if command:
+            self.is_processing = True  # tutup pintu untuk pemicu kedua sebelum thread mulai
+            self._add_chat_message("You", f"🎤 {command}", "")
+            thread = threading.Thread(target=self._process_input, args=(command,), daemon=True)
+        else:
+            self.is_listening = True
+            thread = threading.Thread(target=self._listen_after_wake, daemon=True)
+        thread.start()
 
-        while self.wake_word_mode and not self._wake_stop_event.is_set():
-            if time.time() - self.last_conversation_activity > self.conversation_timeout_sec:
-                self._add_chat_message(
-                    self.current_character.display_name,
-                    "[Wake] Oke, Miku standby lagi. Ucapkan Oke Miku kalau mau lanjut.",
-                    self.current_character.expressions.get("neutral", "😊")
-                )
-                self.message_queue.put(("avatar", "neutral"))
-                break
-
-            if self.is_processing:
-                time.sleep(0.2)
-                continue
-
-            self._update_status("🎤 Wake mode: listening...")
-            heard = self.voice_input.listen_and_transcribe(duration=self.conversation_chunk_sec)
-            if not heard:
-                continue
-
-            if self._is_wake_phrase(heard):
-                self.last_conversation_activity = time.time()
-                continue
-
-            self.last_conversation_activity = time.time()
-            self._add_chat_message("You", f"🎤 {heard}", "")
-            self._process_input(heard)
-
-        if self.wake_word_mode:
-            self._update_status("🟢 Wake mode aktif (ucap: Oke Miku)")
+    def _listen_after_wake(self):
+        """"Oke Miku" tanpa perintah: Miku menyapa singkat, lalu merekam sampai user diam."""
+        try:
+            self.message_queue.put(("avatar", "happy"))
+            if self.voice_output:
+                lang = getattr(self.current_character, "lang", None)
+                self.voice_output.speak("はい、何でしょうか？" if lang == "ja" else "Ya?", blocking=True)
+                time.sleep(0.3)  # gema suara Miku sendiri
+            self._update_status("🎤 Listening...")
+            self.message_queue.put(("avatar", "thinking"))
+            audio = self.voice_input.listen_until_silence(
+                max_duration=18.0, silence_duration=2.5, min_duration=0.5, quiet=True)
+        finally:
+            self.is_listening = False
+        self._update_status("🟡 Processing voice...")
+        self._handle_recorded_audio(audio)
 
     def _process_messages(self):
         try:
@@ -698,6 +680,9 @@ class MikuGUIv4(ctk.CTk):
 
                 elif msg_type == "shortcut":
                     self._on_shortcut()
+
+                elif msg_type == "wake":
+                    self._on_wake(data)
 
                 elif msg_type == "confirm":
                     summary, done, result = data
@@ -803,9 +788,10 @@ class MikuGUIv4(ctk.CTk):
     def _process_voice(self):
         self.is_listening = False
         self._update_status("🟡 Processing voice...")
+        self._handle_recorded_audio(self.voice_input.stop_listening())
 
-        audio = self.voice_input.stop_listening()
-
+    def _handle_recorded_audio(self, audio):
+        """Rekaman (tombol, shortcut, atau sesudah "Oke Miku") -> transkripsi -> proses."""
         if len(audio) == 0:
             self._update_status("🟢 Ready")
             self.message_queue.put(("avatar", "neutral"))
@@ -916,7 +902,8 @@ class MikuGUIv4(ctk.CTk):
 
     def on_closing(self):
         self.wake_word_mode = False
-        self._wake_stop_event.set()
+        if self.wake:
+            self.wake.stop()
         if self.triggers:
             self.triggers.stop()
         if self.sprite_animator:
