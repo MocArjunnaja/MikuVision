@@ -6,7 +6,16 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
-## Belum dirilis: pengaturan user, kebutuhan perangkat per komponen, panduan mengganti model
+## v1.8.0 (2026-11-01): ringkasan rilis
+
+Rilis ini ([#50](https://github.com/MocArjunnaja/MikuVision/pull/50), [#51](https://github.com/MocArjunnaja/MikuVision/pull/51)): model dan pengaturan bisa diganti lewat `data/settings.yaml` tanpa mengubah kode, README dan [docs/CUSTOMIZE.md](docs/CUSTOMIZE.md) mencantumkan kebutuhan perangkat per komponen, dan 「次の曲にして」 kini memindahkan lagu.
+
+- **User lama:** tidak ada yang perlu diubah. Tanpa `data/settings.yaml` semua nilai bawaan sama dengan v1.7.2.
+- **Mengganti model:** salin `settings.example.yaml` ke `data/settings.yaml`, ubah barisnya, lalu Setup → Perbaiki (atau `install.bat` / `./install.sh`) supaya model barunya diunduh. Di GPU 6 GB `qwen3:8b` terbukti tidak muat; bawaan tetap `qwen3:4b-instruct`.
+- **Diuji gabungan** (#50 + #51 + branch fitur tutup yang belum dirilis): 822 test lulus; benchmark regresi 47–49/50 tanpa kegagalan baru.
+- **Belum termasuk:** menutup tab/jendela dan pengaman terminal (branch `feat/close-and-safety`, rencana v1.9.0). 「ミュートして」 dan 「一時停止して」 masih dijawab dengan pertanyaan, bukan tool call: masalah keputusan "panggil vs tanya" di prompt, dikerjakan berikutnya.
+
+## v1.8.0 (2026-11-01): pengaturan user, kebutuhan perangkat per komponen, panduan mengganti model
 
 Permintaan user (1 Nov): README perlu spesifikasi minimum per komponen, dan karena proyek ini publik dan open source, user harus bisa mengganti model (misalnya LLM yang lebih besar) tanpa mengubah kode.
 
@@ -35,7 +44,7 @@ Permintaan user (1 Nov): README perlu spesifikasi minimum per komponen, dan kare
 
   Model 8B tidak muat di 6 GB sehingga lebih lambat dan lebih sering meleset ("buka youtube" → `open_application`; "次の曲にして" bertanya balik). Bawaan tetap `qwen3:4b-instruct`. Kedua model meleset pada "次の曲にして" (bawaan 5/5 bertanya balik alih-alih `media_control`), dicatat terpisah.
 
-## Belum dirilis (2026-11-01): 「次の曲にして」 memanggil media_control
+## v1.8.0 (2026-11-01): 「次の曲にして」 memanggil media_control
 
 ### Diperbaiki
 - **「次の曲にして」 (lagu berikutnya) sekarang memanggil `media_control`.** Sebelumnya qwen3:4b-instruct tidak pernah memanggil tool untuk perintah ini dan malah bertanya balik ("lagu apa yang kamu mau?", "genre apa?"); qwen3:8b juga. Penyebabnya deskripsi tool: model mengira perlu tahu lagu mana yang dimaksud, dan tidak ada frasa Jepang yang menunjuk ke `next`.
