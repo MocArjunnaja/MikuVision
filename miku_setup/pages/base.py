@@ -99,6 +99,9 @@ class Page:
         """Pesan bila belum boleh lanjut; dipanggil saat tombol Lanjut ditekan."""
         return None
 
+    def finish(self):
+        """Tombol halaman terakhir (Selesai, Tutup) ditekan; jendela ditutup sesudahnya."""
+
     @property
     def busy(self) -> bool:
         """Sedang mengerjakan sesuatu yang perlu dihentikan dengan rapi bila user membatalkan."""

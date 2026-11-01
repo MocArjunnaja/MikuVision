@@ -23,6 +23,8 @@ class SetupState:
     install_ok: Optional[bool] = None   # None = belum selesai
     last_error: str = ""
     warnings: List[str] = field(default_factory=list)
+    # Linux: izin di halaman 4 untuk memasang paket sistem dan Ollama lewat pkexec
+    root_consent: bool = False
     desktop_shortcut: bool = True
     launch_now: bool = True
     # install, maintain (Setup dibuka lagi), update, repair, uninstall

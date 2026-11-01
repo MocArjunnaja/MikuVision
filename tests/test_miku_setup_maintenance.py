@@ -53,7 +53,7 @@ def test_update_and_repair_reuse_the_recorded_choices_without_rvc_files(tmp_path
     selection = selection_for(app)
     assert selection.install_dir == app.install_dir and selection.model_dir == app.model_dir
     assert selection.components == {"core", "brain", "vision"}
-    args = install_args(selection)
+    args = install_args(selection, platform="win32")
     assert "-WithVision" in args and "-ModelDir" in args and "-RvcModel" not in args
 
 
@@ -131,9 +131,10 @@ def test_register_install_failure_is_only_a_warning(tmp_path):
     def broken(entry, size):
         raise PermissionError("akses ditolak")
     problem = register_install(Selection(tmp_path), "1.6.0", write=broken)
-    assert "Apps & features" in problem and "akses ditolak" in problem
+    assert registry.ENTRY_PLACE in problem and "akses ditolak" in problem
 
 
+@windows_only
 def test_shortcuts_pointing_elsewhere_are_kept(tmp_path):
     app = fake_install(tmp_path)
     start_menu = tmp_path / "Start Menu" / "MikuVision"

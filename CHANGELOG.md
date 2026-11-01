@@ -6,6 +6,54 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-11-01): MikuVision Setup jalan di Linux (PLAN_INSTALLER IL2)
+
+Wizard yang sama dengan Windows (`miku_setup/`) sekarang memasang, memperbarui, memperbaiki, dan menghapus MikuVision di Linux, memakai opsi `install.sh` dari IL1. Perilaku di Windows tidak berubah, kecuali perbaikan tombol Tutup di bawah. Binary Linux untuk user menyusul di IL3; sampai saat itu Setup dijalankan dari kode sumber dengan Python sistem yang sudah memasang `requirements-setup.txt`: `python3 MikuVisionSetup.py`.
+
+### Ditambahkan
+- **Cek sistem Linux** (halaman 3): distro dari `/etc/os-release` (x86_64; package manager apt, dnf, pacman, atau zypper), sesi desktop (X11 ✓, Wayland ⚠ karena shortcut, membaca layar, dan aksi keyboard/mouse butuh X11), GPU lewat `nvidia-smi`, situs unduhan, Ollama (layanan sistem dikenali), mikrofon (`pactl`, tanpa sumber `.monitor`; cadangannya `arecord -l`), dan **Hak admin**: apa yang akan dipasang `install.sh` dengan root (git, curl, PortAudio, xdotool, wmctrl, playerctl, xclip, Ollama). ✗ bila ada yang perlu dipasang tapi `pkexec` tidak ada.
+- **Ruang disk per titik mount** (`/`, `/home`, partisi lain) dari `/proc/mounts`, bukan huruf drive.
+- **Halaman 4 di Linux:**
+  - folder bawaan `~/.local/share/mikuvision/app`; `~/…` boleh diketik;
+  - folder aplikasi di partisi Windows (NTFS/FAT) ditolak, karena venv di sana lambat dan tidak didukung; folder model boleh di sana. Karakter `\`, `` ` ``, `$`, dan `%` di folder ditolak karena merusak peluncur `.desktop` dan file environment.d;
+  - Ollama yang berjalan (atau akan berjalan) sebagai layanan sistem memakai foldernya sendiri (`/usr/share/ollama/.ollama/models`): ruangnya dihitung di sana, dan halaman menyebut bahwa folder lain hanya untuk Whisper dan MeloTTS (keputusan IL1). Ollama sendiri dihitung di `/usr/local`;
+  - bila ada yang perlu dipasang dengan root (termasuk g++ untuk RVC), kotak **Izinkan Setup memakai hak admin** harus dicentang dulu. Password diminta lewat jendela sistem (`pkexec`), bukan terminal.
+- **Runner:** `bash install.sh --yes --progress --menu-entry --skip-shortcut --sudo-cmd pkexec` plus opsi pilihan, di grup proses sendiri. Batal mengirim SIGTERM ke seluruh grup (install.sh, uv, python, ollama pull), lalu SIGKILL bila belum berhenti dalam 5 detik.
+- **Pengganti "Apps & features":** catatan `~/.local/share/mikuvision/install.json` (versi, folder, folder model, komponen, ukuran, perintah Setup) dan dua entri di menu aplikasi, **MikuVision Setup** (Perbarui, Perbaiki, Hapus) dan **Hapus MikuVision** (`--uninstall`). `write_entry`, `read_installed`, dan `delete_entry` sama untuk kedua OS, jadi halaman Pilih tindakan, Perbarui, Perbaiki, dan Hapus tidak berubah.
+- **Hapus di Linux:** peluncur `mikuvision.desktop` di menu dan `MikuVision.desktop` di Desktop hanya dihapus bila menunjuk ke folder instalasi (peluncur clone git di folder lain dibiarkan). Folder `applications` dan `~/.local/share/mikuvision` tidak pernah dihapus (bisa berisi venv clone git di NTFS). `HF_HOME`/`OLLAMA_MODELS` dihapus dari `~/.config/environment.d/60-mikuvision.conf` hanya bila menunjuk ke folder model yang dihapus; file yang jadi kosong ikut dihapus.
+- **Halaman Selesai di Linux:** peluncur Desktop (salinan entri menu dari `install.sh`, ditandai tepercaya lewat `gio` supaya Nemo/Nautilus menjalankannya), dan MikuVision dijalankan lewat `run.sh` di sesinya sendiri.
+- Log Setup di `~/.local/share/mikuvision/setup/`. Jendela 760×580 di Linux, karena baris teksnya lebih tinggi.
+
+### Diperbaiki
+- **Tombol Tutup setelah Hapus tidak menutup jendela** (juga di Windows): `Wizard.go_next` memanggil `finish()`, yang tidak ada di halaman Hapus, sehingga Tutup dan tombol X hanya menghasilkan `AttributeError`. Ditemukan di uji terima Linux; test alur Hapus sekarang ikut menekan Tutup.
+- `test_without_dry_run_the_wizard_installs_for_real` tidak lagi mengganti `sys.platform` (gagal di Linux karena `winreg`).
+
+### Catatan teknis
+- **Python dari uv tidak cocok untuk Setup di Linux.** Tk 9 di python-build-standalone dibangun tanpa Xft: hanya font X lama yang terlihat, teks kasar, dan tanda centang customtkinter tampil sebagai "Z". Python sistem (Tk 8.6 dengan Xft) normal. Uji di bawah memakai venv dari `/usr/bin/python3`; binary IL3 dibangun dengan Python dari apt.
+- Di Linux, binary satu file PyInstaller berjalan sebagai dua proses dengan exe yang sama (bootloader dan Python); `running_processes` tidak menghitung keduanya sebagai "MikuVision masih berjalan". Kode Windows tidak diubah; exe Windows juga dua proses, jadi Perbarui dari salinan di `.tools` perlu dicek di Windows.
+
+### Pengujian
+- `tests/test_miku_setup_linux.py`: 53 test baru, sebagian juga jalan di Windows:
+  - os-release dan package manager (Mint, Fedora, Manjaro, Arch, openSUSE, distro tak dikenal), cek Linux, sesi, dan hak admin, keluaran `pactl` dan `arecord`;
+  - daftar paket root sama dengan `install.sh`; titik mount (spasi `\040`, mount bertumpuk); folder model layanan Ollama dari `systemctl show`;
+  - folder bawaan, argumen `install.sh` (semua opsinya ada di `install.sh`), validasi folder, ruang per mount, file environment.d, dan `/api/tags` bila folder layanan tidak terbaca;
+  - `install.json` dan entri menu (round trip, file rusak, tanpa `install.sh`), kutipan `Exec`, peluncur clone lain dibiarkan, Hapus lengkap, binary yang tidak menghitung dirinya sendiri;
+  - `run.sh` di sesi sendiri, dan Batal yang ikut mematikan anak proses.
+- `test_miku_setup_wizard.py`: izin hak admin di halaman 4, dan Tutup setelah Hapus. Test lama yang memeriksa argumen `install.ps1` sekarang menyebut `platform="win32"`.
+- `pytest`: 682 lulus di venv aplikasi (38 dilewati). Python sistem seperti CI (tanpa customtkinter): 664 lulus, 56 dilewati. Semua test Setup dengan customtkinter asli di Tk 8.6, termasuk 12 test wizard GUI yang dijalankan bersamaan: 173 lulus, 13 dilewati (khusus Windows).
+- **Uji terima** di Linux Mint 22.3 (X11, RTX 4050, Ollama layanan sistem dengan model yang sudah ada). Rilis uji dibuat seperti workflow (`git -c core.autocrlf=true archive`, jadi `.py` ber-CRLF seperti zip dari runner Windows; `version.json`; `SHA256SUMS`) dan disajikan `python -m http.server` di `127.0.0.1:8765`. Setup dijalankan dari kode sumber dengan Python sistem; tombol ditekan lewat fungsi wizard yang sama (`go_next`, `page.stop`), dengan tangkapan layar tiap halaman:
+  - **Batal di tengah PyTorch:** di langkah 5/12, setelah 28 detik dan ±0,3 GB terunduh. `install.sh`, uv, dan python berhenti semua (tidak ada proses tersisa), dan log `install.sh` ditutup dengan "Installer dihentikan".
+  - **Jalankan lagi sampai Selesai:** zip yang sudah cocok tidak diunduh lagi; 12/12 langkah (membaca layar, dan RVC dari file `.pth`/`.index`) dalam 6 menit 13 detik, `miku.py --test` lulus. `install.json`, entri menu MikuVision, MikuVision Setup, dan Hapus MikuVision, serta peluncur Desktop dibuat; MikuVision terbuka dari halaman Selesai.
+  - **MikuVision masih terbuka:** Lanjut di Pilih tindakan ditolak dengan "Tutup MikuVision dulu (python masih berjalan)".
+  - **Perbarui** 1.7.0-rc1 → 1.7.0-rc2: zip baru diunduh sekali, 11 langkah dalam 53 detik, versi di `install.json` naik, dan file penanda di `data/` utuh.
+  - **Perbaiki:** tanpa unduhan kode, 53 detik, berhasil.
+  - **Hapus** lewat `--uninstall` (perintah entri Hapus MikuVision) dengan opsi bawaan: ±1 detik, tanpa masalah. Sisa folder hanya `data/`; `install.json`, ketiga entri menu, dan peluncur Desktop hilang; model Ollama utuh. Tombol Tutup di halaman terakhirnya memunculkan bug di atas.
+  - **Pasang lagi** ke folder yang tinggal berisi `data/`: uv, Python, PyTorch, dan semua langkah dari nol dalam 6 menit 27 detik, `miku.py --test` lulus dengan RVC dimuat di `cuda:0`, penanda di `data/` dipakai lagi, tercatat lagi (12,9 GB).
+  - **Hapus semuanya** (data dicentang): folder aplikasi hilang seluruhnya, dan Tutup menutup jendela. Peluncur clone git di menu dan Desktop, yang tertimpa selama uji, dikembalikan sesudahnya.
+  - Belum diuji: jendela password `pkexec` (semua paket dan Ollama sudah ada di laptop ini), sesi Wayland, distro selain Mint, dan alur sungguhan dengan binary PyInstaller (IL3; binary buatan lokal sudah terbuka di mode uji).
+
+---
+
 ## Belum dirilis (2026-11-01): opsi `install.sh` untuk MikuVision Setup di Linux (PLAN_INSTALLER IL1)
 
 Rencana: fase IL di [`docs/PLAN_INSTALLER.md`](docs/PLAN_INSTALLER.md). `install.sh` sekarang bisa dijalankan wizard seperti `install.ps1`; tanpa opsi baru perilakunya tetap sama.
