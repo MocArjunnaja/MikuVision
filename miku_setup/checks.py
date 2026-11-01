@@ -21,6 +21,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
+from .procenv import child_env
+
 OK, WARN, FAIL = "ok", "warn", "fail"
 
 # Windows 10 RTM; build 22000 ke atas = Windows 11 (platform.release() bisa tetap "10")
@@ -434,8 +436,10 @@ def _denied(path: Path) -> bool:
 # ───────────────────────── memanggil sistem ─────────────────────────
 
 def _output(command: List[str], timeout: float = 15, env: Optional[Dict[str, str]] = None) -> Optional[str]:
+    """stdout perintah, atau None bila gagal. env: variabel tambahan."""
     try:
-        result = subprocess.run(command, capture_output=True, timeout=timeout, creationflags=_NO_WINDOW, env=env)
+        result = subprocess.run(command, capture_output=True, timeout=timeout, creationflags=_NO_WINDOW,
+                                env=child_env(env))
     except (OSError, subprocess.SubprocessError):
         return None
     if result.returncode != 0:
@@ -550,11 +554,11 @@ def run_microphone() -> List[CheckResult]:
 def _linux_microphones() -> Optional[List[str]]:
     """PulseAudio/PipeWire lewat pactl (label bahasa Inggris dengan LC_ALL=C), cadangannya ALSA."""
     if shutil.which("pactl"):
-        output = _output(["pactl", "list", "sources"], env=dict(os.environ, LC_ALL="C"))
+        output = _output(["pactl", "list", "sources"], env={"LC_ALL": "C"})
         if output is not None:
             return parse_pactl_sources(output)
     if shutil.which("arecord"):
-        output = _output(["arecord", "-l"], env=dict(os.environ, LC_ALL="C"))
+        output = _output(["arecord", "-l"], env={"LC_ALL": "C"})
         if output is not None:
             return parse_arecord(output)
     return None

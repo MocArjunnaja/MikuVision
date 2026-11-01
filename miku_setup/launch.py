@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from .procenv import child_env
 from .registry import applications_dir
 
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -39,7 +40,7 @@ def desktop_dir() -> Path:
     command = shutil.which("xdg-user-dir")
     if command:
         try:
-            result = subprocess.run([command, "DESKTOP"], capture_output=True, timeout=10)
+            result = subprocess.run([command, "DESKTOP"], capture_output=True, timeout=10, env=child_env())
             path = result.stdout.decode("utf-8", errors="replace").strip()
             if result.returncode == 0 and path:
                 return Path(path)
@@ -68,7 +69,8 @@ def _create_desktop_launcher(install_dir: Path, desktop: Path) -> Optional[str]:
     gio = shutil.which("gio")
     if gio:
         try:
-            subprocess.run([gio, "set", str(target), "metadata::trusted", "true"], capture_output=True, timeout=10)
+            subprocess.run([gio, "set", str(target), "metadata::trusted", "true"], capture_output=True, timeout=10,
+                           env=child_env())
         except (OSError, subprocess.SubprocessError):
             pass
     return None
@@ -103,7 +105,8 @@ def launch(install_dir: Path) -> Optional[str]:
         try:
             # Sesi sendiri: MikuVision tetap jalan setelah Setup ditutup. run.sh mencatat output ke data/logs
             subprocess.Popen(["bash", str(script)], cwd=install_dir, stdin=subprocess.DEVNULL,
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+                             env=child_env())
         except OSError as e:
             return str(e)
         return None

@@ -27,6 +27,7 @@ from .checks import format_gb
 from .components import Selection, install_args, model_locations
 from .download import RELEASE_URL, Cancelled, DownloadError, download, fetch_text, parse_sha256sums, \
     parse_version, safe_extract, zip_name
+from .procenv import child_env
 
 log = logging.getLogger("miku_setup")
 
@@ -317,7 +318,8 @@ class InstallRunner:
             # Linux: grup proses sendiri, supaya Batal juga menghentikan uv, python, dan ollama pull
             self._process = subprocess.Popen(command, cwd=install_dir, stdout=subprocess.PIPE,
                                              stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                                             creationflags=_NO_WINDOW, start_new_session=sys.platform != "win32")
+                                             creationflags=_NO_WINDOW, start_new_session=sys.platform != "win32",
+                                             env=child_env())
         except OSError as e:
             shell = "PowerShell" if sys.platform == "win32" else "bash"
             raise DownloadError(f"{shell} tidak bisa dijalankan: {e}") from e
