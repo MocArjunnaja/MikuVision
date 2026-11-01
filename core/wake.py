@@ -20,7 +20,7 @@ import time
 import unicodedata
 from collections import deque
 from dataclasses import dataclass
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 
@@ -30,9 +30,9 @@ FRAME_MS = 30  # webrtcvad menerima frame 10, 20, atau 30 ms
 # "Oke Miku" dan variannya seperti yang ditulis Whisper (Indonesia/Jepang/Inggris):
 # "Oke Miku", "OK, Miku.", "Okay Miku", "オッケー、ミク", "オーケーミク", "OKミク". Uji suara
 # sintetis (experiments/wake_eval) juga menghasilkan "Oke, migu", "Oke niku", "Oke, mitu",
-# "Oke, migo", dan "OK, Miuku".
+# "Oke, migo", dan "OK, Miuku"; suara sungguhan juga "Oke emigu" dan "Oke, amiku".
 _OK = r"(?:okay|okey|okei|oke|ok|oce|oche|おっけー|おーけー|オッケー|オーケー|オッケ|オケー)"
-_MIKU = r"(?:[mn]iu?(?:kk|k|g|t)[uo]|meeku|ミク|みく)(?:[\s-]?(?:chan|san)|ちゃん|さん)?"
+_MIKU = r"(?:[ae]?[mn]iu?(?:kk|k|g|t)[uo]|meeku|ミク|みく)(?:[\s-]?(?:chan|san)|ちゃん|さん)?"
 WAKE_PATTERN = re.compile(
     rf"(?<![a-z]){_OK}[\s,.、。!！~〜ー-]*{_MIKU}(?![a-z])", re.IGNORECASE
 )
@@ -55,7 +55,25 @@ def match_wake_phrase(text: str) -> Optional[str]:
     match = WAKE_PATTERN.search(text)
     if not match:
         return None
-    return _LEADING.sub("", text[match.end():]).strip()
+    rest = _LEADING.sub("", text[match.end():])
+    # Whisper kadang menulis wake phrase dua kali: 「OK、ミク、OK、ミク」
+    while (again := WAKE_PATTERN.match(rest)):
+        rest = _LEADING.sub("", rest[again.end():])
+    return rest.strip()
+
+
+def wake_phrase_end(words: List[Tuple[str, float, float]]) -> Optional[float]:
+    """Detik akhir wake phrase dari kata + waktunya (VoiceInput.last_words), None bila tidak ada."""
+    text, spans = "", []
+    for word, _, end in words:
+        word = unicodedata.normalize("NFKC", word)
+        spans.append((len(text), len(text) + len(word), end))
+        text += word
+    match = WAKE_PATTERN.search(text)
+    if not match:
+        return None
+    last = match.end() - 1
+    return next((end for start, stop, end in spans if start <= last < stop), None)
 
 
 class SpeechSegmenter:
@@ -63,8 +81,10 @@ class SpeechSegmenter:
     Audio float32 16 kHz -> segmen ucapan, dengan webrtcvad per frame 30 ms.
 
     Segmen dimulai bila start_ratio dari frame dalam jendela start_window_ms terakhir berisi
-    ucapan; jendela itu ikut masuk segmen, supaya awal kata ("O" di "Oke") tidak terpotong.
-    Segmen selesai setelah end_silence_ms hening, atau dipotong pada max_segment_sec.
+    ucapan. pre_roll_ms audio sebelumnya ikut masuk segmen: VAD mode 3 baru yakin setelah suku
+    kata pertama, dan tanpa ini "Oke Miku" terbaca "Gimicu" dan "Miku lagi nyanyi" terbaca
+    "Lagi nyanyi" (uji suara sungguhan). Segmen selesai setelah end_silence_ms hening, atau
+    dipotong pada max_segment_sec.
 
     vad_mode 3 (paling ketat): di mic laptop yang terlalu keras, mode 2 menganggap 100% derau
     ruangan sebagai ucapan, mode 3 hanya 5%; di set uji akurasinya sama (experiments/wake_eval).
@@ -72,14 +92,15 @@ class SpeechSegmenter:
 
     def __init__(self, sample_rate: int = SAMPLE_RATE, vad_mode: int = 3, start_window_ms: int = 300,
                  start_ratio: float = 0.6, end_silence_ms: int = 600, max_segment_sec: float = 15.0,
-                 vad=None):
+                 pre_roll_ms: int = 800, vad=None):
         if vad is None:
             import webrtcvad
             vad = webrtcvad.Vad(vad_mode)
         self._vad = vad
         self.sample_rate = sample_rate
         self.frame_samples = sample_rate * FRAME_MS // 1000
-        self._ring: deque = deque(maxlen=max(1, start_window_ms // FRAME_MS))
+        self._recent: deque = deque(maxlen=max(1, start_window_ms // FRAME_MS))  # ucapan? per frame
+        self._history: deque = deque(maxlen=max(self._recent.maxlen, pre_roll_ms // FRAME_MS))
         self.start_ratio = start_ratio
         self.end_frames = max(1, end_silence_ms // FRAME_MS)
         self.max_frames = int(max_segment_sec * 1000 // FRAME_MS)
@@ -110,11 +131,13 @@ class SpeechSegmenter:
     def _feed_frame(self, frame: np.ndarray) -> Optional[np.ndarray]:
         speech = self._is_speech(frame)
         if not self.active:
-            self._ring.append((frame, speech))
-            if sum(s for _, s in self._ring) >= self.start_ratio * self._ring.maxlen:
+            self._history.append(frame)
+            self._recent.append(speech)
+            if sum(self._recent) >= self.start_ratio * self._recent.maxlen:
                 self.active = True
-                self._frames = [f for f, _ in self._ring]
-                self._ring.clear()
+                self._frames = list(self._history)
+                self._history.clear()
+                self._recent.clear()
                 self._silence = 0
             return None
         self._frames.append(frame)
@@ -141,7 +164,8 @@ class SpeechSegmenter:
     def reset(self):
         self._pending = np.zeros(0, dtype=np.float32)
         self._frames = []
-        self._ring.clear()
+        self._history.clear()
+        self._recent.clear()
         self._silence = 0
         self.active = False
 
@@ -165,17 +189,29 @@ class WakeListener:
     dipanggil dari thread pendengar dan harus cepat (memasang event atau mengisi antrean).
     is_busy() benar selama Miku merekam, memproses, atau bicara: audio saat itu dibuang,
     supaya Miku tidak mendengar suaranya sendiri, dan baru didengar lagi cooldown_sec kemudian.
+
+    Perintah yang ikut terucap ditahan continue_sec: bila user melanjutkan sesudah jeda
+    singkat ("kecilkan volume … ke tiga puluh"), kedua bagian digabung dan ditranskripsi ulang.
+
+    wake_end() (opsional) memberi detik akhir wake phrase di audio yang baru dicek, dari cap
+    waktu kata Whisper. Perintah lalu ditranskripsi tanpa wake phrase di depannya: "Oke Miku"
+    berbunyi seperti bahasa Jepang, sehingga "Oke Miku, buka Notepad" utuh tertulis 「ブカ、Notepad」.
+    on_warning(pesan) dipanggil sekali bila derau mikrofon di awal terlalu tinggi.
     """
 
     def __init__(self, transcribe: Callable[[np.ndarray], str], on_wake: Callable[[str], None],
                  is_busy: Callable[[], bool] = lambda: False,
                  transcribe_command: Optional[Callable[[np.ndarray], str]] = None,
+                 wake_end: Optional[Callable[[], Optional[float]]] = None,
+                 on_warning: Callable[[str], None] = print,
                  sample_rate: int = SAMPLE_RATE,
                  check_sec: float = 2.5, overlap_sec: float = 1.0, min_check_sec: float = 0.4,
-                 cooldown_sec: float = 0.5, segmenter: Optional[SpeechSegmenter] = None,
-                 clock: Callable[[], float] = time.monotonic):
+                 cooldown_sec: float = 0.5, continue_sec: float = 0.6,
+                 segmenter: Optional[SpeechSegmenter] = None, clock: Callable[[], float] = time.monotonic):
         self.transcribe = transcribe
         self.transcribe_command = transcribe_command
+        self.wake_end = wake_end
+        self.on_warning = on_warning
         self.on_wake = on_wake
         self.is_busy = is_busy
         self.sample_rate = sample_rate
@@ -183,11 +219,17 @@ class WakeListener:
         self.overlap_samples = int(overlap_sec * sample_rate)
         self.min_check_samples = int(min_check_sec * sample_rate)
         self.cooldown_sec = cooldown_sec
+        self.continue_samples = int(continue_sec * sample_rate)
         self.segmenter = segmenter or SpeechSegmenter(sample_rate)
         self.clock = clock
         self.stats = WakeStats()
         self._checked = 0      # sampel segmen berjalan yang sudah ditranskripsi
         self._armed = False    # wake phrase sudah terdengar di segmen berjalan
+        self._armed_command = ""  # perintah menurut cek jendela itu (cadangan)
+        self._held: Optional[Tuple[np.ndarray, str, Optional[int]]] = None  # (audio, perintah, potong)
+        self._held_left = 0    # sampel hening yang masih ditunggu sebelum perintah dilepas
+        self._cut: Optional[int] = None  # sampel akhir wake phrase di segmen berjalan
+        self._levels: Optional[List[float]] = []  # RMS potongan awal, untuk peringatan mic terlalu keras
         self._quiet_since: Optional[float] = None  # kapan terakhir tidak sibuk
         self._queue: "queue.Queue[np.ndarray]" = queue.Queue()
         self._stream = None
@@ -200,23 +242,32 @@ class WakeListener:
         if self._busy():
             return
         self.stats.audio_seconds += len(audio) / self.sample_rate
+        self._check_level(audio)
+        was_held = self._held is not None
         for segment in self.segmenter.feed(audio):
             self.stats.segments += 1
             self._segment_ended(segment)
-        if self.segmenter.active and not self._armed:
+        if was_held and self._held is not None and not self.segmenter.active:
+            self._held_left -= len(audio)
+            if self._held_left <= 0:
+                self._release()
+        if self.segmenter.active and not self._armed and self._held is None:
             done = self.segmenter.active_samples
             if done - self._checked >= self.check_samples:
                 audio_so_far = self.segmenter.current()
-                window = audio_so_far[max(0, self._checked - self.overlap_samples):done]
+                start = max(0, self._checked - self.overlap_samples)
+                window = audio_so_far[start:done]
                 self._checked = done
-                if self._heard(window) is not None:
-                    self._armed = True  # tunggu segmen selesai, lalu ambil perintah utuh
+                heard = self._heard(window, offset=start)
+                if heard is not None:
+                    # Tunggu segmen selesai, lalu ambil perintah utuh
+                    self._armed, self._armed_command = True, heard
 
     def _busy(self) -> bool:
         if self.is_busy():
             self._quiet_since = None
             self.segmenter.reset()
-            self._checked, self._armed = 0, False
+            self._checked, self._armed, self._armed_command, self._held, self._cut = 0, False, "", None, None
             return True
         now = self.clock()
         if self._quiet_since is None:
@@ -224,30 +275,77 @@ class WakeListener:
         return now - self._quiet_since < self.cooldown_sec
 
     def _segment_ended(self, segment: np.ndarray):
-        armed, checked = self._armed, self._checked
-        self._checked, self._armed = 0, False
+        armed, armed_command, checked = self._armed, self._armed_command, self._checked
+        self._checked, self._armed, self._armed_command = 0, False, ""
+        if self._held is not None:
+            # Lanjutan perintah sesudah jeda singkat: transkripsi ulang gabungannya
+            audio, command, self._cut = self._held
+            self._held = None
+            self._wake(self._command(np.concatenate([audio, segment]), fallback=command))
+            self._cut = None
+            return
         if armed:
-            self._wake(self._command(segment, fallback=""))
+            command = self._command(segment, fallback=armed_command)
+        else:
+            self._cut = None
+            start = max(0, checked - self.overlap_samples) if checked else 0
+            tail = segment[start:]
+            if len(tail) < self.min_check_samples:
+                return
+            command = self._heard(tail, offset=start)
+            if command is None:
+                return
+            if command and (self.transcribe_command or checked or self._cut is not None):
+                # Perintah ikut terucap: ambil dari transkripsi seluruh segmen
+                command = self._command(segment, fallback=command)
+        cut, self._cut = self._cut, None
+        if command and self.continue_samples:
+            self._held, self._held_left = (segment, command, cut), self.continue_samples
             return
-        tail = segment[max(0, checked - self.overlap_samples):] if checked else segment
-        if len(tail) < self.min_check_samples:
-            return
-        command = self._heard(tail)
-        if command is None:
-            return
-        if command and (self.transcribe_command or checked):
-            # Perintah ikut terucap: ambil dari transkripsi seluruh segmen
-            command = self._command(segment, fallback=command)
         self._wake(command)
 
-    def _heard(self, audio: np.ndarray) -> Optional[str]:
-        """Cek wake phrase (transcribe, boleh versi murah)."""
-        return match_wake_phrase(self._transcribe(self.transcribe, audio))
+    def _release(self):
+        _, command, _ = self._held
+        self._held = None
+        self._wake(command)
+
+    def _check_level(self, audio: np.ndarray):
+        """Sekali, sesudah ±3 s pertama: peringatkan bila derau mikrofon terlalu tinggi."""
+        if self._levels is None or not len(audio):
+            return
+        centered = audio - audio.mean()
+        self._levels.append(float(np.sqrt(np.mean(centered ** 2))))
+        if len(self._levels) * len(audio) >= 3 * self.sample_rate:
+            level, self._levels = float(np.median(self._levels)), None
+            if level > 0.05:
+                self.on_warning(
+                    f"Volume mikrofon terlalu tinggi (derau ruangan RMS {level:.2f}), jadi \"Oke Miku\" "
+                    "sulit dikenali. Turunkan volume input di pengaturan Suara ke sekitar 20-30%.")
+
+    def _heard(self, audio: np.ndarray, offset: int = 0) -> Optional[str]:
+        """Cek wake phrase (transcribe, boleh versi murah). offset: posisi audio ini di segmen."""
+        command = match_wake_phrase(self._transcribe(self.transcribe, audio))
+        if command is not None and self.wake_end is not None:
+            end = self.wake_end()
+            self._cut = offset + int(end * self.sample_rate) if end is not None else None
+        return command
 
     def _command(self, segment: np.ndarray, fallback: str) -> str:
         """Perintah sesudah wake phrase dari seluruh segmen (transcribe_command bila ada)."""
-        command = match_wake_phrase(self._transcribe(self.transcribe_command or self.transcribe, segment))
-        return fallback if command is None else command
+        if self._cut is not None and len(segment) - self._cut >= self.min_check_samples:
+            # Hanya audio sesudah wake phrase, supaya bahasanya dideteksi dari perintah saja
+            text = self._transcribe(self.transcribe_command or self.transcribe, segment[self._cut:])
+            command = match_wake_phrase(text)
+            return (text.strip() if command is None else command) or fallback
+        text = self._transcribe(self.transcribe_command or self.transcribe, segment)
+        command = match_wake_phrase(text)
+        if command is not None:
+            return command
+        # Transkripsi lengkap kadang salah menulis wake phrase ("Gameku, putar lagu di Youtube"):
+        # ambil mulai dari kata pertama perintah hasil cek
+        words = fallback.split()
+        start = text.lower().find(words[0].lower()) if words else -1
+        return text[start:].strip() if start >= 0 else fallback
 
     def _transcribe(self, transcribe: Callable[[np.ndarray], str], audio: np.ndarray) -> str:
         started = time.perf_counter()

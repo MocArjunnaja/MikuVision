@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from core import wake
-from core.wake import SpeechSegmenter, WakeListener, match_wake_phrase
+from core.wake import SpeechSegmenter, WakeListener, match_wake_phrase, wake_phrase_end
 
 SR = 16000
 
@@ -34,17 +34,30 @@ SR = 16000
     ("Oke niku, kecilkan volume", "kecilkan volume"),
     ("Oke, migo.", ""),
     ("OK, Miuku", ""),
+    ("OK、ミク、OK、ミク", ""),  # Whisper menulis wake phrase dua kali (uji suara sungguhan)
+    ("Oke emigu, kecilkan volume", "kecilkan volume"),  # uji suara sungguhan
+    ("Oke, amiku", ""),
+    ("Oke Miku, Oke Miku, buka Notepad", "buka Notepad"),
 ])
 def test_wake_phrase_and_command(text, expected):
     assert match_wake_phrase(text) == expected
 
 
 @pytest.mark.parametrize("text", [
-    "Oke, mikir dulu", "Book Miku", "Miku oke", "Hatsune Miku", "oke nanti saja", "Oke, minggu depan ya", "Oke Mikuni",
+    "Oke, mikir dulu", "Book Miku", "Miku oke", "Hatsune Miku", "oke nanti saja", "Oke, minggu depan ya", "Oke Mikuni", "Oke, emang benar", "Oke, aman kok",
     "ミックスジュース", "オッケー、わかった", "", None,
 ])
 def test_not_a_wake_phrase(text):
     assert match_wake_phrase(text) is None
+
+
+def test_wake_phrase_end_from_word_timestamps():
+    words = [(" Oke", 0.3, 0.55), (" Miku,", 0.55, 0.9), (" buka", 1.2, 1.4), (" Notepad", 1.4, 1.9)]
+    assert wake_phrase_end(words) == 0.9
+    assert wake_phrase_end([("オッケー", 0.2, 0.6), ("、", 0.6, 0.6), ("ミ", 0.6, 0.7), ("ク", 0.7, 0.85),
+                            ("メモ帳", 1.0, 1.4)]) == 0.85
+    assert wake_phrase_end([(" Buka", 0.1, 0.3), (" Notepad", 0.3, 0.8)]) is None
+    assert wake_phrase_end([]) is None
 
 
 # ── Gerbang VAD ──
@@ -76,8 +89,11 @@ def test_segment_keeps_the_onset_and_ends_after_silence():
 
     assert len(segments) == 1
     seconds = len(segments[0]) / SR
-    # ±0,18 s jendela awal (6 dari 10 frame) + sisa ucapan + 0,6 s hening penutup
-    assert 1.5 <= seconds <= 1.8
+    # 0,8 s sebelum segmen dimulai (VAD baru yakin ±0,18 s setelah ucapan mulai) + sisa ucapan
+    # + 0,6 s hening penutup
+    assert 2.1 <= seconds <= 2.3
+    # Seluruh ucapan ada di segmen, termasuk awalnya
+    assert np.abs(segments[0]).max() > 0.2 and np.abs(segments[0][:int(0.5 * SR)]).max() == 0
     assert not segmenter.active
 
 
@@ -144,6 +160,8 @@ def test_command_spoken_together_with_wake_phrase():
     whisper = FakeWhisper("Oke Miku, buka Notepad.")
     lst, wakes, _ = listener(whisper)
     feed_in_chunks(lst, np.concatenate([speech(1.5), silence(1)]))
+    assert wakes == []  # ditahan sebentar, siapa tahu perintahnya berlanjut
+    feed_in_chunks(lst, silence(0.5))
     assert wakes == ["buka Notepad."]
     assert len(whisper.lengths) == 1  # segmen di bawah 2,5 s: sekali transkripsi saat selesai
 
@@ -159,7 +177,7 @@ def test_long_command_waits_for_the_end_of_speech():
     # Jendela pertama (2,5 s) sudah memuat "Oke Miku"; perintah utuh diambil saat segmen selesai
     whisper = FakeWhisper("Oke Miku, tolong buka", "Oke Miku, tolong buka YouTube lalu cari lagu Hatsune Miku")
     lst, wakes, _ = listener(whisper)
-    feed_in_chunks(lst, np.concatenate([speech(5.0), silence(1)]))
+    feed_in_chunks(lst, np.concatenate([speech(5.0), silence(1.5)]))
 
     assert wakes == ["tolong buka YouTube lalu cari lagu Hatsune Miku"]
     assert len(whisper.lengths) == 2
@@ -170,7 +188,7 @@ def test_wake_phrase_in_the_middle_of_long_talk():
     # Jendela 1 (0-2,5 s): obrolan; jendela 2 (1,5-5 s, dengan tumpang tindih): wake phrase
     whisper = FakeWhisper("jadi tadi aku bilang", "Oke Miku matikan lagu", "Oke Miku matikan lagunya")
     lst, wakes, _ = listener(whisper)
-    feed_in_chunks(lst, np.concatenate([speech(6.0), silence(1)]))
+    feed_in_chunks(lst, np.concatenate([speech(6.0), silence(1.5)]))
     assert wakes == ["matikan lagunya"]
 
 
@@ -190,7 +208,7 @@ def test_cheap_check_then_full_transcription_for_the_command():
     check = FakeWhisper("Oke Miku memo cho o hiraite")
     full = FakeWhisper("オッケー、ミク、メモ帳を開いて")
     lst, wakes, _ = listener(check, transcribe_command=full)
-    feed_in_chunks(lst, np.concatenate([speech(1.5), silence(1)]))
+    feed_in_chunks(lst, np.concatenate([speech(1.5), silence(1.5)]))
 
     assert wakes == ["メモ帳を開いて"]
     assert len(check.lengths) == 1 and len(full.lengths) == 1
@@ -214,8 +232,79 @@ def test_full_transcription_without_wake_phrase_keeps_the_checked_command():
     check = FakeWhisper("Oke Miku buka notepad")
     full = FakeWhisper("Buka Notepad")  # Whisper lengkap kadang membuang sapaan di depan
     lst, wakes, _ = listener(check, transcribe_command=full)
-    feed_in_chunks(lst, np.concatenate([speech(1.5), silence(1)]))
-    assert wakes == ["buka notepad"]
+    feed_in_chunks(lst, np.concatenate([speech(1.5), silence(1.5)]))
+    assert wakes == ["Buka Notepad"]
+
+
+def test_misheard_wake_phrase_in_full_transcription_keeps_the_command():
+    # Uji suara sungguhan: cek "Oke, Miku, putar lagu di Youtube", transkripsi lengkap "Gameku, …";
+    # ucapan > 2,5 s, jadi lewat jalur jendela
+    check = FakeWhisper("Oke, Miku, putar lagu di")
+    full = FakeWhisper("Gameku, putar lagu di Youtube")
+    lst, wakes, _ = listener(check, transcribe_command=full)
+    feed_in_chunks(lst, np.concatenate([speech(3.0), silence(1.5)]))
+    assert wakes == ["putar lagu di Youtube"]
+
+
+def test_command_continued_after_a_short_pause_is_joined():
+    # "Oke Miku, kecilkan volume … ke tiga puluh": jeda 0,7 s memotong segmen
+    check = FakeWhisper("Oke Miku kecilkan volume")
+    full = FakeWhisper("Oke Miku, kecilkan volume", "Oke Miku, kecilkan volume ke tiga puluh")
+    lst, wakes, _ = listener(check, transcribe_command=full)
+    feed_in_chunks(lst, np.concatenate([speech(1.5), silence(0.7), speech(0.8), silence(1.5)]))
+
+    assert wakes == ["kecilkan volume ke tiga puluh"]
+    assert len(full.lengths) == 2 and full.lengths[1] > full.lengths[0]
+
+
+def test_held_command_is_dropped_when_miku_gets_busy():
+    state = SimpleNamespace(busy=False)
+    lst, wakes, _ = listener(FakeWhisper("Oke Miku buka notepad"), busy=lambda: state.busy)
+    feed_in_chunks(lst, np.concatenate([speech(1.5), silence(0.7)]))
+    state.busy = True
+    feed_in_chunks(lst, silence(1))
+    assert wakes == []
+
+
+def test_command_is_transcribed_without_the_wake_phrase():
+    # Uji suara sungguhan: "Oke Miku, buka Notepad" utuh tertulis 「OK、ミク、ブカ、Notepad」,
+    # karena "Oke Miku" membuat Whisper memilih bahasa Jepang
+    check = FakeWhisper("Oke Miku. Tukaramota")
+    full = FakeWhisper("buka Notepad")
+    lst, wakes, _ = listener(check, transcribe_command=full, wake_end=lambda: 0.9)
+    feed_in_chunks(lst, np.concatenate([speech(1.5), silence(1.5)]))
+
+    assert wakes == ["buka Notepad"]
+    segment_seconds = check.lengths[0]
+    assert full.lengths[0] == pytest.approx(segment_seconds - 0.9, abs=0.01)
+
+
+def test_cut_on_a_long_segment_counts_from_the_window_start():
+    check = FakeWhisper("bla bla", "Oke Miku putar")  # jendela 1 tanpa wake, jendela 2 dengan
+    full = FakeWhisper("putar lagu di YouTube")
+    lst, wakes, _ = listener(check, transcribe_command=full, wake_end=lambda: 1.2)
+    feed_in_chunks(lst, np.concatenate([speech(7.0), silence(1.5)]))
+
+    assert wakes == ["putar lagu di YouTube"]
+    # Segmen 7,6 s (ucapan 7 s + hening penutup 0,6 s). Jendela 2 mulai di 2,5 - 1 = 1,5 s dan wake
+    # phrase berakhir 1,2 s sesudahnya, jadi perintah = audio sesudah 2,7 s
+    assert full.lengths[0] == pytest.approx(7.6 - 2.7, abs=0.1)
+
+
+def test_loud_microphone_is_reported_once():
+    warnings = []
+    lst, _, _ = listener(FakeWhisper(), on_warning=warnings.append)
+    rng = np.random.default_rng(0)
+    feed_in_chunks(lst, (0.4 * rng.standard_normal(5 * SR)).astype(np.float32))
+    assert len(warnings) == 1 and "terlalu tinggi" in warnings[0]
+
+
+def test_normal_microphone_is_not_reported():
+    warnings = []
+    lst, _, _ = listener(FakeWhisper(), on_warning=warnings.append)
+    rng = np.random.default_rng(0)
+    feed_in_chunks(lst, (0.01 * rng.standard_normal(5 * SR)).astype(np.float32))
+    assert warnings == []
 
 
 def test_audio_while_busy_is_dropped_then_cooldown():
@@ -283,9 +372,9 @@ class FakeWake:
     command = ""
     instances = []
 
-    def __init__(self, transcribe, on_wake, is_busy, transcribe_command):
+    def __init__(self, transcribe, on_wake, is_busy, transcribe_command, wake_end, on_warning):
         self.transcribe, self.on_wake, self.is_busy = transcribe, on_wake, is_busy
-        self.transcribe_command = transcribe_command
+        self.transcribe_command, self.wake_end, self.on_warning = transcribe_command, wake_end, on_warning
         self.stopped = False
         FakeWake.instances.append(self)
 
@@ -368,7 +457,8 @@ def test_voice_mode_checks_cheaply_then_transcribes_the_command_fully(monkeypatc
     audio = np.zeros(SR, dtype=np.float32)
 
     lst.transcribe(audio)
-    assert cli.voice_input.transcribe.call_args.kwargs == {"lang": "id", "beam_size": 1, "verbose_logging": False}
+    assert cli.voice_input.transcribe.call_args.kwargs == {"lang": "id", "beam_size": 1, "prompt": "Oke Miku.",
+                                                          "word_timestamps": True, "verbose_logging": False}
     lst.transcribe_command(audio)
     assert cli.voice_input.transcribe.call_args.kwargs == {"languages": ["ja", "id"], "verbose_logging": False}
 

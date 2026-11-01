@@ -35,7 +35,8 @@ def main():
     vi = VoiceInput()
     assert vi.initialize(), "Whisper gagal dimuat"
     lst = WakeListener(
-        lambda audio: vi.transcribe(audio, lang=args.check_lang, beam_size=1, verbose_logging=False),
+        lambda audio: vi.transcribe(audio, lang=args.check_lang, beam_size=1, use_initial_prompt=False,
+                                    verbose_logging=False),
         lambda command: print(f"[{time.strftime('%H:%M:%S')}] Oke Miku! perintah: {command!r}", flush=True),
         transcribe_command=lambda audio: vi.transcribe(audio, languages=["ja", "id"], verbose_logging=False),
     )

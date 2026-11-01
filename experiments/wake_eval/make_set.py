@@ -40,6 +40,14 @@ NEGATIVE = [
     ("id", "Oke, minggu depan kita ketemu di kampus."),
     ("id", "Tugas basis data dikumpulkan hari Jumat."),
     ("id", "Nanti malam hujan, bawa payung ya."),
+    # Salah dengar dari uji suara sungguhan ("Oke, minggu", "Oke, menurut", "Oke, meku"): kalimat
+    # biasa yang berbunyi mirip tidak boleh memicu, terutama bila cek wake memakai prompt "Oke Miku"
+    ("id", "Oke, menurut aku itu sudah bagus."),
+    ("id", "Oke, minggu ini aku sibuk sekali."),
+    ("id", "Oke, meskipun hujan kita tetap berangkat."),
+    ("id", "Oke, mie ayamnya dua ya."),
+    ("id", "Oke, mikir-mikir dulu deh."),
+    ("id", "Oke, mulai besok aku olahraga."),
     ("ja", "オッケー、わかった。"),
     ("ja", "ミクの新しい曲を聞いた？"),
     ("ja", "初音ミクが大好きです。"),

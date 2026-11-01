@@ -21,7 +21,7 @@ sys.path.insert(0, ".")
 sys.stdout.reconfigure(encoding="utf-8")
 
 from core.voice_input import VoiceInput  # noqa: E402
-from core.wake import SpeechSegmenter, WakeListener  # noqa: E402
+from core.wake import SpeechSegmenter, WakeListener, wake_phrase_end  # noqa: E402
 
 SR = 16000
 CHUNK = int(0.1 * SR)  # potongan seukuran callback mikrofon
@@ -35,9 +35,12 @@ def run(listener, audio):
 VAD_MODE = None
 
 
+WAKE_END = None
+
+
 def new_listener(transcribe, wakes, transcribe_command=None):
     segmenter = SpeechSegmenter(vad_mode=VAD_MODE) if VAD_MODE is not None else None
-    return WakeListener(transcribe, wakes.append, transcribe_command=transcribe_command,
+    return WakeListener(transcribe, wakes.append, transcribe_command=transcribe_command, wake_end=WAKE_END,
                         cooldown_sec=0, clock=lambda: 0.0, segmenter=segmenter)
 
 
@@ -45,6 +48,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("folder", type=Path)
     parser.add_argument("--beam", type=int, default=1)
+    parser.add_argument("--no-prompt", action="store_true", help="cek wake tanpa prompt kosakata Whisper")
+    parser.add_argument("--wake-prompt", default=None, help='prompt khusus untuk cek wake, misalnya "Oke Miku."')
+    parser.add_argument("--cut-command", action="store_true",
+                        help="perintah ditranskripsi tanpa wake phrase (dipotong lewat cap waktu kata)")
     parser.add_argument("--vad-mode", type=int, default=None, help="webrtcvad 0-3 (bawaan: dari core/wake.py)")
     parser.add_argument("--detect-lang", default=None,
                         help="bahasa tetap untuk cek wake phrase; perintah tetap dengan deteksi bahasa")
@@ -59,7 +66,9 @@ def main():
 
     def transcribe(audio):
         if args.detect_lang:
-            text = vi.transcribe(audio, lang=args.detect_lang, beam_size=args.beam, verbose_logging=False)
+            text = vi.transcribe(audio, lang=args.detect_lang, beam_size=args.beam,
+                                 use_initial_prompt=not args.no_prompt, prompt=args.wake_prompt,
+                                 word_timestamps=args.cut_command, verbose_logging=False)
         else:
             text = vi.transcribe(audio, languages=["ja", "id"], beam_size=args.beam, verbose_logging=False)
         heard.append(text)
@@ -71,8 +80,10 @@ def main():
         return text
 
     command_fn = transcribe_command if args.detect_lang else None
+    global WAKE_END
+    WAKE_END = (lambda: wake_phrase_end(vi.last_words)) if args.cut_command else None
 
-    tail = np.zeros(int(1.0 * SR), dtype=np.float32)
+    tail = np.zeros(int(1.5 * SR), dtype=np.float32)  # hening penutup + jeda tunggu lanjutan perintah
     rows, latencies = {}, []
     misses, false_wakes = [], []
     for item in man:
@@ -127,7 +138,10 @@ def main():
     room_stats = {"minutes": round(len(room) / SR / 60, 1), "segments": lst.stats.segments,
                   "transcriptions": lst.stats.transcriptions, "wakes": len(wakes)}
 
-    print(f"\n== beam {args.beam}, cek wake: {args.detect_lang or 'deteksi bahasa'}, VAD {args.vad_mode or 'bawaan'}")
+    print(f"\n== beam {args.beam}, cek wake: {args.detect_lang or 'deteksi bahasa'}, VAD {args.vad_mode or 'bawaan'}"
+          f"{', tanpa prompt' if args.no_prompt else ''}"
+          f"{f', prompt {args.wake_prompt!r}' if args.wake_prompt else ''}"
+          f"{', perintah dipotong' if args.cut_command else ''}")
     for (kind, cond), r in sorted(rows.items()):
         extra = f", perintah {r['cmd_ok']}/{r['cmd_n']}" if r["cmd_n"] else ""
         label = "terpicu tepat sekali" if kind == "pos" else "tidak terpicu"

@@ -148,6 +148,9 @@ WAKE_PHRASE_ENABLED = True
 # Bahasa tetap untuk mengecek wake phrase (beam 1): 0,26 s per cek, sepertiga dari deteksi bahasa,
 # dengan akurasi sama (experiments/wake_eval). Perintah sesudahnya tetap dengan deteksi bahasa.
 WAKE_CHECK_LANGUAGE = "id"
+# Prompt Whisper untuk cek wake phrase (menggantikan prompt kosakata). Tanpa ini Whisper berbahasa
+# Indonesia menulis "Miku" sebagai kata yang dikenalnya ("minggu", "menurut", "me too").
+WAKE_CHECK_PROMPT = "Oke Miku."
 STOP_HOTKEY = "ctrl+shift+s"
 
 

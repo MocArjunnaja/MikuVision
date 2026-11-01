@@ -75,9 +75,9 @@ from core.commands import handle_command
 from core.conversation import ToolResult, run_turn
 from core.turn_log import TurnLogger
 from core.hotkey import ListenTriggers
-from core.wake import WakeListener
+from core.wake import WakeListener, wake_phrase_end
 from config import (DATA_DIR, CHARACTERS, DEFAULT_CHARACTER, TURN_LOG_DIR, WAKE_HOTKEY, HOTKEY_ENABLED,
-                    WAKE_PHRASE_ENABLED, WAKE_CHECK_LANGUAGE)
+                    WAKE_PHRASE_ENABLED, WAKE_CHECK_LANGUAGE, WAKE_CHECK_PROMPT)
 
 
 class MikuCLI:
@@ -278,8 +278,15 @@ class MikuCLI:
         return self._handling or bool(self.voice_output and self.voice_output.is_speaking)
 
     def _transcribe_wake(self, audio) -> str:
-        """Cek "Oke Miku": satu bahasa tetap dan beam 1, karena jalan untuk setiap ucapan."""
-        return self.voice_input.transcribe(audio, lang=WAKE_CHECK_LANGUAGE, beam_size=1, verbose_logging=False)
+        """Cek "Oke Miku": satu bahasa tetap dan beam 1, karena jalan untuk setiap ucapan. Prompt-nya
+        "Oke Miku." saja; prompt kosakata membuat Whisper mengarang "Buka Google Chrome"."""
+        return self.voice_input.transcribe(audio, lang=WAKE_CHECK_LANGUAGE, beam_size=1,
+                                           prompt=WAKE_CHECK_PROMPT, word_timestamps=True,
+                                           verbose_logging=False)
+
+    def _wake_phrase_end(self):
+        """Detik akhir "Oke Miku" di audio yang baru dicek (perintah dipotong dari situ)."""
+        return wake_phrase_end(self.voice_input.last_words)
 
     def _transcribe_wake_command(self, audio) -> str:
         return self.voice_input.transcribe(audio, languages=[self.character.lang, "id"], verbose_logging=False)
@@ -321,7 +328,9 @@ class MikuCLI:
         trigger_messages = self.triggers.start()
         if WAKE_PHRASE_ENABLED:
             self.wake = WakeListener(self._transcribe_wake, self._on_wake_phrase, is_busy=self._wake_busy,
-                                     transcribe_command=self._transcribe_wake_command)
+                                     transcribe_command=self._transcribe_wake_command,
+                                     wake_end=self._wake_phrase_end,
+                                     on_warning=lambda message: print(f"[Oke Miku] {message}"))
             error = self.wake.start()
             if error:
                 trigger_messages.append(f"\"Oke Miku\" tidak aktif: {error}.")
