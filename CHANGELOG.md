@@ -65,8 +65,17 @@ Cukup ucapkan **"Oke Miku"** untuk mulai bicara, tanpa menyeret maskot atau mene
 - **Volume mic menentukan:** mic internal laptop uji semula 100% (Capture +30 dB dan Internal Mic Boost +30 dB), sehingga derau ruangan hampir penuh (RMS 0,69). Di 30% hasilnya 2–5/10, di 20% 9–10/10.
 - `pytest`: 674 lulus di venv aplikasi (73 test di `tests/test_wake.py`, 1 baru di `tests/test_voice_input.py`); Python sistem seperti CI: 653 lulus, 59 dilewati. `test_without_dry_run_the_wizard_installs_for_real` gagal dan menggantung di venv aplikasi di Linux karena `winreg`, sudah begitu di `main` sebelum perubahan ini; dukungan Linux untuk wizard ada di #41.
 
+- **Windows** (1 Nov; Windows 11, RTX 4050, mic laptop "Microphone Array (Realtek)" di 45%, `test/v1.7.0`), oleh user:
+  - Level mic: derau ruangan RMS 0,0000, tanpa peringatan "Volume mikrofon terlalu tinggi".
+  - Uji berpandu (`live_guided.py`): skor 8/10. Wake phrase sendiri tertangkap 9/10: sekali Whisper menulis "Opi Miku buka notepad", dan sekali wake phrase tertangkap tetapi perintah Jepang tertulis katakana ("メモチョウ、アイティ", keterbatasan di bawah). Kalimat biasa 5/5 tidak memicu. Perintah sekaligus: "volume ke 30" dan "Putar lagu di YouTube" langsung diproses.
+  - `python miku.py`: "Oke Miku" lalu sapaan 「はい、何でしょうか？」, lalu "buka Notepad" → Notepad terbuka (dua kali); "Kecilkan volume ke 30" → volume 30%; "(terdengar: 'Oke, Rigo')" tidak memicu. Pendengar dan perekam membuka mic bersamaan tanpa error. Ctrl+Shift+M dan menyeret maskot tetap mulai merekam; `--trigger` juga (uji terpisah). Keluar lewat menu maskot tanpa error.
+  - GUI: tombol Wake Phrase dan model visi (memahami tangkapan layar) jalan, menurut user.
+  - Diam 3 menit dengan pendengar aktif: CPU proses 6,5% dari satu inti (0,4% dari 16 inti), GPU 0%.
+  - Speaker laptop yang memutar "Okay Miku" (suara sintetis Windows) hampir tidak terdengar di mic (RMS puncak 0,005), jadi pemicu dari speaker sendiri tidak terukur di sini.
+  - Belum terlihat: "Oke Miku" saat Miku sedang bicara, dan mic dipakai aplikasi lain setelah keluar.
+
 ### Keterbatasan diketahui
-- Belum diuji dengan suara orang lain dan di Windows.
+- Belum diuji dengan suara orang lain. Di Windows baru satu laptop dan satu suara.
 - Lagu yang liriknya berbunyi "oke Miku" akan memicu Miku, sama seperti orang yang mengucapkannya.
 - Perintah berbahasa Jepang yang diucapkan sekaligus kadang tertulis katakana ("メモチョウ、ハイテ") saat rekaman diputar ulang.
 
