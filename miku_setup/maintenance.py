@@ -56,14 +56,15 @@ def _inside(path: Path, folder: Path) -> bool:
 def running_processes(install_dir: Path) -> List[str]:
     """Nama proses yang berjalan dari InstallDir (MikuVision masih terbuka), kecuali Setup ini sendiri.
 
-    Linux: binary satu file PyInstaller berjalan sebagai dua proses (bootloader dan Python) dengan exe yang
-    sama; keduanya Setup ini.
+    Exe/binary satu file PyInstaller berjalan sebagai dua proses (bootloader dan Python) dengan exe yang sama;
+    keduanya Setup ini. Di Windows bootloader-nya ada di InstallDir saat Setup dibuka dari "Apps & features"
+    (folder .tools di InstallDir), jadi tanpa pengecualian ini Perbarui/Perbaiki lewat Modify selalu ditolak.
     """
     try:
         import psutil
     except ImportError:
         return []
-    own_exe = os.path.realpath(sys.executable) if getattr(sys, "frozen", False) and sys.platform != "win32" else ""
+    own_exe = os.path.realpath(sys.executable) if getattr(sys, "frozen", False) else ""
     names = []
     for process in psutil.process_iter(["pid", "name", "exe"]):
         exe = process.info.get("exe")

@@ -214,3 +214,25 @@ def test_running_processes_only_lists_programs_from_the_install_folder(tmp_path,
     psutil = pytest.importorskip("psutil")
     monkeypatch.setattr(psutil, "process_iter", lambda attrs: processes)
     assert maintenance.running_processes(install_dir) == ["pythonw.exe"]
+
+
+@pytest.mark.parametrize("platform", ["win32", "linux"])
+def test_the_setup_exe_own_bootloader_is_not_counted(tmp_path, monkeypatch, platform):
+    """Modify dari "Apps & features" membuka MikuVisionSetup.exe di folder .tools: dua proses, exe sama."""
+    install_dir = tmp_path / "MikuVision"
+    setup_exe = install_dir / ".tools" / "MikuVisionSetup.exe"
+    setup_exe.parent.mkdir(parents=True)
+    setup_exe.write_bytes(b"exe")
+
+    class Process:
+        def __init__(self, pid, name, exe):
+            self.info = {"pid": pid, "name": name, "exe": exe}
+    processes = [Process(os.getpid() + 1, "MikuVisionSetup.exe", str(setup_exe)),  # bootloader
+                 Process(os.getpid(), "MikuVisionSetup.exe", str(setup_exe)),
+                 Process(os.getpid() + 2, "pythonw.exe", str(install_dir / ".venv" / "Scripts" / "pythonw.exe"))]
+    psutil = pytest.importorskip("psutil")
+    monkeypatch.setattr(psutil, "process_iter", lambda attrs: processes)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(setup_exe))
+    monkeypatch.setattr(sys, "platform", platform)
+    assert maintenance.running_processes(install_dir) == ["pythonw.exe"]
