@@ -16,6 +16,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from config import LINUX_APPS, LINUX_GENERIC_APPS
 from .app_search import AppEntry
+from .windowing import WindowInfo
 
 try:
     import pyautogui
@@ -30,6 +31,9 @@ PROTECTED_PROCESSES = {
     "python", "python3", "sudo", "login", "sshd",
     # Satu proses memegang semua jendela terminal, termasuk yang menjalankan MikuVision
     "gnome-terminal-server", "konsole", "xfce4-terminal", "mate-terminal",
+    # Desktop dan panel
+    "xfdesktop", "xfce4-panel", "mate-panel", "caja-desktop", "lxpanel", "xfce4-session",
+    "cinnamon-session", "gnome-session-binary", "mate-session", "ksmserver", "lightdm", "gdm", "sddm",
 }
 
 # Perintah peluncur -> nama proses aplikasinya, bila berbeda
@@ -363,24 +367,37 @@ class LinuxDesktop:
         return (bool(shutil.which("wmctrl")) and bool(os.environ.get("DISPLAY"))
                 and os.environ.get("XDG_SESSION_TYPE") != "wayland")
 
-    def windows_by_pid(self, pids: set) -> Dict[int, list]:
-        """Jendela milik proses-proses tersebut: {pid: [id jendela]} dari `wmctrl -lp`."""
+    def list_windows(self) -> List[WindowInfo]:
+        """Semua jendela X11 dari `wmctrl -lp`: id, desktop, PID, host, judul."""
         try:
             output = _run(["wmctrl", "-lp"]).stdout
         except (OSError, subprocess.SubprocessError):
-            return {}
-        found: Dict[int, list] = {}
+            return []
+        found: List[WindowInfo] = []
         for line in output.splitlines():
-            parts = line.split(None, 3)
+            parts = line.split(None, 4)
             if len(parts) < 3:
                 continue
             try:
                 pid = int(parts[2])
             except ValueError:
                 continue
-            if pid in pids:
-                found.setdefault(pid, []).append(parts[0])
+            found.append(WindowInfo(parts[0], parts[4] if len(parts) > 4 else "", pid, parts[1]))
         return found
+
+    def windows_by_pid(self, pids: set) -> Dict[int, list]:
+        """Jendela milik proses-proses tersebut: {pid: [id jendela]}."""
+        found: Dict[int, list] = {}
+        for window in self.list_windows():
+            if window.pid in pids:
+                found.setdefault(window.pid, []).append(window.id)
+        return found
+
+    @staticmethod
+    def is_shell_window(window: WindowInfo, process_name: str) -> bool:
+        """Desktop, panel, atau jendela proses yang dilindungi (satu proses terminal memegang semua
+        jendelanya, termasuk yang menjalankan MikuVision). Desktop -1: menempel di semua desktop."""
+        return window.kind == "-1" or (process_name or "").lower() in PROTECTED_PROCESSES
 
     def close_window(self, window_id: str):
         # Sama seperti menekan tombol X: aplikasi sempat menawarkan simpan

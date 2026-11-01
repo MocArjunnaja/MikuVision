@@ -2,6 +2,7 @@ import json
 import urllib.parse
 from config import DATA_DIR
 from core import desktop
+from core.safety import path_in_folder, unused_path
 from core.tools import registry
 import time
 import webbrowser
@@ -38,6 +39,13 @@ def _open_saved(filepath) -> str:
     except OSError as e:
         return f" (tidak bisa dibuka otomatis: {e})"
 
+
+def _document(filename: str, suffix: str):
+    """Path dokumen di OUTPUT_DIR dari nama file LLM; nama berfolder ("C:\\Windows\\x", "../x") dipangkas
+    jadi nama file saja, jadi tool Office tidak pernah menulis di luar Miku_Documents."""
+    return path_in_folder(OUTPUT_DIR, filename, suffix)
+
+
 class MacroTools:
     """Kumpulan Makro (High-Level Actions) untuk MikuVision"""
 
@@ -64,16 +72,14 @@ class MacroTools:
     )
     def create_word_document(self, filename: str, content: str) -> str:
         try:
-            if not filename.endswith('.docx'):
-                filename += '.docx'
-            
             doc = Document()
             # Pisahkan paragraf berdasarkan baris baru jika ada
             for paragraph in content.split('\n'):
                 if paragraph.strip():
                     doc.add_paragraph(paragraph.strip())
-            
-            filepath = OUTPUT_DIR / filename
+
+            # Dokumen lama dengan nama sama tidak ditimpa: "Hukum_Newton (2).docx"
+            filepath = unused_path(_document(filename, ".docx"))
             doc.save(str(filepath))
             
             # Otomatis buka file jika ingin ditunjukkan ke user
@@ -86,9 +92,8 @@ class MacroTools:
     @registry.register(name="read_word_document", description="Membaca isi file dokumen Microsoft Word (.docx) di Desktop agar AI dapat me-review atau mengecek isinya sebelum merevisi.")
     def read_word_document(self, filename: str) -> str:
         try:
-            if not filename.endswith('.docx'):
-                filename += '.docx'
-            filepath = OUTPUT_DIR / filename
+            filepath = _document(filename, ".docx")
+            filename = filepath.name
             if not filepath.exists():
                 return f"File '{filename}' tidak ditemukan di {OUTPUT_DIR}."
             
@@ -105,9 +110,8 @@ class MacroTools:
     @registry.register(name="edit_word_document", description="Bertindak sebagai Microsoft Word Editor otonom (Agentic API). action bisa berupa: 'append' (tambahkan teks di akhir dokumen), 'replace' (tulis ulang / revisi teks yang ada), atau 'delete'. Untuk merevisi, target_text harus diisi tulisan lamanya, lalu new_text diisi tulisan baru. Parameter style opsional: 'bold', 'italic'.")
     def edit_word_document(self, filename: str, action: str, target_text: str = "", new_text: str = "", style: str = "") -> str:
         try:
-            if not filename.endswith('.docx'):
-                filename += '.docx'
-            filepath = OUTPUT_DIR / filename
+            filepath = _document(filename, ".docx")
+            filename = filepath.name
             if not filepath.exists():
                 return f"File '{filename}' tidak ditemukan. Buat dulu dengan create_word_document."
             
@@ -155,9 +159,6 @@ class MacroTools:
     @registry.register(name="create_powerpoint", description="Membantu user membuat file presentasi Microsoft PowerPoint (.pptx) sederhana.")
     def create_powerpoint(self, filename: str, title: str, content: str) -> str:
         try:
-            if not filename.endswith('.pptx'):
-                filename += '.pptx'
-            
             prs = Presentation()
             title_slide_layout = prs.slide_layouts[0]
             slide = prs.slides.add_slide(title_slide_layout)
@@ -168,7 +169,7 @@ class MacroTools:
             title_shape.text = title
             subtitle_shape.text = content
             
-            filepath = OUTPUT_DIR / filename
+            filepath = unused_path(_document(filename, ".pptx"))
             prs.save(str(filepath))
 
             note = _open_saved(filepath)

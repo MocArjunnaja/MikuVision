@@ -14,17 +14,26 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from config import ALLOWED_APPS
 from .app_search import AppEntry
+from .windowing import WindowInfo
 
 try:
     import pyautogui
 except Exception:
     pyautogui = None
 
-# Nama proses (tanpa .exe) yang tidak boleh dimatikan lewat close_application
+# Nama proses (tanpa .exe) yang tidak boleh dimatikan lewat close_application: kernel, sesi login,
+# shell desktop, host konsol, antivirus, dan MikuVision sendiri (python, ollama)
 PROTECTED_PROCESSES = {
-    "system", "smss", "csrss", "wininit", "winlogon", "services", "lsass",
-    "svchost", "dwm", "explorer", "python", "pythonw", "ollama",
+    "system", "registry", "memory compression", "secure system", "smss", "csrss", "wininit",
+    "winlogon", "services", "lsass", "lsaiso", "svchost", "dwm", "fontdrvhost", "logonui", "userinit",
+    "explorer", "sihost", "ctfmon", "taskhostw", "runtimebroker", "dllhost", "spoolsv", "audiodg",
+    "searchhost", "searchindexer", "startmenuexperiencehost", "shellexperiencehost", "textinputhost",
+    "conhost", "openconsole", "msmpeng", "securityhealthservice", "smartscreen", "wudfhost",
+    "python", "pythonw", "ollama", "ollama app",
 }
+
+# Desktop dan taskbar: WM_CLOSE ke Progman membuka dialog shutdown
+SHELL_WINDOW_CLASSES = {"Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"}
 
 # Alias nama aplikasi -> nama proses (tanpa .exe)
 PROCESS_ALIASES = {
@@ -242,6 +251,33 @@ class WindowsDesktop:
 
         win32gui.EnumWindows(collect, None)
         return found
+
+    def list_windows(self) -> List[WindowInfo]:
+        """Jendela top-level yang terlihat dan berjudul."""
+        try:
+            import win32gui
+            import win32process
+        except ImportError:
+            return []
+
+        found: List[WindowInfo] = []
+
+        def collect(hwnd, _):
+            if win32gui.IsWindowVisible(hwnd):
+                title = win32gui.GetWindowText(hwnd)
+                if title:
+                    _, pid = win32process.GetWindowThreadProcessId(hwnd)
+                    found.append(WindowInfo(hwnd, title, pid, win32gui.GetClassName(hwnd)))
+            return True
+
+        win32gui.EnumWindows(collect, None)
+        return found
+
+    @staticmethod
+    def is_shell_window(window: WindowInfo, process_name: str) -> bool:
+        """Desktop, taskbar, atau jendela proses sistem. Jendela folder File Explorer boleh ditutup."""
+        name = WindowsDesktop.process_key(process_name)
+        return window.kind in SHELL_WINDOW_CLASSES or (name in PROTECTED_PROCESSES and name != "explorer")
 
     def close_window(self, hwnd: int):
         import win32gui
