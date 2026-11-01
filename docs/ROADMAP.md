@@ -6,7 +6,7 @@
 
 ## 0. Menunggu merge
 
-Tidak ada. #21–#33 dirilis sebagai **v1.5.0** (31 Okt); #35–#38 (MikuVision Setup) dirilis sebagai **v1.6.0** (1 Nov). Ringkasan di CHANGELOG.
+MikuVision Setup untuk Linux, bertumpuk: [#40](https://github.com/MocArjunnaja/MikuVision/pull/40) (IL1) → [#41](https://github.com/MocArjunnaja/MikuVision/pull/41) (IL2) → [#42](https://github.com/MocArjunnaja/MikuVision/pull/42) (IL3). Merge berurutan, lalu cek ulang di Windows (bagian 2a) sebelum rilis **v1.7.0**. Sebelumnya: #21–#33 dirilis sebagai **v1.5.0** (31 Okt); #35–#38 (MikuVision Setup) sebagai **v1.6.0** (1 Nov).
 
 ## 1. Urutan berikutnya
 
@@ -62,6 +62,17 @@ Dijalankan setelah boot ke Windows, di folder repo yang sama (`D:`). Lakukan set
 
 **Bahan untuk rencana berikutnya**
 - Agent visi Fase 2: `find_on_screen` versi Windows butuh UI Automation (`uiautomation`, dipakai di spike Fase 0 Windows); catat apakah paket itu terpasang tanpa masalah. OCR tidak dibutuhkan di Fase 1 karena qwen3-vl membaca teks dari screenshot.
+
+## 2a. Cek ulang di Windows sebelum v1.7.0
+
+Setup untuk Linux (#40–#42) menyentuh kode yang juga dipakai Windows. Di Linux semuanya lulus (CHANGELOG IL2 dan IL3), dan CI Windows lulus; yang berikut perlu dicoba dengan exe sungguhan. Exe-nya ada di artifact **rilis-uji** dari workflow `release-setup` di PR #42 (zip `0.0.0-pr42`, `version.json`, `SHA256SUMS`), atau bangun sendiri dengan `pyinstaller miku_setup.spec`.
+
+| Cek | Kenapa | Lulus bila |
+|---|---|---|
+| Pasang → Perbarui → Perbaiki → Hapus → pasang lagi, seperti uji terima v1.6.0 | Tanda tangan beberapa fungsi bersama berubah (`install_args`, `install_command`, `validate_selection`, `default_install_dir` menerima `platform`); perilaku Windows seharusnya sama | Semua lulus seperti v1.6.0; argumen di log tetap `-Yes -Progress -StartMenu -SkipShortcut …` |
+| Tombol **Tutup** dan **X** di halaman terakhir Hapus | Bug yang ditemukan di uji Linux: `finish()` hanya ada di halaman Selesai, jadi Tutup tidak menutup jendela (juga di Windows). Diperbaiki di #41 | Jendela tertutup |
+| **Perbarui** dari "Apps & features" → Modify (`.tools\MikuVisionSetup.exe`) | Exe satu file PyInstaller berjalan sebagai dua proses dengan exe yang sama; proses bootloader-nya ada di dalam InstallDir. Di Linux #41 mengabaikannya, kode Windows tidak diubah | Tidak muncul "Tutup MikuVision dulu (MikuVisionSetup.exe masih berjalan)". Bila muncul, terapkan aturan yang sama di `running_processes` untuk Windows |
+| Log Setup | Teks log memakai konstanta `ENTRY_PLACE`, jadi tertulis `Tercatat di "Apps & features"` (dengan tanda kutip) | Hanya beda kutip |
 
 ## 3. Keputusan yang dibutuhkan dari user
 

@@ -244,6 +244,11 @@ Workflow baru `.github/workflows/release-setup.yml`, dipicu tag `v*`:
 - **Bug yang ikut ketemu:** tombol Tutup setelah Hapus tidak menutup jendela, juga di Windows (`finish()` hanya ada di halaman Selesai). Diperbaiki di kelas dasar halaman.
 - **Belum diuji:** jendela password `pkexec` (laptop uji sudah punya semua paket dan Ollama), sesi Wayland, distro selain Mint, dan binary hasil PyInstaller untuk alur sungguhan (IL3).
 
+**Hasil IL3** (1 Nov 2026). Binary Linux di workflow rilis, rinciannya di CHANGELOG. Keputusan dan temuan:
+- **Dibangun di kontainer `ubuntu:22.04`, bukan langsung di `ubuntu-latest`.** Binary PyInstaller hanya jalan di glibc yang sama atau lebih baru dari mesin build; Ubuntu 22.04 (glibc 2.35) mencakup Mint 21–22, Ubuntu 22.04+, Fedora, dan Arch. Runner `ubuntu-22.04` sendiri sedang dipensiunkan GitHub (mulai September 2026), sedangkan kontainer tetap tersedia. Python dan Tk dari apt, karena Tk dari uv tanpa Xft (IL2).
+- **Library bawaan binary tidak boleh bocor ke program lain.** Bootloader PyInstaller mengarahkan `LD_LIBRARY_PATH` ke `/tmp/_MEI…`; tanpa perbaikan, `install.sh` (curl, git) dan MikuVision yang dijalankan Setup ikut memuat library Ubuntu 22.04. Semua program yang dijalankan Setup di Linux kini memakai environment bersih (`miku_setup/procenv.py`).
+- **Pull request ikut membangun.** Perubahan Setup di PR membangun exe, binary Linux, zip, `version.json`, dan `SHA256SUMS` tanpa melampirkan ke rilis (artifact `rilis-uji`), jadi rilis tidak lagi menjadi tempat pertama build Linux dicoba.
+
 ## 9. Uji dan risiko
 
 **Skenario uji di Windows** (VM Windows 11 bersih tanpa Python/git, ditambah laptop pengembang):
