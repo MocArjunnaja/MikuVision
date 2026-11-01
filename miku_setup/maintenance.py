@@ -4,10 +4,14 @@ Perbarui, Perbaiki, dan Hapus untuk instalasi yang tercatat di registry (docs/PL
 Hapus hanya menyentuh yang dibuat Setup: InstallDir, shortcut yang menunjuk ke InstallDir, entri registry,
 dan ModelDir pilihan user beserta variabel OLLAMA_MODELS/HF_HOME yang menunjuk ke sana. Model di lokasi
 bawaan Ollama tidak dihapus, karena bisa dipakai aplikasi lain. Ollama sendiri juga tidak dihapus.
+
+Linux: shortcut = peluncur .desktop di menu aplikasi dan Desktop, entri registry = install.json dan entri menu
+Setup (registry.py), variabel user = file environment.d yang ditulis install.sh --model-dir.
 """
 
 import logging
 import os
+import shlex
 import shutil
 import stat
 import subprocess
@@ -17,6 +21,8 @@ from pathlib import Path
 from typing import Callable, List, Optional
 
 from . import registry
+from .checks import model_env_file, parse_env_file
+from .launch import MENU_ENTRY, desktop_dir
 from .components import Selection
 from .registry import APP_NAME, InstalledApp
 
@@ -48,15 +54,23 @@ def _inside(path: Path, folder: Path) -> bool:
 
 
 def running_processes(install_dir: Path) -> List[str]:
-    """Nama proses yang berjalan dari InstallDir (MikuVision masih terbuka), kecuali Setup ini sendiri."""
+    """Nama proses yang berjalan dari InstallDir (MikuVision masih terbuka), kecuali Setup ini sendiri.
+
+    Exe/binary satu file PyInstaller berjalan sebagai dua proses (bootloader dan Python) dengan exe yang sama;
+    keduanya Setup ini. Di Windows bootloader-nya ada di InstallDir saat Setup dibuka dari "Apps & features"
+    (folder .tools di InstallDir), jadi tanpa pengecualian ini Perbarui/Perbaiki lewat Modify selalu ditolak.
+    """
     try:
         import psutil
     except ImportError:
         return []
+    own_exe = os.path.realpath(sys.executable) if getattr(sys, "frozen", False) else ""
     names = []
     for process in psutil.process_iter(["pid", "name", "exe"]):
         exe = process.info.get("exe")
-        if exe and process.info["pid"] != os.getpid() and _inside(Path(exe), install_dir):
+        if not exe or process.info["pid"] == os.getpid() or (own_exe and os.path.realpath(exe) == own_exe):
+            continue
+        if _inside(Path(exe), install_dir):
             names.append(process.info.get("name") or Path(exe).name)
     return sorted(set(names))
 
@@ -90,14 +104,33 @@ def register_install(selection: Selection, version: str,
         registry.copy_setup_exe(app.install_dir)
         write(app, folder_size(app.install_dir) // 1024)
     except OSError as e:
-        log.warning("Entri Apps & features gagal ditulis: %s", e)
-        return f"MikuVision tidak tercatat di \"Apps & features\": {e}"
-    log.info("Tercatat di Apps & features: %s %s", APP_NAME, version)
+        log.warning("Entri %s gagal ditulis: %s", registry.ENTRY_PLACE, e)
+        return f"MikuVision tidak tercatat di {registry.ENTRY_PLACE}: {e}"
+    log.info("Tercatat di %s: %s %s", registry.ENTRY_PLACE, APP_NAME, version)
     return None
 
 
+def desktop_target(entry: Path) -> str:
+    """Linux: path absolut terakhir di baris Exec peluncur .desktop ('/bin/bash "<dir>/run.sh"' -> run.sh)."""
+    try:
+        lines = entry.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+    for line in lines:
+        if line.startswith("Exec="):
+            try:
+                args = shlex.split(line[len("Exec="):])
+            except ValueError:
+                return ""
+            paths = [arg for arg in args if arg.startswith("/")]
+            return paths[-1] if paths else ""
+    return ""
+
+
 def shortcut_target(lnk: Path) -> str:
-    """Target shortcut .lnk lewat WScript.Shell; '' bila tidak terbaca."""
+    """Target shortcut .lnk lewat WScript.Shell; '' bila tidak terbaca. Linux: peluncur .desktop."""
+    if sys.platform != "win32":
+        return desktop_target(lnk)
     script = "(New-Object -ComObject WScript.Shell).CreateShortcut($env:MIKU_LNK).TargetPath"
     try:
         result = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
@@ -109,19 +142,31 @@ def shortcut_target(lnk: Path) -> str:
 
 
 def start_menu_folder() -> Path:
+    """Folder Start Menu MikuVision. Linux: folder applications milik user (dipakai bersama aplikasi lain)."""
+    if sys.platform != "win32":
+        return registry.applications_dir()
     return Path(os.environ.get("APPDATA") or Path.home()) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / \
         APP_NAME
 
 
 def desktop_shortcut() -> Path:
+    if sys.platform != "win32":
+        return desktop_dir() / f"{APP_NAME}.desktop"
     return Path(os.environ.get("USERPROFILE") or Path.home()) / "Desktop" / f"{APP_NAME}.lnk"
 
 
 def app_shortcuts(install_dir: Path, target_of: Callable[[Path], str] = shortcut_target,
                   start_menu: Optional[Path] = None, desktop: Optional[Path] = None) -> List[Path]:
-    """Shortcut milik instalasi ini. Shortcut Desktop bernama sama tapi menunjuk ke tempat lain dibiarkan."""
+    """Shortcut milik instalasi ini. Shortcut Desktop bernama sama tapi menunjuk ke tempat lain dibiarkan.
+
+    Linux: hanya mikuvision.desktop di menu dan MikuVision.desktop di Desktop, dan hanya bila menunjuk ke
+    InstallDir (clone git di folder lain memakai nama file yang sama).
+    """
     start_menu = start_menu_folder() if start_menu is None else start_menu
     desktop = desktop_shortcut() if desktop is None else desktop
+    if sys.platform != "win32":
+        return [path for path in (start_menu / MENU_ENTRY, desktop)
+                if path.is_file() and _inside(Path(target_of(path) or "?"), install_dir)]
     found = sorted(start_menu.glob("*.lnk")) if start_menu.is_dir() else []
     if desktop.is_file() and _inside(Path(target_of(desktop) or "?"), install_dir):
         found.append(desktop)
@@ -151,7 +196,11 @@ def model_env_vars_inside(model_dir: Path, environ_user: Callable[[str], Optiona
 
 def _user_env(name: str) -> Optional[str]:
     if sys.platform != "win32":
-        return None
+        path = model_env_file(dict(os.environ))
+        try:
+            return parse_env_file(path.read_text(encoding="utf-8")).get(name) if path else None
+        except OSError:
+            return None
     import winreg
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
@@ -160,8 +209,29 @@ def _user_env(name: str) -> Optional[str]:
         return None
 
 
+def remove_env_file_vars(path: Path, names: List[str]):
+    """Linux: hapus baris NAME=... dari file environment.d; file yang jadi kosong ikut dihapus."""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    kept = [line for line in lines if line.split("=", 1)[0] not in names]
+    if any(line.strip() for line in kept):
+        path.write_text("\n".join(kept) + "\n", encoding="utf-8")
+    else:
+        path.unlink()
+
+
 def _delete_user_env(names: List[str]):
-    """Hapus variabel user lalu beri tahu Windows (WM_SETTINGCHANGE), sama seperti SetEnvironmentVariable."""
+    """Hapus variabel user lalu beri tahu Windows (WM_SETTINGCHANGE), sama seperti SetEnvironmentVariable.
+
+    Linux: dari file environment.d; berlaku sejak sesi login berikutnya.
+    """
+    if sys.platform != "win32":
+        path = model_env_file(dict(os.environ))
+        if path:
+            remove_env_file_vars(path, names)
+        return
     import ctypes
     import winreg
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_SET_VALUE) as key:
@@ -192,7 +262,8 @@ def remove_installation(app: InstalledApp, plan: RemovalPlan, progress: Callable
         problem = remove_tree(lnk)
         problems += [problem] if problem else []
     folder = start_menu_folder()
-    if shortcuts is None and folder.is_dir() and not any(folder.iterdir()):
+    # Linux: folder applications dipakai aplikasi lain, tidak pernah dihapus
+    if shortcuts is None and sys.platform == "win32" and folder.is_dir() and not any(folder.iterdir()):
         folder.rmdir()
 
     progress(f"Menghapus {install_dir}")
@@ -217,7 +288,7 @@ def remove_installation(app: InstalledApp, plan: RemovalPlan, progress: Callable
             log.info("Variabel user dihapus: %s", ", ".join(names))
 
     if app_problems:
-        log.warning("Entri Apps & features dibiarkan: %d file aplikasi tidak terhapus", len(app_problems))
+        log.warning("Entri %s dibiarkan: %d file aplikasi tidak terhapus", registry.ENTRY_PLACE, len(app_problems))
     else:
         delete_entry()
     for problem in problems:

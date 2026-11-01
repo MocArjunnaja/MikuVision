@@ -2,6 +2,7 @@
 
 import logging
 import queue
+import sys
 import threading
 
 import customtkinter as ctk
@@ -11,6 +12,8 @@ from ..components import space_needed
 from .base import ACCENT, ACCENT_HOVER, MUTED, STATUS_COLORS, STATUS_ICONS, Page, heading, paragraph
 
 log = logging.getLogger("miku_setup")
+CHECKING = "Windows, GPU, internet, Ollama, mikrofon…" if sys.platform == "win32" else \
+    "Distro, sesi desktop, GPU, internet, Ollama, mikrofon…"
 
 
 class SystemCheckPage(Page):
@@ -40,7 +43,7 @@ class SystemCheckPage(Page):
             child.destroy()
         self.setup.results = []
         self.done, self.running = False, True
-        self.pending = self._row(CheckResult("", "Memeriksa", "pending", "Windows, GPU, internet, Ollama, mikrofon…"))
+        self.pending = self._row(CheckResult("", "Memeriksa", "pending", CHECKING))
         self.summary.configure(text="")
         self.again.configure(state="disabled")
         self.wizard.refresh()

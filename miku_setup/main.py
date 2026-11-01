@@ -5,7 +5,8 @@ Entry MikuVision Setup.
     python -m miku_setup.main --dry-run  # jalani semua halaman tanpa mengunduh atau memasang apa pun
     python -m miku_setup.main --update | --repair | --uninstall
 
-Instalasi dikenali dari entrinya di "Apps & features" (registry.py, docs/PLAN_INSTALLER.md bagian 6).
+Instalasi dikenali dari entrinya di "Apps & features" (registry.py, docs/PLAN_INSTALLER.md bagian 6); di Linux
+dari ~/.local/share/mikuvision/install.json.
 """
 
 import argparse
@@ -20,12 +21,21 @@ from pathlib import Path
 from typing import List, Optional
 
 
+# OS yang didukung Setup: Windows dan Linux (macOS belum)
+PLATFORMS = ("win32", "linux")
+
+
 def log_dir() -> Path:
+    if sys.platform != "win32":
+        return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "mikuvision" / "setup"
     return Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "MikuVision-setup"
 
 
 def setup_logging() -> Path:
-    """Log wizard di %LOCALAPPDATA%\\MikuVision-setup\\setup-<waktu>.log; exe tidak punya konsol."""
+    """Log wizard di %LOCALAPPDATA%\\MikuVision-setup\\setup-<waktu>.log; exe tidak punya konsol.
+
+    Linux: ~/.local/share/mikuvision/setup. Unduhan rilis disimpan di sana juga (downloads/).
+    """
     path = log_dir() / f"setup-{time.strftime('%Y%m%d-%H%M%S')}.log"
     path.parent.mkdir(parents=True, exist_ok=True)
     handler = logging.FileHandler(path, encoding="utf-8")
@@ -62,8 +72,11 @@ def requested_mode(args: argparse.Namespace, installed) -> str:
 
 
 def relaunch_outside(install_dir: Path, argv: List[str]) -> bool:
-    """Exe Setup di <InstallDir>\\.tools tidak bisa menghapus dirinya sendiri: salin ke Temp lalu jalankan dari sana."""
-    if not getattr(sys, "frozen", False):
+    """Exe Setup di <InstallDir>\\.tools tidak bisa menghapus dirinya sendiri: salin ke Temp lalu jalankan dari sana.
+
+    Linux: file yang sedang berjalan boleh dihapus, jadi tidak perlu.
+    """
+    if not getattr(sys, "frozen", False) or sys.platform != "win32":
         return False
     exe = Path(sys.executable).resolve()
     try:
@@ -79,10 +92,10 @@ def relaunch_outside(install_dir: Path, argv: List[str]) -> bool:
 def main(argv: Optional[List[str]] = None) -> int:
     args = parse_args(argv)
     dry_run = args.dry_run or args.dry_run_fail
-    if sys.platform != "win32" and not dry_run:
+    if sys.platform not in PLATFORMS and not dry_run:
         if sys.stderr:
-            sys.stderr.write("MikuVision Setup hanya untuk Windows. Di Linux pakai install.sh, "
-                             "atau --dry-run untuk melihat halamannya.\n")
+            sys.stderr.write("MikuVision Setup hanya untuk Windows dan Linux; "
+                             "--dry-run untuk melihat halamannya.\n")
         return 2
     log = logging.getLogger("miku_setup")
     log_path = setup_logging()

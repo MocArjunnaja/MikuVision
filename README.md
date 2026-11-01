@@ -45,7 +45,12 @@ Mendengar suara Anda, berpikir dengan LLM lokal, menjalankan aksi di komputer, l
 
 Setup yang dibuka lagi (atau **Modify** di "Apps & features") menawarkan **Perbarui**, **Perbaiki**, dan **Hapus**. Hapus menyimpan percakapan, memori, skill, dan model kecuali Anda mencentangnya.
 
-**Untuk pengembang, atau Linux:**
+**Linux, paling mudah (mulai v1.7.0):** unduh **`MikuVisionSetup-linux-x86_64`** dari [rilis terbaru](https://github.com/MocArjunnaja/MikuVision/releases/latest), izinkan file itu dijalankan, lalu buka. Setup yang sama memeriksa komputer dan memasang semuanya ke `~/.local/share/mikuvision/app`. Bila perlu memasang paket sistem atau Ollama, Setup meminta izin dulu, lalu password Anda lewat jendela sistem (bukan terminal). Sesudahnya **MikuVision Setup** di menu aplikasi menawarkan Perbarui, Perbaiki, dan Hapus, dan **Hapus MikuVision** langsung membuka halaman Hapus.
+
+> [!NOTE]
+> File unduhan belum boleh dijalankan: klik kanan → **Properties → Permissions** → centang **Allow executing file as program** (namanya sedikit beda per file manager), atau `chmod +x MikuVisionSetup-linux-x86_64`. Binary dibangun di Ubuntu 22.04, jadi butuh distro dengan glibc 2.35 atau lebih baru (Ubuntu 22.04+, Linux Mint 21+, Fedora, Arch). Fitur desktop penuh butuh sesi X11.
+
+**Untuk pengembang, atau lewat terminal:**
 
 1. Ambil kode ke folder di drive yang lega (±16 GB): `git clone https://github.com/MocArjunnaja/MikuVision.git`, atau unduh ZIP dari [Releases](https://github.com/MocArjunnaja/MikuVision/releases).
 2. Jalankan installer. Installer memasang Python 3.10, PyTorch (CUDA bila ada GPU NVIDIA), dependency, Ollama, dan model LLM, lalu menguji hasilnya.
@@ -60,7 +65,7 @@ Setup yang dibuka lagi (atau **Modify** di "Apps & features") menawarkan **Perba
 <details>
 <summary><b>Catatan instalasi</b></summary>
 
-- **Opsi:** `install.bat -Yes -Cpu` / `./install.sh --yes --cpu`. Opsi lain: lewati Ollama, shortcut, atau tes akhir; pasang RVC tanpa model; di Windows juga `-ModelDir <folder>` (model di drive lain), `-WithVision` (model membaca layar), `-RvcModel <pth> -RvcIndex <index>`, dan `-StartMenu`. Daftar lengkap: `Get-Help .\install.ps1 -Detailed` atau `./install.sh --help`.
+- **Opsi:** `install.bat -Yes -Cpu` / `./install.sh --yes --cpu`. Opsi lain: lewati Ollama, shortcut, atau tes akhir; pasang RVC tanpa model; `-ModelDir <folder>` / `--model-dir <folder>` (model di drive lain; di Linux model Ollama yang berjalan sebagai layanan sistem tetap di tempatnya), `-WithVision` / `--with-vision` (model membaca layar), `-RvcModel <pth> -RvcIndex <index>` / `--rvc-model <pth> --rvc-index <index>`, dan `-StartMenu` / `--menu-entry`. Daftar lengkap: `Get-Help .\install.ps1 -Detailed` atau `./install.sh --help`.
 - **Log:** setiap jalan dicatat di `logs/install-<waktu>.log`; bila gagal, pesan `[ERROR]` terakhir menjelaskan penyebab dan perbaikannya.
 - **Windows, drive C sempit:** `install.bat -ModelDir D:\MikuVision\models` menyimpan model Ollama dan cache Hugging Face di sana. Atau buat sendiri variabel user `HF_HOME` dan `OLLAMA_MODELS` yang menunjuk ke drive lain **sebelum** memasang. Model di lokasi lama tidak dipindah.
 - **Linux, paket sistem:** installer menanyakan dulu sebelum memakai `sudo`. Yang dipasangnya: paket lewat `apt`, `dnf`, `pacman`, atau `zypper` (git, PortAudio, xdotool, wmctrl, playerctl, xclip), dan Ollama dari skrip resminya; Ollama yang sudah terpasang dipakai apa adanya. Yang baru diuji langsung hanya Linux Mint; Fedora, Arch, dan openSUSE didukung installer tetapi belum dicoba.
@@ -68,7 +73,7 @@ Setup yang dibuka lagi (atau **Modify** di "Apps & features") menawarkan **Perba
 - **Linux, sesi X11:** maskot transparan, shortcut `Ctrl+Shift+M`, klik/ketik, dan membaca jendela aktif butuh X11. KDE Plasma dan GNOME biasanya memakai Wayland: pilih sesi X11/Xorg di layar login (cek dengan `echo $XDG_SESSION_TYPE`). Di Wayland suara, LLM, GUI, dan dokumen tetap jalan.
 - **Linux, lokasi env:** bila folder repo ada di partisi Windows (dual-boot, NTFS/FAT), uv, Python, dan venv disimpan di `~/.local/share/mikuvision/`; lokasi lain lewat `MIKU_VENV=/path/venv`.
 - **Opsional:** model visi `ollama pull qwen3-vl:4b-instruct` (3,3 GB) untuk membaca layar; di Linux juga paket `python3-pyatspi` (Arch: `python-atspi`) untuk "tombol apa saja di jendela ini?".
-- **Menghapus:** dipasang lewat Setup → "Apps & features" → MikuVision → Uninstall. Dipasang lewat git/`install.bat`: hapus folder aplikasi dan shortcut (Linux: juga `rm -rf ~/.local/share/mikuvision ~/.local/share/applications/mikuvision.desktop ~/Desktop/MikuVision.desktop`). Ollama dihapus terpisah.
+- **Menghapus:** dipasang lewat Setup → Windows: "Apps & features" → MikuVision → Uninstall; Linux: **Hapus MikuVision** di menu aplikasi. Dipasang lewat git/`install.bat`: hapus folder aplikasi dan shortcut (Linux: juga `~/.local/share/applications/mikuvision.desktop` dan `~/Desktop/MikuVision.desktop`, dan bila repo ada di partisi NTFS, folder `venv`, `python`, `uv`, dan `uv-cache` di `~/.local/share/mikuvision/`; folder `app` di sana milik Setup). Ollama dihapus terpisah.
 
 </details>
 
@@ -127,7 +132,7 @@ Tanpa RVC, Miku bicara memakai suara dasar MeloTTS Jepang. Untuk suara khas Miku
 2. Simpan index ke `models/miku_default_rvc/logs/miku_default_rvc/added_IVF4457_Flat_nprobe_1_miku_default_rvc_v2.index` (atau ubah `index_path` di `config.py`).
 3. Jalankan installer lagi. GUI lalu menampilkan **RVC: ready**.
 
-Di Windows, langkah 1–3 bisa sekaligus: `install.bat -RvcModel <file.pth> -RvcIndex <file.index>`. MikuVision Setup (installer berantarmuka, sedang dikembangkan) juga bisa mengunduh model dari link yang Anda tempel: satu link `.zip` berisi `.pth` dan `.index`, atau dua link terpisah. Link halaman Hugging Face (`/blob/`) diubah otomatis menjadi link unduhan (`/resolve/`).
+Langkah 1–3 bisa sekaligus: `install.bat -RvcModel <file.pth> -RvcIndex <file.index>` / `./install.sh --rvc-model <file.pth> --rvc-index <file.index>`, atau pilih kedua file di halaman 4 MikuVision Setup. Setup juga bisa mengunduh model dari link yang Anda tempel: satu link `.zip` berisi `.pth` dan `.index`, atau dua link terpisah. Link halaman Hugging Face (`/blob/`) diubah otomatis menjadi link unduhan (`/resolve/`).
 
 `rvc-python` butuh `fairseq`, yang dikompilasi saat instalasi: di Windows pasang [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (workload **Desktop development with C++**); di Linux installer menawarkan compiler-nya sendiri (`build-essential`, `gcc-c++ make`, atau `base-devel`). Bila gagal, aplikasi tetap jalan tanpa RVC.
 

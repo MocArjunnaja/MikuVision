@@ -38,6 +38,7 @@ def make_wizard(tmp_path):
         wizard.withdraw()
         wizard.find_ollama = lambda: "ollama.exe"
         wizard.free_bytes = lambda path: 500e9
+        wizard.root_needs = lambda rvc, ollama_installed: []
         created.append(wizard)
         return wizard
 
@@ -101,7 +102,7 @@ def test_invalid_folder_is_explained_on_the_location_page(make_wizard):
     wizard.go_next()
     wizard.pages[3].install_dir.set("MikuVision")
     wizard.go_next()
-    assert wizard.index == 3 and "lengkap dengan drive" in wizard.error.cget("text")
+    assert wizard.index == 3 and "lengkap" in wizard.error.cget("text")
 
 
 def test_failed_install_offers_retry(make_wizard):
@@ -131,7 +132,8 @@ def test_without_dry_run_the_wizard_installs_for_real(tmp_path, monkeypatch):
         def mainloop(self):
             pass
 
-    monkeypatch.setattr(sys, "platform", "win32")
+    import miku_setup.registry as registry
+    monkeypatch.setattr(registry, "read_installed", lambda: None)
     monkeypatch.setattr(entry, "setup_logging", lambda: tmp_path / "setup.log")
     monkeypatch.setattr(wizard_module, "Wizard", FakeWizard)
     assert main(["--release-url", "http://127.0.0.1:8765/"]) == 0
@@ -206,6 +208,9 @@ def test_uninstall_flow_in_dry_run(maintain_wizard):
     assert wizard.setup.removal.data is True and wizard.setup.removal.models is False
     pump(wizard, lambda: wizard.pages[2].done)
     assert wizard.next_button.cget("text") == "Tutup" and wizard.setup.removal_problems == []
+    wizard.go_next()
+    with pytest.raises(Exception):
+        wizard.winfo_exists()  # Tutup menutup jendela (dulu AttributeError: RemovePage tanpa finish)
 
 
 def test_going_back_and_choosing_again_rebuilds_the_steps(maintain_wizard):
@@ -234,3 +239,25 @@ def test_dialogs_are_in_indonesian(make_wizard):
     wizard.after(300, answer)
     assert dialog(wizard, "Keluar dari Setup?", "MikuVision belum dipasang.", ("Keluar", "Kembali")) == 0
     assert seen["labels"] == {"Keluar", "Kembali"}
+
+
+def test_admin_rights_need_consent_on_the_location_page(make_wizard):
+    """Linux: install.sh memasang paket sistem dan Ollama lewat pkexec; halaman 4 meminta izin dulu."""
+    wizard = make_wizard()
+    wizard.root_needs = lambda rvc, ollama_installed: ["git", "Ollama"] + (["g++"] if rvc else [])
+    accept_license(wizard)
+    pump(wizard, lambda: wizard.pages[2].done)
+    wizard.go_next()
+    page = wizard.pages[3]
+    assert "git, Ollama" in page.root_text.cget("text")
+    wizard.go_next()
+    assert wizard.index == 3 and "izin hak admin" in wizard.error.cget("text")
+    page.chosen["rvc"].set(True)
+    page._changed()
+    assert "g++" in page.root_text.cget("text")
+    page.chosen["rvc"].set(False)
+    page.root_consent.set(True)
+    page._changed()
+    assert wizard.setup.root_consent
+    wizard.go_next()
+    assert wizard.index == 4

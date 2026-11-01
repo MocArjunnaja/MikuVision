@@ -2,8 +2,8 @@
 Menjalankan instalasi dan meneruskan progresnya ke wizard lewat queue.Queue (widget Tk hanya diubah
 dari main thread, seperti gui.py).
 
-install.ps1 -Progress mencetak satu baris "##MIKU {json}" per kejadian: step {index, total, title},
-warn/error {message}, done {ok}. Baris lain adalah log biasa.
+install.ps1 -Progress (Linux: install.sh --progress) mencetak satu baris "##MIKU {json}" per kejadian:
+step {index, total, title}, warn/error {message}, done {ok}. Baris lain adalah log biasa.
 
 Kejadian di antrean: ("log", teks), ("progress", kejadian ##MIKU), ("phase", {title, fraction}) untuk
 unduh dan ekstrak, dan ("downloaded", byte) selama install.ps1 mengunduh PyTorch dan model.
@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import queue
+import signal
 import subprocess
 import sys
 import threading
@@ -26,6 +27,7 @@ from .checks import format_gb
 from .components import Selection, install_args, model_locations
 from .download import RELEASE_URL, Cancelled, DownloadError, download, fetch_text, parse_sha256sums, \
     parse_version, safe_extract, zip_name
+from .procenv import child_env
 
 log = logging.getLogger("miku_setup")
 
@@ -34,7 +36,9 @@ EVENTS = {"step", "warn", "error", "done"}
 SAMPLE_LOG = Path(__file__).with_name("assets") / "dry_run_stdout.txt"
 SIZE_INTERVAL_SEC = 2.0
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-# Kode keluar install.ps1 (docs/PLAN_INSTALLER.md bagian 4)
+# Batal di Linux: SIGTERM ke grup proses install.sh, lalu SIGKILL bila belum berhenti
+KILL_AFTER_SEC = 5.0
+# Kode keluar install.ps1 dan install.sh (docs/PLAN_INSTALLER.md bagian 4)
 EXIT_MESSAGES = {
     1: "Instalasi berhenti. Penyebabnya ada di log.",
     2: "Error tak terduga di installer. Kirim log saat melapor.",
@@ -99,8 +103,13 @@ class DryRunRunner:
             self.events.put(("progress", event) if event else ("log", line))
 
 
-def install_command(install_dir: Path, args: List[str]) -> List[str]:
-    """PowerShell tanpa profil; -ExecutionPolicy Bypass hanya untuk proses ini, sama seperti install.bat."""
+def install_command(install_dir: Path, args: List[str], platform: str = sys.platform) -> List[str]:
+    """PowerShell tanpa profil; -ExecutionPolicy Bypass hanya untuk proses ini, sama seperti install.bat.
+
+    Linux: install.sh lewat bash, karena zip rilis tidak membawa bit executable.
+    """
+    if platform != "win32":
+        return ["bash", str(Path(install_dir) / "install.sh"), *args]
     return ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
             str(Path(install_dir) / "install.ps1"), *args]
 
@@ -134,6 +143,29 @@ def folder_size(path: Path) -> int:
         except OSError:
             continue
     return total
+
+
+def kill_group(process: subprocess.Popen, wait: float = KILL_AFTER_SEC):
+    """Linux: SIGTERM ke grup proses (install.sh menutup log lalu keluar), SIGKILL bila belum berhenti.
+
+    Perintah yang sudah berjalan sebagai root lewat pkexec (apt, skrip Ollama) tidak bisa dihentikan user;
+    install.sh menunggunya selesai.
+    """
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except OSError:
+        return
+
+    def finish():
+        try:
+            process.wait(timeout=wait)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except OSError:
+                pass
+
+    threading.Thread(target=finish, name="setup-kill", daemon=True).start()
 
 
 class InstallRunner:
@@ -182,7 +214,7 @@ class InstallRunner:
                 subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True,
                                creationflags=_NO_WINDOW)
             else:
-                process.kill()
+                kill_group(process)
 
     def _put(self, kind: str, data):
         self.events.put((kind, data))
@@ -283,11 +315,14 @@ class InstallRunner:
         command = self.command(install_dir, install_args(self.selection))
         log.info("Menjalankan: %s", " ".join(command))
         try:
+            # Linux: grup proses sendiri, supaya Batal juga menghentikan uv, python, dan ollama pull
             self._process = subprocess.Popen(command, cwd=install_dir, stdout=subprocess.PIPE,
                                              stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                                             creationflags=_NO_WINDOW)
+                                             creationflags=_NO_WINDOW, start_new_session=sys.platform != "win32",
+                                             env=child_env())
         except OSError as e:
-            raise DownloadError(f"PowerShell tidak bisa dijalankan: {e}") from e
+            shell = "PowerShell" if sys.platform == "win32" else "bash"
+            raise DownloadError(f"{shell} tidak bisa dijalankan: {e}") from e
         stop = threading.Event()
         threading.Thread(target=self._watch_sizes, args=(stop,), name="setup-sizes", daemon=True).start()
         last_error = ""
@@ -304,7 +339,7 @@ class InstallRunner:
             code = self._process.wait()
         finally:
             stop.set()
-        log.info("install.ps1 selesai dengan kode %s", code)
+        log.info("%s selesai dengan kode %s", "install.ps1" if sys.platform == "win32" else "install.sh", code)
         if self._cancel.is_set():
             raise Cancelled()
         if code != 0 and not last_error:

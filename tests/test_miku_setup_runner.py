@@ -10,7 +10,7 @@ import zipfile
 import pytest
 
 from miku_setup import runner
-from miku_setup.components import Selection
+from miku_setup.components import Selection, install_args
 from miku_setup.runner import DryRunRunner, InstallRunner, parse_progress
 
 
@@ -129,7 +129,8 @@ def test_install_downloads_extracts_and_runs_the_installer(release, tmp_path):
     install_dir = tmp_path / "MikuVision"
     assert (install_dir / "install.ps1").is_file() and (install_dir / "gui.py").is_file()
     args = (install_dir / "args.txt").read_text()
-    assert args.startswith("-Yes -Progress") and "-ModelDir" in args
+    assert args == " ".join(install_args(run.selection))  # install.ps1 di Windows, install.sh di Linux
+    assert str(tmp_path / "models") in args
     assert any(k == "phase" and "Mengunduh MikuVision 9.9.9" in d["title"] for k, d in received)
     assert ("log", "[t] [INFO] mulai") in received
     assert progress(received, "step") == [{"event": "step", "index": 1, "total": 1, "title": "PyTorch"}]
