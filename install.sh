@@ -25,9 +25,21 @@
 #   --cpu              Paksa PyTorch versi CPU walaupun ada GPU NVIDIA
 #   --with-rvc         Pasang rvc-python walau model RVC belum ada
 #   --skip-ollama      Lewati Ollama dan pull model (verifikasi ikut dilewati)
-#   --skip-shortcut    Jangan buat peluncur
+#   --skip-shortcut    Jangan buat peluncur di Desktop (tanpa --menu-entry: menu aplikasi juga dilewati)
+#   --menu-entry       Buat peluncur di menu aplikasi (bersama --skip-shortcut: hanya di menu)
 #   --skip-test        Jangan jalankan `miku.py --test` di akhir
 #   --python-version V Versi Python env (default 3.10; fairseq/RVC tidak jalan di 3.11)
+#   --model-dir DIR    Cache Hugging Face (Whisper, MeloTTS) di DIR/huggingface. Model Ollama ke
+#                      DIR/ollama bila Ollama dijalankan user sendiri; Ollama yang berjalan sebagai
+#                      layanan sistem (installer resmi) tetap memakai lokasinya
+#   --with-vision      Unduh juga model visi (VISION_MODEL di config.py) untuk membaca layar
+#   --rvc-model PTH    File bobot RVC (.pth), disalin ke models/miku_default_rvc; bersama --rvc-index
+#   --rvc-index INDEX  File index RVC (.index), disalin ke models/miku_default_rvc; bersama --rvc-model
+#   --sudo-cmd CMD     Perintah untuk hak root (bawaan sudo; MikuVision Setup memakai pkexec)
+#   --progress         Untuk MikuVision Setup: cetak juga satu baris "##MIKU {json}" per kejadian
+#                      (step, warn, error, done), format sama dengan install.ps1 -Progress
+#
+# Kode keluar: 0 selesai, 1 gagal yang sudah dijelaskan, 2 error tak terduga.
 
 set -u -o pipefail
 
@@ -39,9 +51,13 @@ TORCH_VERSION="2.11.0"
 RVC_PYTHON_VERSION="0.1.5"   # 0.1.0 memakai API load_model lama yang tidak cocok dengan core/voice_converter.py
 OLLAMA_INSTALL_URL="https://ollama.com/install.sh"
 APP_NAME="MikuVision"
+# Nama file index yang dibaca config.py (RVCConfig.index_path); --rvc-index disalin dengan nama ini
+RVC_INDEX_NAME="added_IVF4457_Flat_nprobe_1_miku_default_rvc_v2.index"
 
 YES=0; CPU=0; WITH_RVC=0; SKIP_OLLAMA=0; SKIP_SHORTCUT=0; SKIP_TEST=0
+MENU_ENTRY=0; WITH_VISION=0; PROGRESS=0; SELF_CHECK=0
 PYTHON_VERSION="3.10"
+MODEL_DIR=""; RVC_MODEL=""; RVC_INDEX=""; SUDO_CMD="sudo"
 while [ $# -gt 0 ]; do
     case "$1" in
         --yes|-y) YES=1 ;;
@@ -49,15 +65,24 @@ while [ $# -gt 0 ]; do
         --with-rvc) WITH_RVC=1 ;;
         --skip-ollama) SKIP_OLLAMA=1 ;;
         --skip-shortcut) SKIP_SHORTCUT=1 ;;
+        --menu-entry) MENU_ENTRY=1 ;;
         --skip-test) SKIP_TEST=1 ;;
         --python-version) shift; PYTHON_VERSION="${1:?--python-version butuh nilai}" ;;
+        --model-dir) shift; MODEL_DIR="${1:?--model-dir butuh folder}" ;;
+        --with-vision) WITH_VISION=1 ;;
+        --rvc-model) shift; RVC_MODEL="${1:?--rvc-model butuh file .pth}" ;;
+        --rvc-index) shift; RVC_INDEX="${1:?--rvc-index butuh file .index}" ;;
+        --sudo-cmd) shift; SUDO_CMD="${1:?--sudo-cmd butuh perintah}" ;;
+        --progress) PROGRESS=1 ;;
+        # Untuk tests/test_install_sh.py: hanya memancarkan tiga baris ##MIKU lalu keluar
+        --self-check) SELF_CHECK=1 ;;
         -h|--help) sed -n '2,/^$/s/^# \{0,1\}//p' "$0"; exit 0 ;;
         *) echo "Opsi tidak dikenal: $1 (lihat --help)" >&2; exit 2 ;;
     esac
     shift
 done
 
-ROOT="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/mikuvision"
 
 # venv di filesystem Windows lewat FUSE (ntfs-3g) lambat dan tidak mendukung semua fitur POSIX
@@ -70,9 +95,16 @@ VENV_PY="$VENV_DIR/bin/python"
 UV_DIR="$TOOLS_DIR/uv"
 UV="$UV_DIR/uv"
 RVC_DIR="$ROOT/models/miku_default_rvc"
-LOG_DIR="$ROOT/logs"
+if [ "$SELF_CHECK" -eq 1 ]; then
+    LOG_DIR="${TMPDIR:-/tmp}/mikuvision-selfcheck"
+else
+    LOG_DIR="$ROOT/logs"
+fi
 LOG_FILE="$LOG_DIR/install-$(date +%Y%m%d-%H%M%S).log"
 OLLAMA_URL="http://127.0.0.1:11434"
+# --model-dir: HF_HOME dan OLLAMA_MODELS untuk sesi login berikutnya (systemd environment.d),
+# setara variabel user di Windows. run.sh membacanya, jadi berlaku sejak MikuVision dibuka lagi.
+MODEL_ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/environment.d/60-mikuvision.conf"
 
 # Data uv (Python, cache unduhan) di samping venv: filesystem sama, jadi uv memakai hardlink
 export UV_PYTHON_INSTALL_DIR="$TOOLS_DIR/python"
@@ -87,6 +119,25 @@ else
     C_RED=""; C_YEL=""; C_GRN=""; C_OFF=""
 fi
 
+# --progress: baris mesin untuk MikuVision Setup, satu JSON per baris (miku_setup/runner.py parse_progress)
+STEP_INDEX=0
+STEP_TOTAL=0
+
+json_str() {
+    local s="$1"
+    s="${s//\\/\\\\}"; s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"; s="${s//$'\r'/\\r}"; s="${s//$'\t'/\\t}"
+    # Karakter kontrol lain tidak boleh mentah di JSON; tidak ada di pesan installer, jadi dibuang
+    s="$(printf '%s' "$s" | tr -d '\000-\010\013\014\016-\037')"
+    printf '"%s"' "$s"
+}
+
+emit() {
+    [ "$PROGRESS" -eq 1 ] || [ "$SELF_CHECK" -eq 1 ] || return 0
+    printf '##MIKU %s\n' "$1"
+}
+
+# NO_EVENT=1 log ...: baris penutup error (lokasi log) tidak menimpa pesan error di wizard
 log() {
     local level="$1"; shift
     local line
@@ -98,15 +149,47 @@ log() {
         OK) printf '%s\n' "$C_GRN$line$C_OFF" ;;
         *) printf '%s\n' "$line" ;;
     esac
+    if { [ "$level" = WARN ] || [ "$level" = ERROR ]; } && [ "${NO_EVENT:-0}" -ne 1 ]; then
+        local event
+        event="$(printf '%s' "$level" | tr '[:upper:]' '[:lower:]')"
+        emit "{\"event\":\"$event\",\"message\":$(json_str "$*")}"
+    fi
 }
 
-step() { log INFO ""; log INFO "==== $1 ===="; }
+step() {
+    STEP_INDEX=$((STEP_INDEX + 1))
+    log INFO ""
+    log INFO "==== $1 ===="
+    emit "{\"event\":\"step\",\"index\":$STEP_INDEX,\"total\":$STEP_TOTAL,\"title\":$(json_str "$1")}"
+}
+
+# 1 setelah die atau selesai; selain itu EXIT berarti error tak terduga (kode 2)
+FINISHED=0
 
 die() {
     log ERROR "$1"
-    log ERROR "Instalasi berhenti. Perbaiki masalah di atas lalu jalankan installer lagi (langkah yang sudah beres akan dilewati)."
-    log ERROR "Log lengkap: $LOG_FILE"
+    NO_EVENT=1 log ERROR "Instalasi berhenti. Perbaiki masalah di atas lalu jalankan installer lagi (langkah yang sudah beres akan dilewati)."
+    NO_EVENT=1 log ERROR "Log lengkap: $LOG_FILE"
+    FINISHED=1
+    emit '{"event":"done","ok":false}'
     exit 1
+}
+
+# Keluar tanpa die (misalnya variabel tak terdefinisi di bawah set -u): error tak terduga
+on_exit() {
+    local code=$?
+    [ "$FINISHED" -eq 1 ] && return
+    FINISHED=1
+    log ERROR "Error tak terduga di installer (kode $code). Kirim log saat melapor."
+    NO_EVENT=1 log ERROR "Log lengkap: $LOG_FILE"
+    emit '{"event":"done","ok":false}'
+    exit 2
+}
+
+on_signal() {
+    FINISHED=1
+    NO_EVENT=1 log WARN "Installer dihentikan."
+    exit 130
 }
 
 # Menjalankan program; stdout+stderr masuk ke log. Mengembalikan exit code program.
@@ -123,6 +206,9 @@ run() {
     fi
     return "$code"
 }
+
+# Hak root lewat --sudo-cmd (sudo di terminal, pkexec dari MikuVision Setup)
+as_root() { run "$SUDO_CMD" "$@"; }
 
 # Tanpa terminal (misalnya dijalankan dari skrip lain) jawabannya "tidak"
 confirm() {
@@ -181,14 +267,14 @@ pkg_names() {
     done
 }
 
-# Perintah pasang paket untuk package manager $1 (tanpa nama paket)
+# Perintah pasang paket untuk package manager $1 (tanpa nama paket), diawali --sudo-cmd
 pkg_install_cmd() {
     case "$1" in
-        apt) echo "sudo apt-get install -y" ;;
-        dnf) echo "sudo dnf install -y" ;;
+        apt) echo "$SUDO_CMD apt-get install -y" ;;
+        dnf) echo "$SUDO_CMD dnf install -y" ;;
         # Tanpa -y (sinkron database): -Sy tanpa -u bisa membuat sistem setengah ter-upgrade
-        pacman) echo "sudo pacman -S --needed --noconfirm" ;;
-        zypper) echo "sudo zypper --non-interactive install" ;;
+        pacman) echo "$SUDO_CMD pacman -S --needed --noconfirm" ;;
+        zypper) echo "$SUDO_CMD zypper --non-interactive install" ;;
     esac
 }
 
@@ -205,7 +291,74 @@ rvc_model_present() {
     [ -f "$RVC_DIR/weights/miku_default_rvc.pth" ] && compgen -G "$RVC_DIR/logs/miku_default_rvc/*.index" >/dev/null
 }
 
+# Nilai string di config.py, misalnya config_value OLLAMA_MODEL -> qwen3:4b-instruct
+config_value() {
+    sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$ROOT/config.py" | head -n1
+}
+
+# Nilai $1 (HF_HOME, OLLAMA_MODELS) di MODEL_ENV_FILE, atau kosong
+model_env_value() {
+    [ -r "$MODEL_ENV_FILE" ] || return 0
+    sed -n "s/^$1=//p" "$MODEL_ENV_FILE" | tail -n1
+}
+
+# Tulis $1=$2 ke MODEL_ENV_FILE (baris lama untuk $1 diganti)
+set_model_env() {
+    local name="$1" value="$2" tmp
+    mkdir -p "$(dirname "$MODEL_ENV_FILE")" || die "Folder $(dirname "$MODEL_ENV_FILE") tidak bisa dibuat."
+    tmp="$(mktemp "$MODEL_ENV_FILE.XXXXXX")" || die "File sementara di $(dirname "$MODEL_ENV_FILE") tidak bisa dibuat."
+    { grep -v "^$name=" "$MODEL_ENV_FILE" 2>/dev/null; printf '%s=%s\n' "$name" "$value"; } >"$tmp"
+    mv -f "$tmp" "$MODEL_ENV_FILE"
+}
+
+# Variabel dari --model-dir sebelumnya: environment.d baru terbaca di sesi login berikutnya.
+# Yang sudah ada di environment proses ini tidak ditimpa.
+load_model_env() {
+    local name value
+    for name in HF_HOME OLLAMA_MODELS; do
+        value="$(model_env_value "$name")"
+        if [ -z "${!name:-}" ] && [ -n "$value" ]; then
+            export "$name=$value"
+        fi
+    done
+}
+
+# Ollama berjalan sebagai layanan sistem (installer resmi: user "ollama", model di home user itu)
+ollama_system_service() {
+    command -v systemctl >/dev/null && systemctl cat ollama.service >/dev/null 2>&1
+}
+
+# Lokasi model layanan sistem Ollama: OLLAMA_MODELS di unit, atau ~/.ollama/models milik user layanannya
+ollama_service_models_dir() {
+    local env user home
+    env="$(systemctl show ollama -p Environment --value 2>/dev/null)"
+    if [[ " $env " =~ \ OLLAMA_MODELS=([^ ]+)\  ]]; then
+        echo "${BASH_REMATCH[1]}"
+        return
+    fi
+    user="$(systemctl show ollama -p User --value 2>/dev/null)"
+    home="$(getent passwd "${user:-ollama}" 2>/dev/null | cut -d: -f6)"
+    echo "${home:-/usr/share/ollama}/.ollama/models"
+}
+
 # ---------------------------------------------------------------- langkah
+# Setiap fungsi langkah memanggil step tepat sekali (dicek tests/test_install_sh.py), supaya total
+# langkah di --progress sama dengan daftar dari install_steps.
+install_steps() {
+    local steps=(check_system)
+    [ -n "$MODEL_DIR" ] && steps+=(set_model_dir)
+    { [ -n "$RVC_MODEL" ] || [ -n "$RVC_INDEX" ]; } && steps+=(copy_rvc_model)
+    steps+=(install_uv install_python_env install_python_packages install_unidic check_imports)
+    if [ "$SKIP_OLLAMA" -eq 0 ]; then
+        steps+=(install_ollama_model)
+        [ "$WITH_VISION" -eq 1 ] && steps+=(install_vision_model)
+    fi
+    steps+=(show_rvc_status)
+    { [ "$SKIP_SHORTCUT" -eq 0 ] || [ "$MENU_ENTRY" -eq 1 ]; } && steps+=(create_launcher)
+    { [ "$SKIP_TEST" -eq 0 ] && [ "$SKIP_OLLAMA" -eq 0 ]; } && steps+=(run_self_test)
+    echo "${steps[*]}"
+}
+
 PKG_MANAGER=""   # diisi check_system: apt, dnf, pacman, zypper, atau kosong
 
 check_system() {
@@ -250,7 +403,7 @@ check_system() {
         command -v "$tool" >/dev/null || optional+=("$tool")
     done
     # fairseq (dependency rvc-python) dikompilasi saat instalasi
-    if { [ "$WITH_RVC" -eq 1 ] || rvc_model_present; } && ! command -v g++ >/dev/null; then
+    if { [ "$WITH_RVC" -eq 1 ] || [ -n "$RVC_MODEL" ] || rvc_model_present; } && ! command -v g++ >/dev/null; then
         optional+=(build-essential)
     fi
 
@@ -272,6 +425,53 @@ check_system() {
         fi
     fi
     log INFO "Git: $(git --version)"
+}
+
+# --model-dir: dijalankan sebelum miku.py --test, yang membaca HF_HOME. OLLAMA_MODELS diatur di
+# install_ollama_model, karena baru di sana ketahuan apakah Ollama layanan sistem atau milik user.
+set_model_dir() {
+    step "Folder model"
+    case "$MODEL_DIR" in *'"'*) die "Folder model tidak boleh berisi tanda kutip: $MODEL_DIR" ;; esac
+    MODEL_DIR="$(realpath -m -- "$MODEL_DIR")"
+    use_model_env HF_HOME "$MODEL_DIR/huggingface"
+}
+
+# $1 (HF_HOME/OLLAMA_MODELS) = folder $2: buat foldernya, catat di MODEL_ENV_FILE, dan pakai di proses ini
+OLLAMA_MODELS_CHANGED=0
+use_model_env() {
+    local name="$1" path="$2" previous
+    mkdir -p "$path" || die "Folder $path tidak bisa dibuat."
+    previous="$(model_env_value "$name")"
+    if [ "$previous" != "$path" ]; then
+        set_model_env "$name" "$path"
+        [ "$name" = OLLAMA_MODELS ] && OLLAMA_MODELS_CHANGED=1
+        [ -n "$previous" ] && log WARN "$name sebelumnya $previous. Isinya tidak dipindah; model yang belum ada di folder baru akan diunduh lagi."
+    fi
+    export "$name=$path"
+    log OK "$name = $path"
+}
+
+copy_rvc_file() {
+    local source="$1" ext="$2" target="$3"
+    [ -f "$source" ] || die "File RVC tidak ditemukan: $source"
+    # Huruf besar-kecil ekstensi diabaikan, sama seperti install.ps1
+    [[ "${source,,}" == *"$ext" ]] || die "File RVC harus berakhiran $ext: $source"
+    mkdir -p "$(dirname "$target")" || die "Folder $(dirname "$target") tidak bisa dibuat."
+    if [ -e "$target" ] && [ "$source" -ef "$target" ]; then
+        log OK "Sudah di tempatnya: $source"
+        return
+    fi
+    cp -f -- "$source" "$target" || die "Gagal menyalin $source ke $target."
+    log OK "Disalin: $source -> $target"
+}
+
+copy_rvc_model() {
+    step "Model RVC"
+    if [ -z "$RVC_MODEL" ] || [ -z "$RVC_INDEX" ]; then
+        die "--rvc-model dan --rvc-index harus dipakai bersama: file bobot .pth dan file .index."
+    fi
+    copy_rvc_file "$(realpath -m -- "$RVC_MODEL")" .pth "$RVC_DIR/weights/miku_default_rvc.pth"
+    copy_rvc_file "$(realpath -m -- "$RVC_INDEX")" .index "$RVC_DIR/logs/miku_default_rvc/$RVC_INDEX_NAME"
 }
 
 install_uv() {
@@ -362,7 +562,9 @@ torch_backend() {
 RVC_INSTALLED=0
 
 install_python_packages() {
-    local backend="$1"
+    # Sebelum judul langkah: judulnya memuat backend (cu128/cu126/cpu)
+    torch_backend
+    local backend="$BACKEND"
     step "PyTorch $TORCH_VERSION ($backend) + requirements.txt"
     local want="$TORCH_VERSION+$backend" installed
     installed="$("$VENV_PY" -c 'import torch; print(torch.__version__)' 2>/dev/null)"
@@ -423,43 +625,27 @@ check_imports() {
 
 ollama_up() { curl -fsS --max-time 3 "$OLLAMA_URL/api/version" >/dev/null 2>&1; }
 
-install_ollama_model() {
-    step "Ollama + model LLM"
-    if ! command -v ollama >/dev/null; then
-        confirm "Ollama belum terpasang. Pasang sekarang lewat skrip resmi ($OLLAMA_INSTALL_URL, butuh sudo)?" \
-            || die "Ollama dibutuhkan. Pasang secara manual (https://ollama.com/download/linux) lalu jalankan installer ini lagi."
-        local tmp
-        tmp="$(mktemp -d)"
-        curl -fsSL --retry 3 -o "$tmp/ollama-install.sh" "$OLLAMA_INSTALL_URL" || { rm -rf "$tmp"; die "Gagal mengunduh skrip Ollama."; }
-        run sh "$tmp/ollama-install.sh"
-        local code=$?
-        rm -rf "$tmp"
-        [ "$code" -eq 0 ] || die "Skrip Ollama gagal (exit $code)."
-        command -v ollama >/dev/null || die "Ollama sudah dipasang tapi tidak ada di PATH. Buka terminal baru lalu jalankan installer lagi."
-    fi
-    log INFO "Ollama: $(ollama --version 2>&1 | tail -n1)"
+wait_ollama() {
+    local deadline=$((SECONDS + 45))
+    until ollama_up; do
+        [ "$SECONDS" -lt "$deadline" ] || die "Server Ollama tidak merespons di $OLLAMA_URL. Jalankan 'ollama serve' lalu jalankan installer lagi."
+        sleep 2
+    done
+}
 
-    if ! ollama_up; then
-        log INFO "Server Ollama belum jalan, menyalakan..."
-        if systemctl list-unit-files ollama.service >/dev/null 2>&1 && systemctl cat ollama.service >/dev/null 2>&1; then
-            run sudo systemctl start ollama
-        else
-            mkdir -p "$LOG_DIR"
-            nohup ollama serve >>"$LOG_DIR/ollama-serve.log" 2>&1 &
-        fi
-        local deadline=$((SECONDS + 45))
-        until ollama_up; do
-            [ "$SECONDS" -lt "$deadline" ] || die "Server Ollama tidak merespons di $OLLAMA_URL. Jalankan 'ollama serve' lalu jalankan installer lagi."
-            sleep 2
-        done
-    fi
-    if systemctl is-active --quiet ollama 2>/dev/null; then
-        log INFO "Ollama jalan sebagai service systemd; model disimpan di /usr/share/ollama/.ollama/models (atur OLLAMA_MODELS lewat 'sudo systemctl edit ollama')."
-    fi
+# Ollama milik user (bukan layanan sistem) yang sedang jalan dengan lokasi model lama: matikan,
+# karena Ollama membaca OLLAMA_MODELS hanya saat start
+stop_user_ollama() {
+    pkill -u "$(id -u)" -x ollama 2>/dev/null
+    local deadline=$((SECONDS + 15))
+    while ollama_up; do
+        [ "$SECONDS" -lt "$deadline" ] || die "Ollama tidak bisa dimatikan. Hentikan 'ollama serve' lalu jalankan installer lagi."
+        sleep 1
+    done
+}
 
-    local model
-    model="$(sed -n 's/^[[:space:]]*OLLAMA_MODEL[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/config.py" | head -n1)"
-    [ -n "$model" ] || die "OLLAMA_MODEL tidak ditemukan di config.py."
+ollama_pull() {
+    local model="$1"
     if curl -fsS --max-time 10 "$OLLAMA_URL/api/tags" \
         | "$VENV_PY" -c 'import json, sys; print("\n".join(m["name"] for m in json.load(sys.stdin)["models"]))' \
         | grep -Fx "$model" >/dev/null; then
@@ -469,6 +655,73 @@ install_ollama_model() {
     log INFO "Mengunduh model $model (beberapa GB)..."
     run --quiet ollama pull "$model" || die "ollama pull $model gagal."
     log OK "Model $model siap"
+}
+
+install_ollama_model() {
+    step "Ollama + model LLM"
+    if ! command -v ollama >/dev/null; then
+        confirm "Ollama belum terpasang. Pasang sekarang lewat skrip resmi ($OLLAMA_INSTALL_URL, butuh hak root)?" \
+            || die "Ollama dibutuhkan. Pasang secara manual (https://ollama.com/download/linux) lalu jalankan installer ini lagi."
+        local tmp
+        tmp="$(mktemp -d)"
+        curl -fsSL --retry 3 -o "$tmp/ollama-install.sh" "$OLLAMA_INSTALL_URL" || { rm -rf "$tmp"; die "Gagal mengunduh skrip Ollama."; }
+        # Lewat sudo di terminal (skrip memanggil sudo sendiri bila perlu); lewat --sudo-cmd lain
+        # (pkexec dari Setup) seluruh skrip dijalankan sebagai root, satu kali minta password
+        if [ "$SUDO_CMD" = sudo ]; then
+            run sh "$tmp/ollama-install.sh"
+        else
+            as_root sh "$tmp/ollama-install.sh"
+        fi
+        local code=$?
+        rm -rf "$tmp"
+        [ "$code" -eq 0 ] || die "Skrip Ollama gagal (exit $code)."
+        hash -r
+        command -v ollama >/dev/null || die "Ollama sudah dipasang tapi tidak ada di PATH. Buka terminal baru lalu jalankan installer lagi."
+    fi
+    log INFO "Ollama: $(ollama --version 2>&1 | tail -n1)"
+
+    local service=0
+    ollama_system_service && service=1
+    if [ -n "$MODEL_DIR" ]; then
+        if [ "$service" -eq 1 ]; then
+            # Memindahkan model layanan sistem butuh chown ke user "ollama" dan drop-in systemd,
+            # dan folder di dalam /home biasanya tidak bisa dibaca user lain: tidak dilakukan
+            log WARN "Ollama berjalan sebagai layanan sistem; modelnya tetap di $(ollama_service_models_dir). Hanya cache Whisper dan MeloTTS yang dipindah ke $MODEL_DIR/huggingface."
+        else
+            use_model_env OLLAMA_MODELS "$MODEL_DIR/ollama"
+            if [ "$OLLAMA_MODELS_CHANGED" -eq 1 ] && ollama_up; then
+                log INFO "Ollama sedang jalan dengan lokasi model lama; dinyalakan ulang."
+                stop_user_ollama
+            fi
+        fi
+    fi
+
+    if ! ollama_up; then
+        log INFO "Server Ollama belum jalan, menyalakan..."
+        if [ "$service" -eq 1 ]; then
+            as_root systemctl start ollama
+        else
+            mkdir -p "$LOG_DIR"
+            nohup ollama serve >>"$LOG_DIR/ollama-serve.log" 2>&1 &
+        fi
+        wait_ollama
+    fi
+    if [ "$service" -eq 1 ] && systemctl is-active --quiet ollama 2>/dev/null; then
+        log INFO "Ollama jalan sebagai service systemd; model disimpan di $(ollama_service_models_dir) (atur OLLAMA_MODELS lewat 'sudo systemctl edit ollama')."
+    fi
+
+    local model
+    model="$(config_value OLLAMA_MODEL)"
+    [ -n "$model" ] || die "OLLAMA_MODEL tidak ditemukan di config.py."
+    ollama_pull "$model"
+}
+
+install_vision_model() {
+    step "Model visi (membaca layar)"
+    local model
+    model="$(config_value VISION_MODEL)"
+    [ -n "$model" ] || die "VISION_MODEL tidak ditemukan di config.py."
+    ollama_pull "$model"
 }
 
 show_rvc_status() {
@@ -520,6 +773,10 @@ EOF
     command -v update-desktop-database >/dev/null && update-desktop-database "$apps" >/dev/null 2>&1
     log OK "Menu aplikasi: $entry"
 
+    if [ "$SKIP_SHORTCUT" -eq 1 ]; then
+        log INFO "--skip-shortcut: peluncur Desktop dilewati."
+        return
+    fi
     local desktop
     desktop="$(xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")"
     if [ -d "$desktop" ] && [ "$desktop" != "$HOME" ]; then
@@ -554,26 +811,37 @@ run_self_test() {
 main() {
     mkdir -p "$LOG_DIR"
     : >"$LOG_FILE"
+    trap on_exit EXIT
+    trap on_signal INT TERM
     log INFO "$APP_NAME installer - log: $LOG_FILE"
 
-    check_system
-    install_uv
-    install_python_env
-    torch_backend
-    install_python_packages "$BACKEND"
-    install_unidic
-    check_imports
-    if [ "$SKIP_OLLAMA" -eq 1 ]; then log WARN "--skip-ollama: Ollama dilewati."; else install_ollama_model; fi
-    show_rvc_status
-    if [ "$SKIP_SHORTCUT" -eq 1 ]; then log INFO "--skip-shortcut: peluncur dilewati."; else create_launcher; fi
-    if [ "$SKIP_TEST" -eq 1 ] || [ "$SKIP_OLLAMA" -eq 1 ]; then
-        log WARN "Verifikasi miku.py --test dilewati."
-    else
-        run_self_test
+    if [ "$SELF_CHECK" -eq 1 ]; then
+        # Jalur yang sama dengan instalasi (step, log WARN, akhir main), tanpa memasang apa pun.
+        # Judul berisi huruf Jepang supaya test ikut memeriksa UTF-8.
+        STEP_TOTAL=1
+        step "Self-check ミク"
+        log WARN "Peringatan contoh"
+        FINISHED=1
+        emit '{"event":"done","ok":true}'
+        exit 0
     fi
+
+    load_model_env
+    local steps=() name
+    read -r -a steps <<<"$(install_steps)"
+    STEP_TOTAL=${#steps[@]}
+    [ "$SKIP_OLLAMA" -eq 1 ] && log WARN "--skip-ollama: Ollama dilewati."
+    { [ "$SKIP_SHORTCUT" -eq 1 ] && [ "$MENU_ENTRY" -eq 0 ]; } && log INFO "--skip-shortcut: peluncur dilewati."
+    { [ "$SKIP_TEST" -eq 1 ] || [ "$SKIP_OLLAMA" -eq 1 ]; } && log WARN "Verifikasi miku.py --test dilewati."
+
+    for name in "${steps[@]}"; do
+        "$name"
+    done
 
     log INFO ""
     log OK "Instalasi selesai. Buka '$APP_NAME' dari menu aplikasi, atau jalankan: ./run.sh"
+    FINISHED=1
+    emit '{"event":"done","ok":true}'
     exit 0
 }
 
