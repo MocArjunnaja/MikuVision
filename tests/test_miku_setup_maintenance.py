@@ -263,3 +263,27 @@ def test_model_removal_only_deletes_what_the_installer_made(tmp_path):
     assert not (app.model_dir / "ollama").exists() and not (app.model_dir / "huggingface").exists()
     assert (app.model_dir / "foto-liburan" / "pantai.jpg").read_bytes() == b"jpg"
 
+
+def test_uninstall_leaves_files_that_are_not_mikuvision(tmp_path):
+    """Instalasi v1.6.0-v1.7.0 di folder yang sudah berisi file user: hanya isi MikuVision yang dihapus."""
+    app = fake_install(tmp_path)
+    (app.install_dir / "skripsi").mkdir()
+    (app.install_dir / "skripsi" / "bab1.docx").write_bytes(b"penting")
+    (app.install_dir / "foto.jpg").write_bytes(b"jpg")
+    problems, entry_deleted, _ = _remove(app, RemovalPlan(data=True))
+    assert problems == [] and entry_deleted
+    assert sorted(p.name for p in app.install_dir.iterdir()) == ["foto.jpg", "skripsi"]
+    assert (app.install_dir / "skripsi" / "bab1.docx").read_bytes() == b"penting"
+
+
+def test_app_entries_cover_everything_in_the_release_zip():
+    """Zip rilis = git archive: setiap entri tingkat atas repo harus terdaftar, atau Hapus meninggalkannya."""
+    import subprocess
+    root = Path(__file__).resolve().parents[1]
+    try:
+        files = subprocess.run(["git", "ls-files"], cwd=root, capture_output=True, text=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        pytest.skip("butuh git dan repo")
+    top = {line.split("/", 1)[0] for line in files.splitlines() if line}
+    assert top and top <= maintenance.APP_ENTRIES, sorted(top - maintenance.APP_ENTRIES)
+
