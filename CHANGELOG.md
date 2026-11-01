@@ -6,6 +6,25 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-11-01): 「次の曲にして」 memanggil media_control
+
+### Diperbaiki
+- **「次の曲にして」 (lagu berikutnya) sekarang memanggil `media_control`.** Sebelumnya qwen3:4b-instruct tidak pernah memanggil tool untuk perintah ini dan malah bertanya balik ("lagu apa yang kamu mau?", "genre apa?"); qwen3:8b juga. Penyebabnya deskripsi tool: model mengira perlu tahu lagu mana yang dimaksud, dan tidak ada frasa Jepang yang menunjuk ke `next`.
+  - Deskripsi `media_control` ditulis ulang: mengontrol media yang *sedang diputar* di pemutar apa pun, "tidak perlu judul lagu", dan contoh frasa per aksi (`next`: 次の曲/スキップ/lagu berikutnya/skip, `prev`: 前の曲/lagu sebelumnya). Parameter `action_type` kini punya deskripsi nilai yang sah (sebelumnya "Parameter: action_type").
+  - Prompt sistem tidak berubah. Skema tool +33 token, hanya di giliran yang memuat skill audio (diukur dengan `prompt_eval_count` Ollama).
+- `bench_skills.py` regression mencetak `latency_median_s` per varian.
+
+### Pengujian
+- `bench_skills.py 5 regression`, qwen3:4b-instruct, sebelum → sesudah:
+  - Dengan skill user: 44/50 → 49/50, latensi median 3,09 → 3,08 s, prompt median 1667 → 1674 token.
+  - Tanpa skill user: 44/50 → 49/50, latensi median 3,10 → 2,98 s, prompt median 1583 → 1581 token.
+  - 「次の曲にして」: 0/5 → 5/5 di kedua varian. Satu-satunya yang masih meleset adalah 「ミュートして」 (1/5 per varian, sama seperti sebelumnya: model bertanya "suara apa yang di-mute?"). Tidak ada perintah lain yang jadi meleset.
+- Pemilihan wording (6 ucapan media, 3–5 percobaan): deskripsi baru menang dari versi bahasa Inggris (「次の曲」 1/3, skip 2/3) dan dari deskripsi lama yang hanya ditambah frasa Jepang (「次の曲にして」 1/3). Menambah frasa pause (再生/一時停止/jeda) hampir tidak menolong 「一時停止して」 (0/5 → 1/5) dan total keenam ucapan turun (22/30 → 17/30), jadi tidak dipakai.
+- 1 test baru: semua nilai `action_type` yang disebut skema diterima `media_control` (play, pause, next, prev → `playerctl`), dan 次の曲 ada di deskripsi. Dua mutasi (nilai di skema diganti, 次の曲 dihapus) masing-masing membuat test gagal. 723 test lulus.
+- **Belum diperbaiki:** 「一時停止して」 (pause) juga tanpa tool call (0/5, model bertanya "apa yang di-pause?"); tidak ada di daftar regression.
+
+---
+
 ## v1.7.2 (2026-11-01): Setup memasang Visual Studio Build Tools untuk suara RVC
 
 Rilis kecil ([#48](https://github.com/MocArjunnaja/MikuVision/pull/48)): suara RVC di Windows tanpa menyiapkan compiler C++ sendiri. Aplikasi MikuVision tidak berubah; tanpa RVC tidak ada yang berbeda.
