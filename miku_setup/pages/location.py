@@ -15,7 +15,8 @@ import customtkinter as ctk
 
 from .. import checks
 from ..checks import FAIL, WARN, check_disk, drive_of, drive_root
-from ..components import COMPONENTS, Selection, is_writable, model_locations, space_needed, validate_selection
+from ..components import (BUILD_TOOLS_NOTE, COMPONENTS, Selection, is_writable, model_locations, space_needed,
+                          validate_selection)
 from .base import ACCENT, ACCENT_HOVER, MUTED, STATUS_COLORS, Page, heading
 
 APP_FOLDER_NAME = "MikuVision"
@@ -159,8 +160,8 @@ class LocationPage(Page):
                 entry.insert(0, value)
             entry.bind("<KeyRelease>", lambda _event: self._changed())
             entry.pack(fill="x", padx=(28, 0), pady=(2, 0))
-        ctk.CTkLabel(self.rvc_link_row, text="⚠ File .pth bisa menjalankan kode saat dimuat. Tempel hanya link dari "
-                     "sumber yang Anda percayai, dan ikuti lisensi pembuat modelnya.", text_color=STATUS_COLORS[WARN],
+        ctk.CTkLabel(self.rvc_link_row, text="⚠ File .pth bisa menjalankan kode: pakai link dari sumber tepercaya saja.",
+                     text_color=STATUS_COLORS[WARN],
                      anchor="w", justify="left", wraplength=480).pack(fill="x", padx=(28, 0), pady=(2, 0))
 
     def _browse_button(self, parent, command):
@@ -190,6 +191,7 @@ class LocationPage(Page):
         selection.install_dir = self._path(self.install_dir.get())
         selection.model_dir = self._path(self.model_dir.get()) if self.model_mode.get() == "custom" else None
         selection.components = {key for key, var in self.chosen.items() if var.get()}
+        selection.build_tools = "rvc" in selection.components and self._build_tools_missing()
         if self.rvc_source.get() == "link":
             selection.rvc_model, selection.rvc_index = "", ""
             selection.rvc_model_url = self.rvc_model_url.get().strip()
@@ -197,6 +199,14 @@ class LocationPage(Page):
         else:
             selection.rvc_model, selection.rvc_index = self.rvc_model.get(), self.rvc_index.get()
             selection.rvc_model_url, selection.rvc_index_url = "", ""
+
+    def _build_tools_missing(self) -> bool:
+        """Windows tanpa compiler C++: fairseq (RVC) tidak bisa dikompilasi. Dicek sekali lewat vswhere."""
+        if sys.platform != "win32":
+            return False
+        if self.setup.build_tools_present is None:
+            self.setup.build_tools_present = bool(self.wizard.find_build_tools())
+        return not self.setup.build_tools_present
 
     @staticmethod
     def _path(text: str) -> Path:
@@ -224,6 +234,8 @@ class LocationPage(Page):
             other = _other_drive_with_space(sum(self.needs.values()), install_drive)
             if other:
                 text += f". Coba folder di {other}, misalnya {drive_root(other) / APP_FOLDER_NAME}"
+        if selection.build_tools and self.disk.status != FAIL:
+            text += "\n" + BUILD_TOOLS_NOTE
         self.space.configure(text=("Ruang: " if self.disk.status != FAIL else "✗ ") + text,
                              text_color=STATUS_COLORS[FAIL] if self.disk.status == FAIL else MUTED)
         self._show_root_needs()

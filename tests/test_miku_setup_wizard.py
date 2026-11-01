@@ -105,6 +105,26 @@ def test_invalid_folder_is_explained_on_the_location_page(make_wizard):
     assert wizard.index == 3 and "lengkap" in wizard.error.cget("text")
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Visual Studio Build Tools hanya untuk Windows")
+@pytest.mark.parametrize("present", [False, True])
+def test_rvc_without_cpp_compiler_installs_build_tools(make_wizard, present):
+    wizard = make_wizard()
+    checked = []
+    wizard.find_build_tools = lambda: checked.append(1) or present
+    accept_license(wizard)
+    pump(wizard, lambda: wizard.pages[2].done)
+    wizard.go_next()
+    page = wizard.pages[3]
+    page._changed()
+    assert checked == [] and wizard.setup.selection.build_tools is False  # tanpa RVC tidak dicek
+    page.chosen["rvc"].set(True)
+    page._changed()
+    page._changed()
+    assert checked == [1]  # vswhere hanya sekali
+    assert wizard.setup.selection.build_tools is (not present)
+    assert ("Visual Studio Build Tools" in page.space.cget("text")) is (not present)
+
+
 def test_failed_install_offers_retry(make_wizard):
     wizard = make_wizard(fail=True)
     accept_license(wizard)

@@ -35,6 +35,9 @@ VISION_GB = 3.3
 RVC_APP_GB = 0.8
 # Model RVC dari link: ukurannya baru diketahui saat diunduh (.pth ±55 MB, index dan zip sampai ±1 GB)
 RVC_LINK_GB = 1.0
+# Visual Studio Build Tools (workload C++) di drive sistem, bila compiler C++ belum ada (perkiraan)
+BUILD_TOOLS_GB = 7.0
+BUILD_TOOLS_NOTE = "RVC: Visual Studio Build Tools ikut dipasang (±3 GB unduhan, 7 GB di C:, izin admin)."
 # Linux: karakter yang merusak baris Exec peluncur .desktop atau file environment.d bila ada di path
 LINUX_BAD_CHARS = '"\\`$%\n'
 
@@ -71,6 +74,8 @@ class Selection:
     # Diisi bila model RVC diunduh dari link; rvc_model/rvc_index diisi runner setelah diunduh
     rvc_model_url: str = ""
     rvc_index_url: str = ""
+    # Windows: RVC dipilih dan compiler C++ belum ada, jadi install.ps1 memasang Visual Studio Build Tools
+    build_tools: bool = False
 
     @property
     def rvc_from_link(self) -> bool:
@@ -133,6 +138,8 @@ def space_needed(selection: Selection, gpu: bool, ollama_installed: bool,
         add(selection.install_dir, RVC_APP_GB)
         if selection.rvc_from_link:
             add(selection.install_dir, RVC_LINK_GB)
+        if selection.build_tools:
+            add(Path((environ.get("SystemDrive") or "C:") + "\\"), BUILD_TOOLS_GB)
         for path in ([] if selection.rvc_from_link else (selection.rvc_model, selection.rvc_index)):
             try:
                 needs[drive_of(selection.install_dir)] += rvc_file_size(path)
@@ -266,6 +273,8 @@ def install_args(selection: Selection, platform: str = sys.platform) -> List[str
         args.append("-WithVision")
     if "rvc" in selection.components:
         args += ["-RvcModel", selection.rvc_model, "-RvcIndex", selection.rvc_index]
+        if selection.build_tools:
+            args.append("-InstallBuildTools")
     return args
 
 

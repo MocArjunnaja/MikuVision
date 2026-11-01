@@ -6,6 +6,23 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis (2026-11-01): Setup memasang Visual Studio Build Tools untuk suara RVC
+
+### Ditambahkan
+- **RVC tanpa menyiapkan compiler sendiri (Windows).** `fairseq` (dependency `rvc-python`) harus dikompilasi; tanpa compiler C++, RVC dilewati dan Miku memakai suara MeloTTS. Keputusan user (1 Nov): Setup memasang Visual Studio Build Tools otomatis, bukan wheel `fairseq` buatan sendiri.
+  - Halaman 4: bila RVC dicentang dan `vswhere` tidak menemukan compiler C++ (Visual Studio apa pun dengan komponen `VC.Tools.x86.x64`), kebutuhan ruang C: ditambah ±7 GB dan tampil "RVC: Visual Studio Build Tools ikut dipasang (±3 GB unduhan, 7 GB di C:, izin admin)". Dicek sekali, hanya di Windows.
+  - `install.ps1 -InstallBuildTools` (langkah baru "Visual Studio Build Tools (suara RVC)", sebelum PyTorch): `winget install Microsoft.VisualStudio.2022.BuildTools` dengan workload C++ saja (`--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive --wait --norestart`). Tanpa winget: bootstrapper resmi `aka.ms/vs/17/release/vs_BuildTools.exe`, dijalankan hanya bila tanda tangan digitalnya Microsoft.
+  - Tidak pernah menghentikan instalasi: izin admin ditolak, unduhan gagal, atau dilewati → peringatan, lalu lanjut tanpa RVC seperti sebelumnya. Exit 3010 (perlu restart) dicatat sebagai peringatan.
+- Peringatan `.pth` di halaman 4 dipersingkat jadi satu baris supaya catatan Build Tools muat di jendela 760×520.
+
+### Pengujian
+- 9 test baru (dan daftar langkah `install.ps1` diperluas): Build Tools sudah ada (winget tidak dipanggil), dipasang lewat winget dengan workload C++ saja, exit 3010, gagal atau ditolak tanpa menghentikan instalasi (winget dan `Test-BuildTools` diganti stub); `vswhere` (tidak ada, ada dengan/tanpa C++, rusak); argumen `-InstallBuildTools`; ruang di drive sistem; halaman 4 (dicek sekali, catatan hanya bila compiler belum ada). Dua mutasi (workload lain; gagal menghentikan instalasi) masing-masing membuat test gagal. 722 test lulus di venv aplikasi.
+- Halaman 4 dilihat di `--dry-run` dengan `ProgramFiles(x86)` palsu (seolah tanpa Visual Studio): catatan tampil, C: butuh 18,6 GB (10,8 + RVC 0,8 + Build Tools 7), dan di mode "Unduh dari link" semuanya muat di atas tombol (sebelum teks dipersingkat, catatan terpotong).
+- `Test-BuildTools` di laptop pengembang mendeteksi Visual Studio 2022 Community.
+- **Belum diuji:** pemasangan Build Tools sungguhan (laptop pengembang sudah punya compiler C++; Windows 11 Home tidak punya Windows Sandbox). Komputer pertama tanpa Visual Studio yang memasang RVC lewat Setup menjadi uji pertamanya.
+
+---
+
 ## v1.7.1 (2026-11-01): cek keamanan, folder Setup yang aman, README "Oke Miku"
 
 Rilis perbaikan untuk v1.7.0 ([#45](https://github.com/MocArjunnaja/MikuVision/pull/45), [#47](https://github.com/MocArjunnaja/MikuVision/pull/47)). **Pakai MikuVisionSetup v1.7.1, bukan v1.7.0:** Setup v1.6.0–v1.7.0 menerima folder aplikasi yang sudah berisi file lain (misalnya `D:\`), dan Hapus lalu menghapus isinya. Aplikasi MikuVision sendiri tidak berubah; instalasi v1.6.0–v1.7.0 di folder bawaan aman dan tidak perlu diperbarui. Bila dulu memasang ke folder yang juga berisi file lain, jalankan Setup v1.7.1 → Perbarui dulu, baru Hapus.

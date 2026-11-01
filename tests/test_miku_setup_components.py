@@ -120,7 +120,7 @@ def test_install_args():
 def test_install_args_use_options_that_install_ps1_has():
     install_ps1 = (ROOT / "install.ps1").read_text(encoding="utf-8")
     selection = Selection(Path(r"C:\a"), model_dir=Path(r"D:\m"), components={"core", "brain", "vision", "rvc"},
-                          rvc_model="x.pth", rvc_index="x.index")
+                          rvc_model="x.pth", rvc_index="x.index", build_tools=True)
     for option in (a for a in components.install_args(selection, platform="win32") if a.startswith("-")):
         assert re.search(rf"\[(switch|string)\]\${option[1:]}\b", install_ps1), option
 
@@ -162,4 +162,24 @@ def test_model_folder_must_be_empty_or_hold_only_model_subfolders(tmp_path):
     assert _folder_check(tmp_path, tmp_path / "app", model_dir=ok) is None
     problem = _folder_check(tmp_path, tmp_path / "app", model_dir=_fill(tmp_path / "D", "film/a.mkv"))
     assert "Folder model sudah berisi file lain" in problem
+
+
+def test_build_tools_option_only_with_rvc_and_missing_compiler():
+    rvc = Selection(Path(r"C:\a"), components={"core", "brain", "rvc"}, rvc_model="x.pth", rvc_index="x.index")
+    assert "-InstallBuildTools" not in components.install_args(rvc, platform="win32")
+    rvc.build_tools = True
+    assert components.install_args(rvc, platform="win32")[-1] == "-InstallBuildTools"
+
+
+@windows_paths
+def test_build_tools_space_goes_to_the_system_drive():
+    selection = Selection(Path(r"D:\Apps\MikuVision"), components={"core", "brain", "rvc"})
+    environ = {"SystemDrive": "C:", "LOCALAPPDATA": r"D:\Local"}
+
+    def needs():
+        return components.space_needed(selection, gpu=True, ollama_installed=True, environ=environ,
+                                       rvc_file_size=lambda path: 0)
+    without = needs()
+    selection.build_tools = True
+    assert needs()["C:"] - without.get("C:", MARGIN_GB * GB) == pytest.approx(components.BUILD_TOOLS_GB * GB)
 

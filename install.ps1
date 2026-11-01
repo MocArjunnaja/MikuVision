@@ -46,6 +46,11 @@
     <ModelDir>\huggingface. OLLAMA_MODELS dan HF_HOME diatur sebagai variabel user, dan
     Ollama yang sedang jalan dinyalakan ulang supaya memakai lokasi baru.
 
+.PARAMETER InstallBuildTools
+    Pasang Visual Studio Build Tools (workload C++) bila compiler C++ belum ada, supaya
+    fairseq (dependency rvc-python) bisa dikompilasi. Sekitar 3 GB diunduh dan 7 GB di
+    drive sistem; Windows meminta izin admin. Gagal atau ditolak: lanjut tanpa RVC.
+
 .PARAMETER WithVision
     Unduh juga model visi untuk membaca layar (VISION_MODEL di config.py, sekitar 3,3 GB).
 
@@ -79,6 +84,7 @@ param(
     [string]$PythonVersion = "3.10",
     [string]$ModelDir = "",
     [switch]$WithVision,
+    [switch]$InstallBuildTools,
     [string]$RvcModel = "",
     [string]$RvcIndex = "",
     [switch]$StartMenu,
@@ -105,6 +111,12 @@ $RvcIndexName = "added_IVF4457_Flat_nprobe_1_miku_default_rvc_v2.index"
 # Cadangan tanpa winget: installer resmi Ollama (Inno Setup, per-user tanpa admin)
 $OllamaSetupUrl = "https://ollama.com/download/OllamaSetup.exe"
 $OllamaSigner   = "CN=Ollama Inc.,*"
+# Visual Studio Build Tools untuk mengompilasi fairseq (RVC): hanya workload C++
+$BuildToolsId     = "Microsoft.VisualStudio.2022.BuildTools"
+$BuildToolsUrl    = "https://aka.ms/vs/17/release/vs_BuildTools.exe"
+$BuildToolsSigner = "CN=Microsoft Corporation,*"
+$BuildToolsArgs   = @("--wait", "--passive", "--norestart", "--add", "Microsoft.VisualStudio.Workload.VCTools",
+                      "--includeRecommended")
 
 $Root       = $PSScriptRoot
 $ToolsDir   = Join-Path $Root ".tools"
@@ -285,6 +297,7 @@ function Get-InstallSteps {
     $steps = @("Test-Prerequisites")
     if ($ModelDir) { $steps += "Set-ModelDir" }
     if ($RvcModel -or $RvcIndex) { $steps += "Copy-RvcModel" }
+    if ($InstallBuildTools) { $steps += "Install-BuildTools" }
     $steps += @("Install-Uv", "Install-PythonEnv", "Install-PythonPackages", "Install-Unidic", "Test-Imports")
     if (-not $SkipOllama) {
         $steps += "Install-OllamaModel"
@@ -478,6 +491,73 @@ function Test-RvcModelPresent {
     $weights = Join-Path $RvcDir "weights\miku_default_rvc.pth"
     $index = Get-ChildItem -Path (Join-Path $RvcDir "logs\miku_default_rvc") -Filter "*.index" -ErrorAction SilentlyContinue
     return [bool]((Test-Path $weights) -and $index)
+}
+
+# Compiler C++ dari Visual Studio (Community, Build Tools, dsb.) yang bisa dipakai setuptools
+function Test-BuildTools {
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+    if (-not (Test-Path $vswhere)) { return $false }
+    $path = Get-NativeOutput $vswhere @("-products", "*", "-requires",
+        "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath")
+    return [bool]$path
+}
+
+function Test-BuildToolsSignature {
+    param([string]$Path)
+    if (-not (Test-Path $Path)) { return $false }
+    $signature = Get-AuthenticodeSignature -FilePath $Path
+    return ($signature.Status -eq "Valid") -and ($signature.SignerCertificate.Subject -like $BuildToolsSigner)
+}
+
+# Tanpa winget: bootstrapper resmi dari aka.ms, tanda tangan Microsoft dicek dulu. Exit code-nya dikembalikan.
+function Invoke-BuildToolsBootstrapper {
+    New-Item -ItemType Directory -Force -Path $ToolsDir | Out-Null
+    $setup = Join-Path $ToolsDir "vs_BuildTools.exe"
+    Write-Log "Mengunduh $BuildToolsUrl"
+    try {
+        Invoke-WebRequest -Uri $BuildToolsUrl -OutFile $setup -UseBasicParsing
+    } catch {
+        Write-Log "Gagal mengunduh Visual Studio Build Tools: $($_.Exception.Message)" "WARN"
+        return -1
+    }
+    if (-not (Test-BuildToolsSignature $setup)) {
+        Remove-Item $setup -ErrorAction SilentlyContinue
+        Write-Log "Tanda tangan digital installer Visual Studio Build Tools tidak valid; tidak dijalankan." "WARN"
+        return -1
+    }
+    $process = Start-Process -FilePath $setup -ArgumentList $BuildToolsArgs -PassThru
+    $null = $process.Handle
+    $process.WaitForExit()
+    Remove-Item $setup -ErrorAction SilentlyContinue
+    return $process.ExitCode
+}
+
+# Opsional untuk RVC: tidak pernah menghentikan instalasi. Bila gagal atau izin admin ditolak,
+# Install-PythonPackages tetap jalan dan rvc-python dilewati dengan peringatan seperti biasa.
+function Install-BuildTools {
+    Write-Step "Visual Studio Build Tools (suara RVC)"
+    if (Test-BuildTools) {
+        Write-Log "Compiler C++ Visual Studio sudah ada" "OK"
+        return
+    }
+    if (-not (Confirm-Action "Suara RVC butuh Visual Studio Build Tools (C++): sekitar 3 GB diunduh, 7 GB di drive sistem, dan izin admin. Pasang sekarang?")) {
+        Write-Log "Visual Studio Build Tools tidak dipasang; rvc-python kemungkinan dilewati." "WARN"
+        return
+    }
+    Write-Log "Memasang Visual Studio Build Tools (15-30 menit). Windows akan meminta izin admin."
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        $code = Invoke-Native "winget" @("install", "--id", $BuildToolsId, "-e", "--source", "winget",
+            "--accept-package-agreements", "--accept-source-agreements", "--override", ($BuildToolsArgs -join " "))
+    } else {
+        $code = Invoke-BuildToolsBootstrapper
+    }
+    if (Test-BuildTools) {
+        Write-Log "Visual Studio Build Tools siap" "OK"
+        # 3010: berhasil, Windows minta restart; kompilasi biasanya tetap jalan sebelum restart
+        if ($code -eq 3010) { Write-Log "Visual Studio Build Tools minta restart Windows setelah instalasi selesai." "WARN" }
+    } else {
+        Write-Log "Visual Studio Build Tools tidak terpasang (exit $code; izin admin ditolak atau unduhan gagal). Lanjut; rvc-python kemungkinan dilewati." "WARN"
+    }
 }
 
 function Install-PythonPackages {
