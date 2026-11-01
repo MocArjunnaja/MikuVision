@@ -31,6 +31,15 @@ _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 MODEL_ENV_VARS = ("OLLAMA_MODELS", "HF_HOME")
 # Isi InstallDir yang disimpan bila user tidak mencentang "Hapus percakapan, memori, dan skill"
 USER_DATA = "data"
+# Isi folder aplikasi milik MikuVision: isi zip rilis (= isi repo tingkat atas, dicek test terhadap git ls-files)
+# dan yang dibuat installer atau aplikasi. Hapus hanya menghapus ini; file lain di folder itu dibiarkan.
+APP_ENTRIES = {
+    ".gitattributes", ".github", ".gitignore", "CHANGELOG.md", "MikuVisionSetup.py", "README.md", "assets",
+    "config.py", "core", "docs", "experiments", "gui.py", "install.bat", "install.ps1", "install.sh", "miku.py",
+    "miku_setup", "miku_setup.spec", "models", "overrides-rvc.txt", "pytest.ini", "requirements-setup.txt",
+    "requirements.txt", "routines.example.yaml", "run.bat", "run.sh", "skills", "tests", "tools",
+    ".venv", ".tools", "logs", "temp_audio", USER_DATA, "__pycache__", ".pytest_cache", ".ruff_cache",
+}
 # Sama dengan Test-RvcModelPresent di install.ps1; folder kosongnya ikut di zip rilis (.gitkeep)
 RVC_WEIGHTS = Path("models") / "miku_default_rvc" / "weights" / "miku_default_rvc.pth"
 
@@ -274,8 +283,15 @@ def remove_installation(app: InstalledApp, plan: RemovalPlan, progress: Callable
             # file user): jangan hapus isinya
             app_problems.append(f"{install_dir}: tidak tampak seperti folder MikuVision, jadi tidak dihapus")
         else:
-            children = [child for child in sorted(install_dir.iterdir())
-                        if child.name != USER_DATA or plan.data]
+            children, foreign = [], []
+            for child in sorted(install_dir.iterdir()):
+                if child.name not in APP_ENTRIES:
+                    foreign.append(child.name)
+                elif child.name != USER_DATA or plan.data:
+                    children.append(child)
+            if foreign:
+                # Instalasi v1.6.0-v1.7.0 bisa berada di folder yang sudah berisi file user
+                log.info("Dibiarkan karena bukan milik MikuVision: %s", ", ".join(foreign))
             # Tanda MikuVision dihapus terakhir dan hanya bila yang lain bersih, supaya Hapus yang diulang
             # (file terkunci) masih mengenali foldernya
             for child in [c for c in children if c.name not in APP_MARKERS]:
