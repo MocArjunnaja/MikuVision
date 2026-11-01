@@ -1,19 +1,26 @@
-"""Halaman 4: folder aplikasi, folder model, dan komponen; total unduhan vs ruang kosong."""
+"""Halaman 4: folder aplikasi, folder model, dan komponen; total unduhan vs ruang kosong.
+
+Linux: izin memakai hak admin (pkexec) bila install.sh perlu memasang paket sistem atau Ollama.
+"""
 
 import os
 import shutil
 import string
+import sys
 from pathlib import Path
 from tkinter import filedialog
 from typing import Dict, Optional
 
 import customtkinter as ctk
 
-from ..checks import FAIL, WARN, check_disk, drive_of, drive_root, huggingface_dir, ollama_models_dir
-from ..components import COMPONENTS, is_writable, space_needed, validate_selection
+from .. import checks
+from ..checks import FAIL, WARN, check_disk, drive_of, drive_root
+from ..components import COMPONENTS, Selection, is_writable, model_locations, space_needed, validate_selection
 from .base import ACCENT, ACCENT_HOVER, MUTED, STATUS_COLORS, Page, heading
 
 APP_FOLDER_NAME = "MikuVision"
+# Lebar teks di kolom pilihan folder model
+NOTE_WIDTH = 380
 
 
 def _other_drive_with_space(needed: float, exclude: str) -> Optional[str]:
@@ -27,6 +34,16 @@ def _other_drive_with_space(needed: float, exclude: str) -> Optional[str]:
             except OSError:
                 continue
     return None
+
+
+def short_path(path: Path) -> str:
+    """Linux: folder di dalam home ditulis ~/..., supaya baris pilihan muat di halaman."""
+    if sys.platform == "win32":
+        return str(path)
+    try:
+        return "~/" + str(Path(path).relative_to(Path.home()))
+    except ValueError:
+        return str(path)
 
 
 class LocationPage(Page):
@@ -45,21 +62,39 @@ class LocationPage(Page):
         self._browse_button(grid, lambda: self._pick_folder(self.install_dir, APP_FOLDER_NAME)).grid(
             row=0, column=2, padx=(6, 0))
 
-        ollama_dir, hf_dir = ollama_models_dir(), huggingface_dir()
+        ollama_dir, hf_dir = model_locations(Selection(selection.install_dir))
+        # Linux: Ollama layanan sistem memakai foldernya sendiri, folder lain hanya untuk Whisper dan MeloTTS
+        service = checks.ollama_service_dir() if sys.platform != "win32" else None
         self.model_mode = ctk.StringVar(value="custom" if selection.model_dir else "default")
         ctk.CTkLabel(grid, text="Folder model", anchor="w").grid(row=1, column=0, sticky="nw", padx=(0, 10), pady=(8, 0))
         modes = ctk.CTkFrame(grid, fg_color="transparent")
         modes.grid(row=1, column=1, columnspan=2, sticky="ew", pady=(8, 0))
-        ctk.CTkRadioButton(modes, text=f"Lokasi bawaan: {ollama_dir} dan {hf_dir}", variable=self.model_mode,
-                           value="default", fg_color=ACCENT, command=self._changed).pack(anchor="w")
+        if sys.platform == "win32":
+            ctk.CTkRadioButton(modes, text=f"Lokasi bawaan: {ollama_dir} dan {hf_dir}", variable=self.model_mode,
+                               value="default", fg_color=ACCENT, command=self._changed).pack(anchor="w")
+        else:
+            ctk.CTkRadioButton(modes, text="Lokasi bawaan", variable=self.model_mode, value="default",
+                               fg_color=ACCENT, command=self._changed).pack(anchor="w")
+            where = f"Whisper dan MeloTTS: {short_path(hf_dir)}" if service else \
+                f"{short_path(ollama_dir)} dan {short_path(hf_dir)}"
+            ctk.CTkLabel(modes, text=where, text_color=MUTED, anchor="w", justify="left",
+                         wraplength=NOTE_WIDTH).pack(fill="x", padx=(28, 0))
         custom = ctk.CTkFrame(modes, fg_color="transparent")
         custom.pack(fill="x", pady=(4, 0))
         ctk.CTkRadioButton(custom, text="Folder lain:", variable=self.model_mode, value="custom",
                            fg_color=ACCENT, command=self._changed).pack(side="left")
-        suggestion = selection.model_dir or Path(drive_root(drive_of(selection.install_dir))) / "MikuVision" / "models"
+        if sys.platform == "win32":
+            suggestion = selection.model_dir or Path(drive_root(drive_of(selection.install_dir))) / "MikuVision" / \
+                "models"
+        else:
+            suggestion = selection.model_dir or Path.home() / "MikuVision" / "models"
         self.model_dir = ctk.StringVar(value=str(suggestion))
         ctk.CTkEntry(custom, textvariable=self.model_dir).pack(side="left", fill="x", expand=True, padx=(6, 0))
         self._browse_button(custom, lambda: self._pick_folder(self.model_dir, "models")).pack(side="left", padx=(6, 0))
+        if service:
+            ctk.CTkLabel(modes, text=f"Model Ollama tetap di folder layanan sistemnya ({short_path(service)}), "
+                                     "apa pun pilihannya.",
+                         text_color=MUTED, anchor="w", justify="left", wraplength=NOTE_WIDTH).pack(fill="x", pady=(2, 0))
 
         self.chosen: Dict[str, ctk.BooleanVar] = {}
         box = ctk.CTkFrame(frame, corner_radius=8)
@@ -80,6 +115,14 @@ class LocationPage(Page):
 
         self.space = ctk.CTkLabel(frame, text="", anchor="w", justify="left", wraplength=520)
         self.space.pack(fill="x", pady=(10, 0))
+        self.root_consent = ctk.BooleanVar(value=self.setup.root_consent)
+        self.root_box = ctk.CTkFrame(frame, fg_color="transparent")
+        ctk.CTkCheckBox(self.root_box, text="Izinkan Setup memakai hak admin", variable=self.root_consent,
+                        fg_color=ACCENT, hover_color=ACCENT_HOVER, command=self._changed).pack(anchor="w")
+        self.root_text = ctk.CTkLabel(self.root_box, text="", text_color=MUTED, anchor="w", justify="left",
+                                      wraplength=480)
+        self.root_text.pack(fill="x", padx=(28, 0))
+        self.root_needs = []
         for var in (self.install_dir, self.model_dir):
             var.trace_add("write", lambda *_: self._changed())
 
@@ -144,8 +187,8 @@ class LocationPage(Page):
     def _sync(self):
         """Isi widget -> self.setup.selection."""
         selection = self.setup.selection
-        selection.install_dir = Path(self.install_dir.get().strip())
-        selection.model_dir = Path(self.model_dir.get().strip()) if self.model_mode.get() == "custom" else None
+        selection.install_dir = self._path(self.install_dir.get())
+        selection.model_dir = self._path(self.model_dir.get()) if self.model_mode.get() == "custom" else None
         selection.components = {key for key, var in self.chosen.items() if var.get()}
         if self.rvc_source.get() == "link":
             selection.rvc_model, selection.rvc_index = "", ""
@@ -154,6 +197,12 @@ class LocationPage(Page):
         else:
             selection.rvc_model, selection.rvc_index = self.rvc_model.get(), self.rvc_index.get()
             selection.rvc_model_url, selection.rvc_index_url = "", ""
+
+    @staticmethod
+    def _path(text: str) -> Path:
+        """Linux: ~/MikuVision boleh diketik (expanduser); teks kosong tetap kosong untuk validate_selection."""
+        text = text.strip()
+        return Path(os.path.expanduser(text)) if text and sys.platform != "win32" else Path(text)
 
     def _changed(self):
         self._sync()
@@ -177,7 +226,21 @@ class LocationPage(Page):
                 text += f". Coba folder di {other}, misalnya {drive_root(other) / APP_FOLDER_NAME}"
         self.space.configure(text=("Ruang: " if self.disk.status != FAIL else "✗ ") + text,
                              text_color=STATUS_COLORS[FAIL] if self.disk.status == FAIL else MUTED)
+        self._show_root_needs()
         self.wizard.refresh()
+
+    def _show_root_needs(self):
+        """Linux: centang izin hak admin bila install.sh akan memasang paket sistem atau Ollama."""
+        self.root_needs = self.wizard.root_needs("rvc" in self.setup.selection.components,
+                                                 self.setup.ollama_installed)
+        self.setup.root_consent = bool(self.root_consent.get())
+        if not self.root_needs:
+            self.root_box.pack_forget()
+            return
+        self.root_text.configure(text=f"Untuk memasang {', '.join(self.root_needs)}. Password diminta lewat "
+                                      "jendela sistem.")
+        if not self.root_box.winfo_manager():
+            self.root_box.pack(fill="x", pady=(8, 0))
 
     def _disk_check(self):
         selection = self.setup.selection
@@ -195,4 +258,7 @@ class LocationPage(Page):
             return problem
         if self.disk.status == FAIL:
             return f"Ruang disk kurang: {self.disk.message}"
+        if self.root_needs and not self.root_consent.get():
+            return (f"Centang izin hak admin, atau pasang {', '.join(self.root_needs)} sendiri lewat terminal lalu "
+                    "jalankan Setup lagi")
         return None

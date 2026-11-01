@@ -4,7 +4,7 @@ import logging
 
 import customtkinter as ctk
 
-from ..launch import create_desktop_shortcut, launch
+from ..launch import MENU_PLACE, create_desktop_shortcut, launch
 from .base import ACCENT, ACCENT_HOVER, MUTED, STATUS_COLORS, Page, dialog, heading, paragraph
 from .install import open_folder
 
@@ -81,4 +81,4 @@ class FinishPage(Page):
             log.warning(problem)
         if problems:
             dialog(self.wizard, "MikuVision Setup",
-                   "\n\n".join(problems) + "\n\nMikuVision tetap bisa dibuka dari Start Menu.")
+                   "\n\n".join(problems) + f"\n\nMikuVision tetap bisa dibuka dari {MENU_PLACE}.")

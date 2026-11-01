@@ -174,7 +174,9 @@ def test_runner_downloads_the_rvc_model_before_the_installer(release, links, tmp
     assert ("progress", {"event": "done", "ok": True}) in received
     assert any(k == "phase" and d["title"].startswith("Mengunduh model RVC") for k, d in received)
     args = (tmp_path / "MikuVision" / "args.txt").read_text().splitlines()
-    model, index = Path(args[args.index("-RvcModel") + 1]), Path(args[args.index("-RvcIndex") + 1])
+    model_flag, index_flag = ("-RvcModel", "-RvcIndex") if sys.platform == "win32" else ("--rvc-model", "--rvc-index")
+    model, index = Path(args[args.index(model_flag) + 1]), Path(args[args.index(index_flag) + 1])
     assert model.read_bytes() == PTH and index.read_bytes() == INDEX
     assert tmp_path / "downloads" in model.parents
-    assert install_args(selection)[-4:] == ["-RvcModel", str(model), "-RvcIndex", str(index)]
+    assert install_args(selection, platform="win32")[-4:] == ["-RvcModel", str(model), "-RvcIndex", str(index)]
+    assert install_args(selection, platform="linux")[-4:] == ["--rvc-model", str(model), "--rvc-index", str(index)]

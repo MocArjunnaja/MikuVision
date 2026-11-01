@@ -53,7 +53,7 @@ def test_update_and_repair_reuse_the_recorded_choices_without_rvc_files(tmp_path
     selection = selection_for(app)
     assert selection.install_dir == app.install_dir and selection.model_dir == app.model_dir
     assert selection.components == {"core", "brain", "vision"}
-    args = install_args(selection)
+    args = install_args(selection, platform="win32")
     assert "-WithVision" in args and "-ModelDir" in args and "-RvcModel" not in args
 
 
@@ -131,9 +131,10 @@ def test_register_install_failure_is_only_a_warning(tmp_path):
     def broken(entry, size):
         raise PermissionError("akses ditolak")
     problem = register_install(Selection(tmp_path), "1.6.0", write=broken)
-    assert "Apps & features" in problem and "akses ditolak" in problem
+    assert registry.ENTRY_PLACE in problem and "akses ditolak" in problem
 
 
+@windows_only
 def test_shortcuts_pointing_elsewhere_are_kept(tmp_path):
     app = fake_install(tmp_path)
     start_menu = tmp_path / "Start Menu" / "MikuVision"
@@ -212,4 +213,26 @@ def test_running_processes_only_lists_programs_from_the_install_folder(tmp_path,
                  Process(4, "System", None)]
     psutil = pytest.importorskip("psutil")
     monkeypatch.setattr(psutil, "process_iter", lambda attrs: processes)
+    assert maintenance.running_processes(install_dir) == ["pythonw.exe"]
+
+
+@pytest.mark.parametrize("platform", ["win32", "linux"])
+def test_the_setup_exe_own_bootloader_is_not_counted(tmp_path, monkeypatch, platform):
+    """Modify dari "Apps & features" membuka MikuVisionSetup.exe di folder .tools: dua proses, exe sama."""
+    install_dir = tmp_path / "MikuVision"
+    setup_exe = install_dir / ".tools" / "MikuVisionSetup.exe"
+    setup_exe.parent.mkdir(parents=True)
+    setup_exe.write_bytes(b"exe")
+
+    class Process:
+        def __init__(self, pid, name, exe):
+            self.info = {"pid": pid, "name": name, "exe": exe}
+    processes = [Process(os.getpid() + 1, "MikuVisionSetup.exe", str(setup_exe)),  # bootloader
+                 Process(os.getpid(), "MikuVisionSetup.exe", str(setup_exe)),
+                 Process(os.getpid() + 2, "pythonw.exe", str(install_dir / ".venv" / "Scripts" / "pythonw.exe"))]
+    psutil = pytest.importorskip("psutil")
+    monkeypatch.setattr(psutil, "process_iter", lambda attrs: processes)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(setup_exe))
+    monkeypatch.setattr(sys, "platform", platform)
     assert maintenance.running_processes(install_dir) == ["pythonw.exe"]

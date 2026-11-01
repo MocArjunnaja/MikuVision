@@ -2,6 +2,7 @@
 
 import logging
 import queue
+import sys
 import threading
 from typing import Optional
 
@@ -15,6 +16,19 @@ from .maintenance import still_running_message
 
 log = logging.getLogger("miku_setup")
 
+if sys.platform == "win32":
+    REMOVED = "shortcut-nya, dan entrinya di \"Apps & features\""
+    KEEP_OLLAMA = "Ollama tetap terpasang. Hapus lewat \"Apps & features\" bila tidak dipakai lagi."
+    RETRY = "jalankan Hapus lagi dari \"Apps & features\""
+else:
+    REMOVED = "peluncurnya, dan entri MikuVision Setup di menu aplikasi"
+    KEEP_OLLAMA = ("Ollama tetap terpasang. Bila tidak dipakai lagi, cara menghapusnya ada di dokumentasi Ollama "
+                   "untuk Linux (bagian Uninstall).")
+    RETRY = "jalankan Hapus MikuVision lagi dari menu aplikasi"
+# Paragraf yang menjorok 28 px di bawah kotak centang: area isi ±512 px, jadi lebar 500 terpotong di kanan
+# (terlihat di Windows, skala 125%)
+INDENTED_WIDTH = 470
+
 
 class UninstallPage(Page):
     title = "Hapus"
@@ -23,22 +37,20 @@ class UninstallPage(Page):
     def create(self, frame):
         app = self.setup.installed
         heading(frame, "Hapus MikuVision")
-        paragraph(frame, f"Aplikasi di {app.install_dir}, shortcut-nya, dan entrinya di \"Apps & features\" "
-                         "akan dihapus.")
+        paragraph(frame, f"Aplikasi di {app.install_dir}, {REMOVED} akan dihapus.")
         self.data = ctk.BooleanVar(value=False)
         self.models = ctk.BooleanVar(value=False)
         ctk.CTkCheckBox(frame, text="Hapus juga percakapan, memori, dan skill (folder data)", variable=self.data,
                         fg_color=ACCENT, hover_color=ACCENT_HOVER).pack(anchor="w", pady=(8, 2))
         paragraph(frame, "Bila tidak dicentang, folder data disimpan dan dipakai lagi saat MikuVision dipasang "
-                         "di folder yang sama.", color=MUTED).pack_configure(padx=(28, 0))
+                         "di folder yang sama.", color=MUTED, width=INDENTED_WIDTH).pack_configure(padx=(28, 0))
         if app.model_dir:
             ctk.CTkCheckBox(frame, text=f"Hapus juga model di {app.model_dir}", variable=self.models,
                             fg_color=ACCENT, hover_color=ACCENT_HOVER).pack(anchor="w", pady=(8, 2))
         else:
             paragraph(frame, "Model Ollama dan Whisper di lokasi bawaan tidak dihapus, karena bisa dipakai "
                              f"aplikasi lain. Bila tidak dipakai lagi: ollama rm {LLM_MODEL}.", color=MUTED)
-        paragraph(frame, "Ollama tetap terpasang. Hapus lewat \"Apps & features\" bila tidak dipakai lagi.",
-                  color=MUTED)
+        paragraph(frame, KEEP_OLLAMA, color=MUTED)
 
     def validate(self) -> Optional[str]:
         if not self.setup.dry_run:
@@ -103,7 +115,7 @@ class RemovePage(Page):
         if problems:
             self.head.configure(text="Sebagian tidak terhapus")
             self.status.configure(text="File berikut sedang dipakai atau dikunci. Tutup aplikasi yang memakainya, "
-                                       "lalu jalankan Hapus lagi dari \"Apps & features\".",
+                                       f"lalu {RETRY}.",
                                   text_color=STATUS_COLORS["warn"])
             self.details.configure(text="\n".join(problems[:6]) + ("\n…" if len(problems) > 6 else ""))
             ctk.CTkButton(self.frame, text="Buka log", width=120, fg_color="transparent", border_width=1,

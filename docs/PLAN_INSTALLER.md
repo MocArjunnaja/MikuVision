@@ -236,6 +236,14 @@ Workflow baru `.github/workflows/release-setup.yml`, dipicu tag `v*`:
 - **Pengganti variabel user Windows:** `~/.config/environment.d/60-mikuvision.conf`. File ini baru terbaca systemd di sesi login berikutnya, jadi `run.sh` dan `install.sh` juga membacanya sendiri.
 - **pkexec:** `--sudo-cmd pkexec` membuat setiap perintah root minta password lewat jendela grafis. Skrip resmi Ollama dijalankan sebagai root sekaligus (satu kali minta password untuk langkah itu); pemasangan paket sistem satu kali lagi. Instalasi baru yang butuh keduanya meminta password dua kali.
 
+**Hasil IL2** (1 Nov 2026). Wizard jalan di Linux, rinciannya di CHANGELOG. Keputusan dan temuan:
+- **Satu antarmuka, dua backend.** `registry.write_entry/read_installed/delete_entry` memilih HKCU (Windows) atau `install.json` + entri menu (Linux); `checks`, `components`, `runner`, `maintenance`, dan `launch` bercabang per OS di dalam fungsinya. Halaman wizard hampir tidak berubah; teks yang menyebut "Apps & features" atau "Start Menu" diambil dari konstanta per OS. Fungsi yang hanya mengolah teks (`install_args`, `install_command`, `validate_selection`, `default_install_dir`) menerima `platform`, jadi kedua versi dites di CI Ubuntu dan Windows.
+- **Hak root diminta sekali di depan.** Halaman 4 menghitung apa yang akan dipasang `install.sh` dengan root (paket sistem, Ollama, g++ untuk RVC) dan meminta centang izin; password-nya diminta `pkexec` saat langkah itu berjalan. Bila Ollama dipasang lewat `pkexec`, skrip resminya menambahkan root (bukan user) ke grup `ollama`, sehingga folder model layanan tidak bisa dibaca user. Karena itu `model_present` bertanya ke `/api/tags` bila foldernya ditolak.
+- **Folder aplikasi tidak boleh di NTFS/FAT.** Di sana `install.sh` menaruh venv di `~/.local/share/mikuvision/venv`, tempat yang dipakai bersama clone git di partisi Windows dan tidak ikut terhapus oleh Hapus. Folder model boleh di NTFS.
+- **Python untuk build:** Tk dari python-build-standalone (uv) tanpa Xft membuat wizard tampak rusak; Python dari distro normal. IL3 membangun binary dengan Python dari apt di Ubuntu 22.04 (glibc 2.35).
+- **Bug yang ikut ketemu:** tombol Tutup setelah Hapus tidak menutup jendela, juga di Windows (`finish()` hanya ada di halaman Selesai). Diperbaiki di kelas dasar halaman.
+- **Belum diuji:** jendela password `pkexec` (laptop uji sudah punya semua paket dan Ollama), sesi Wayland, distro selain Mint, dan binary hasil PyInstaller untuk alur sungguhan (IL3).
+
 ## 9. Uji dan risiko
 
 **Skenario uji di Windows** (VM Windows 11 bersih tanpa Python/git, ditambah laptop pengembang):

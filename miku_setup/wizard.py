@@ -6,6 +6,7 @@ queue.Queue; widget Tk hanya diubah dari main thread (lihat crash Tk 9 di CHANGE
 """
 
 import logging
+import sys
 
 import customtkinter as ctk
 
@@ -19,7 +20,8 @@ from .runner import DryRunRunner, InstallRunner, sample_lines
 from .state import SetupState
 
 log = logging.getLogger("miku_setup")
-WIDTH, HEIGHT = 760, 520
+# Linux: baris teks Tk (Xft) lebih tinggi, dan halaman 4 bisa memuat izin hak admin
+WIDTH, HEIGHT = 760, 520 if sys.platform == "win32" else 580
 
 
 class Wizard(ctk.CTk):
@@ -33,6 +35,8 @@ class Wizard(ctk.CTk):
         self.check_functions = checks.SYSTEM_CHECKS if check_functions is None else check_functions
         self.find_ollama = checks.find_ollama
         self.free_bytes = checks.free_bytes
+        # Linux: yang dipasang install.sh dengan hak root (halaman 4 meminta izin dulu); Windows: tidak ada
+        self.root_needs = checks.root_needs if sys.platform != "win32" else lambda rvc, ollama_installed: []
         # Versi rilis terbaru untuk halaman Pilih tindakan; bisa diganti test supaya tidak ke internet
         self.fetch_latest = fetch_latest or (lambda: parse_version(fetch_text(self.release_url + "version.json")))
         self.dry_run_delay = dry_run_delay

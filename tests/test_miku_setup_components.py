@@ -108,11 +108,11 @@ def test_is_writable(tmp_path):
 
 
 def test_install_args():
-    assert components.install_args(Selection(Path(r"C:\Apps\MikuVision"))) == \
+    assert components.install_args(Selection(Path(r"C:\Apps\MikuVision")), platform="win32") == \
         ["-Yes", "-Progress", "-StartMenu", "-SkipShortcut"]
     selection = Selection(Path(r"C:\Apps\MikuVision"), model_dir=Path(r"D:\Miku models"),
                           components={"core", "brain", "vision", "rvc"}, rvc_model=r"D:\a.pth", rvc_index=r"D:\a.index")
-    assert components.install_args(selection) == [
+    assert components.install_args(selection, platform="win32") == [
         "-Yes", "-Progress", "-StartMenu", "-SkipShortcut", "-ModelDir", r"D:\Miku models", "-WithVision",
         "-RvcModel", r"D:\a.pth", "-RvcIndex", r"D:\a.index"]
 
@@ -121,5 +121,5 @@ def test_install_args_use_options_that_install_ps1_has():
     install_ps1 = (ROOT / "install.ps1").read_text(encoding="utf-8")
     selection = Selection(Path(r"C:\a"), model_dir=Path(r"D:\m"), components={"core", "brain", "vision", "rvc"},
                           rvc_model="x.pth", rvc_index="x.index")
-    for option in (a for a in components.install_args(selection) if a.startswith("-")):
+    for option in (a for a in components.install_args(selection, platform="win32") if a.startswith("-")):
         assert re.search(rf"\[(switch|string)\]\${option[1:]}\b", install_ps1), option
