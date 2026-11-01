@@ -6,7 +6,30 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
-## Belum dirilis (2026-11-01): "Oke Miku" di mode suara (T2)
+## v1.7.0 (2026-11-01): ringkasan rilis
+
+**MikuVision Setup untuk Linux** dan **"Oke Miku"**. Rilis ini melampirkan `MikuVisionSetup-linux-x86_64` di samping `MikuVisionSetup.exe`: user Linux cukup mengunduh, mengizinkannya dijalankan, lalu membukanya. Di mode suara dan GUI, Miku kini bisa dipanggil dengan mengucapkan "Oke Miku", sendiri atau langsung dengan perintahnya ("Oke Miku, kecilkan volume ke tiga puluh"); shortcut `Ctrl+Shift+M` dan menyeret maskot tetap jalan. Rinciannya ada di entri v1.7.0 di bawah, satu per bagian.
+
+| PR | Isi |
+|---|---|
+| [#40](https://github.com/MocArjunnaja/MikuVision/pull/40) | Opsi `install.sh` untuk Setup di Linux (IL1) |
+| [#41](https://github.com/MocArjunnaja/MikuVision/pull/41) | MikuVision Setup jalan di Linux (IL2); Setup yang dibuka dari "Apps & features" tidak lagi menolak dirinya sendiri di Windows |
+| [#42](https://github.com/MocArjunnaja/MikuVision/pull/42) | Binary Linux di workflow rilis (IL3) |
+| [#43](https://github.com/MocArjunnaja/MikuVision/pull/43) | "Oke Miku" di mode suara dan GUI (T2) |
+
+**Uji:** Linux Mint 22.3 (pasang, batal lalu lanjut, Perbarui, Perbaiki, Hapus, pasang lagi; juga dengan binary dari CI) dan Windows 11 (pasang → Perbarui → Perbaiki dari Modify → Hapus → pasang lagi dengan exe dari CI; "Oke Miku" dengan suara user). "Oke Miku": Linux 10/10, Windows 9/10 wake phrase tertangkap; kalimat biasa tidak memicu di keduanya; 0 pemicu palsu selama 20 menit musik (Linux). CI hijau di Ubuntu dan Windows; 705 test lulus di venv aplikasi Windows.
+
+**Diperbaiki dari v1.6.0:** di Windows, Perbarui/Perbaiki dari "Apps & features" → Modify selalu menjawab "Tutup MikuVision dulu (MikuVisionSetup.exe masih berjalan)". Unduh Setup v1.7.0 dari rilis ini untuk memperbarui instalasi v1.6.0.
+
+**Keterbatasan yang diketahui**
+- Mode suara kini membuka mikrofon terus-menerus secara bawaan (`WAKE_PHRASE_ENABLED` di `config.py`). Semua tetap diproses lokal; Whisper hanya jalan saat ada ucapan.
+- Volume mic menentukan: bila muncul "Volume mikrofon terlalu tinggi", turunkan volume input (laptop uji Linux: ±20%; Windows: 45% sudah cukup).
+- Lagu yang liriknya berbunyi "oke Miku" akan memicu Miku. Perintah berbahasa Jepang yang diucapkan sekaligus kadang tertulis katakana.
+- Binary Linux baru diuji di Linux Mint; Fedora, Arch, dan openSUSE belum. Exe Windows dan binary Linux belum ditandatangani.
+
+---
+
+## v1.7.0 (2026-11-01): "Oke Miku" di mode suara (T2)
 
 Cukup ucapkan **"Oke Miku"** untuk mulai bicara, tanpa menyeret maskot atau menekan shortcut. Perintah boleh langsung menyusul ("Oke Miku, buka Notepad"). Diuji dengan suara user: 10/10 di putaran terakhir.
 
@@ -81,7 +104,7 @@ Cukup ucapkan **"Oke Miku"** untuk mulai bicara, tanpa menyeret maskot atau mene
 
 ---
 
-## Belum dirilis (2026-11-01): binary MikuVision Setup untuk Linux di rilis (PLAN_INSTALLER IL3)
+## v1.7.0 (2026-11-01): binary MikuVision Setup untuk Linux di rilis (PLAN_INSTALLER IL3)
 
 Mulai v1.7.0 rilis melampirkan **`MikuVisionSetup-linux-x86_64`** di samping `MikuVisionSetup.exe`. User Linux cukup mengunduhnya, mengizinkannya dijalankan, lalu membukanya; tidak perlu git atau terminal.
 
@@ -123,7 +146,7 @@ Mulai v1.7.0 rilis melampirkan **`MikuVisionSetup-linux-x86_64`** di samping `Mi
 
 ---
 
-## Belum dirilis (2026-11-01): MikuVision Setup jalan di Linux (PLAN_INSTALLER IL2)
+## v1.7.0 (2026-11-01): MikuVision Setup jalan di Linux (PLAN_INSTALLER IL2)
 
 Wizard yang sama dengan Windows (`miku_setup/`) sekarang memasang, memperbarui, memperbaiki, dan menghapus MikuVision di Linux, memakai opsi `install.sh` dari IL1. Perilaku di Windows tidak berubah, kecuali perbaikan tombol Tutup di bawah. Binary Linux untuk user menyusul di IL3; sampai saat itu Setup dijalankan dari kode sumber dengan Python sistem yang sudah memasang `requirements-setup.txt`: `python3 MikuVisionSetup.py`.
 
@@ -171,7 +194,7 @@ Wizard yang sama dengan Windows (`miku_setup/`) sekarang memasang, memperbarui, 
 
 ---
 
-## Belum dirilis (2026-11-01): opsi `install.sh` untuk MikuVision Setup di Linux (PLAN_INSTALLER IL1)
+## v1.7.0 (2026-11-01): opsi `install.sh` untuk MikuVision Setup di Linux (PLAN_INSTALLER IL1)
 
 Rencana: fase IL di [`docs/PLAN_INSTALLER.md`](docs/PLAN_INSTALLER.md). `install.sh` sekarang bisa dijalankan wizard seperti `install.ps1`; tanpa opsi baru perilakunya tetap sama.
 
