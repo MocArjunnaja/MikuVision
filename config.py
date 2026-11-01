@@ -151,6 +151,9 @@ WAKE_CHECK_LANGUAGE = "id"
 # Prompt Whisper untuk cek wake phrase (menggantikan prompt kosakata). Tanpa ini Whisper berbahasa
 # Indonesia menulis "Miku" sebagai kata yang dikenalnya ("minggu", "menurut", "me too").
 WAKE_CHECK_PROMPT = "Oke Miku."
+# Mode suara mencetak apa yang terdengar ketika bukan "Oke Miku" ("(terdengar: …)"), supaya
+# kelihatan bahwa Miku mendengar tetapi tidak mengenali wake phrase-nya
+WAKE_SHOW_HEARD = True
 STOP_HOTKEY = "ctrl+shift+s"
 
 

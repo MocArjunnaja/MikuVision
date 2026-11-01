@@ -197,6 +197,8 @@ class WakeListener:
     waktu kata Whisper. Perintah lalu ditranskripsi tanpa wake phrase di depannya: "Oke Miku"
     berbunyi seperti bahasa Jepang, sehingga "Oke Miku, buka Notepad" utuh tertulis 「ブカ、Notepad」.
     on_warning(pesan) dipanggil sekali bila derau mikrofon di awal terlalu tinggi.
+    on_heard(teks) (opsional) menerima setiap hasil cek yang tidak kosong, supaya user bisa
+    melihat apa yang terdengar ketika "Oke Miku" tidak dikenali.
     """
 
     def __init__(self, transcribe: Callable[[np.ndarray], str], on_wake: Callable[[str], None],
@@ -204,6 +206,7 @@ class WakeListener:
                  transcribe_command: Optional[Callable[[np.ndarray], str]] = None,
                  wake_end: Optional[Callable[[], Optional[float]]] = None,
                  on_warning: Callable[[str], None] = print,
+                 on_heard: Optional[Callable[[str], None]] = None,
                  sample_rate: int = SAMPLE_RATE,
                  check_sec: float = 2.5, overlap_sec: float = 1.0, min_check_sec: float = 0.4,
                  cooldown_sec: float = 0.5, continue_sec: float = 0.6,
@@ -212,6 +215,7 @@ class WakeListener:
         self.transcribe_command = transcribe_command
         self.wake_end = wake_end
         self.on_warning = on_warning
+        self.on_heard = on_heard
         self.on_wake = on_wake
         self.is_busy = is_busy
         self.sample_rate = sample_rate
@@ -324,7 +328,13 @@ class WakeListener:
 
     def _heard(self, audio: np.ndarray, offset: int = 0) -> Optional[str]:
         """Cek wake phrase (transcribe, boleh versi murah). offset: posisi audio ini di segmen."""
-        command = match_wake_phrase(self._transcribe(self.transcribe, audio))
+        text = self._transcribe(self.transcribe, audio)
+        if text.strip() and self.on_heard is not None:
+            try:
+                self.on_heard(text)
+            except Exception as e:
+                print(f"[Wake] Error: {e}")
+        command = match_wake_phrase(text)
         if command is not None and self.wake_end is not None:
             end = self.wake_end()
             self._cut = offset + int(end * self.sample_rate) if end is not None else None

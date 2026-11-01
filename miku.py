@@ -75,9 +75,9 @@ from core.commands import handle_command
 from core.conversation import ToolResult, run_turn
 from core.turn_log import TurnLogger
 from core.hotkey import ListenTriggers
-from core.wake import WakeListener, wake_phrase_end
+from core.wake import WakeListener, match_wake_phrase, wake_phrase_end
 from config import (DATA_DIR, CHARACTERS, DEFAULT_CHARACTER, TURN_LOG_DIR, WAKE_HOTKEY, HOTKEY_ENABLED,
-                    WAKE_PHRASE_ENABLED, WAKE_CHECK_LANGUAGE, WAKE_CHECK_PROMPT)
+                    WAKE_PHRASE_ENABLED, WAKE_CHECK_LANGUAGE, WAKE_CHECK_PROMPT, WAKE_SHOW_HEARD)
 
 
 class MikuCLI:
@@ -273,6 +273,12 @@ class MikuCLI:
         self._interaction_source = "wake"
         self._interaction_event.set()
 
+    @staticmethod
+    def _on_wake_heard(text: str):
+        """Yang terdengar oleh pendengar "Oke Miku"; wake phrase sendiri dicetak oleh alur utama."""
+        if match_wake_phrase(text) is None:
+            print(f"   (terdengar: {text!r})", flush=True)
+
     def _wake_busy(self) -> bool:
         """Jangan mendengarkan "Oke Miku" saat Miku merekam, memproses, atau bicara."""
         return self._handling or bool(self.voice_output and self.voice_output.is_speaking)
@@ -330,7 +336,8 @@ class MikuCLI:
             self.wake = WakeListener(self._transcribe_wake, self._on_wake_phrase, is_busy=self._wake_busy,
                                      transcribe_command=self._transcribe_wake_command,
                                      wake_end=self._wake_phrase_end,
-                                     on_warning=lambda message: print(f"[Oke Miku] {message}"))
+                                     on_warning=lambda message: print(f"[Oke Miku] {message}"),
+                                     on_heard=self._on_wake_heard if WAKE_SHOW_HEARD else None)
             error = self.wake.start()
             if error:
                 trigger_messages.append(f"\"Oke Miku\" tidak aktif: {error}.")
@@ -392,7 +399,7 @@ class MikuCLI:
             print("\n[Shortcut pressed]")
         else:
             # Feedback: Miku acknowledges the interaction
-            print("\n[User interacted with Miku]")
+            print("\n[Oke Miku]" if self._interaction_source == "wake" else "\n[User interacted with Miku]")
             if self.avatar_window:
                 self.avatar_window.set_emotion("happy")
 

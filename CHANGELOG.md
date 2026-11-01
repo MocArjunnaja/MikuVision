@@ -23,6 +23,7 @@ Cukup ucapkan **"Oke Miku"** untuk mulai bicara, tanpa menyeret maskot atau mene
     - wake phrase yang tertulis dua kali dibuang.
   - **Tidak mendengar diri sendiri.** Selama Miku merekam, memproses, atau bicara (ditambah 0,5 s), audio dibuang.
   - **Peringatan mic.** Muncul sekali bila derau 3 detik pertama terlalu tinggi (RMS > 0,05): "turunkan volume input ke sekitar 20–30%".
+  - **Yang terdengar ditampilkan.** Di mode suara, ucapan yang bukan "Oke Miku" dicetak sebagai `(terdengar: '…')` (`WAKE_SHOW_HEARD`), supaya kelihatan bahwa Miku mendengar tetapi tidak mengenali wake phrase-nya. Di uji pertama di aplikasi, 6 menit tanpa keluaran apa pun membuat tidak jelas apakah user belum mencoba atau tidak terdengar.
 - `VoiceInput.transcribe`: `prompt` (menggantikan prompt kosakata) dan `word_timestamps` (mengisi `last_words`).
 - **Mode suara** (`python miku.py`): aktif bawaan (`WAKE_PHRASE_ENABLED` di `config.py`).
   - "Oke Miku" saja → Miku menjawab 「はい、何でしょうか？」 lalu merekam.
@@ -50,8 +51,15 @@ Cukup ucapkan **"Oke Miku"** untuk mulai bicara, tanpa menyeret maskot atau mene
   - 0 pemicu palsu dari 128 kalimat biasa (termasuk jebakan "Oke, menurut aku…", "Oke, minggu ini…", "Oke, mie ayamnya…") dan 9,7 menit obrolan sambung;
   - 5 menit derau ruangan: Whisper tidak jalan.
 - **Mic sungguhan, 3–5 menit tanpa "Oke Miku":** 0 pemicu, CPU proses 3–4%, GPU median 0%.
+- **Aplikasi sungguhan** (`python miku.py`, mic 20%), oleh user, semuanya lewat "Oke Miku" lalu perintah:
+  - "Buka Youtube" → YouTube terbuka;
+  - "Buka YouTube, dan carikan video dari …" → video diputar;
+  - "Ubah volume ke 60%" → volume 60%;
+  - "Buat dokumen yang berisi … tentang kamu" → dokumen Word dibuat.
+
+  Waktu LLM 1–3 s per perintah (dokumen 12 s). Permintaan ketiga dan keempat terjadi sesudah video dibuka. Pemicu palsu dari suara video belum diukur, karena saat itu baris "(terdengar: …)" belum ada.
 - **Volume mic menentukan:** mic internal laptop uji semula 100% (Capture +30 dB dan Internal Mic Boost +30 dB), sehingga derau ruangan hampir penuh (RMS 0,69). Di 30% hasilnya 2–5/10, di 20% 9–10/10.
-- `pytest`: 671 lulus di venv aplikasi (70 test di `tests/test_wake.py`, 1 baru di `tests/test_voice_input.py`); Python sistem seperti CI: 650 lulus, 59 dilewati. `test_without_dry_run_the_wizard_installs_for_real` gagal dan menggantung di venv aplikasi di Linux karena `winreg`, sudah begitu di `main` sebelum perubahan ini; dukungan Linux untuk wizard ada di #41.
+- `pytest`: 673 lulus di venv aplikasi (72 test di `tests/test_wake.py`, 1 baru di `tests/test_voice_input.py`); Python sistem seperti CI: 652 lulus, 59 dilewati. `test_without_dry_run_the_wizard_installs_for_real` gagal dan menggantung di venv aplikasi di Linux karena `winreg`, sudah begitu di `main` sebelum perubahan ini; dukungan Linux untuk wizard ada di #41.
 
 ### Keterbatasan diketahui
 - Belum diuji saat musik diputar, dengan suara orang lain, dan di Windows.

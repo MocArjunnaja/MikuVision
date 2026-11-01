@@ -324,6 +324,13 @@ def test_audio_while_busy_is_dropped_then_cooldown():
     assert wakes == [""]
 
 
+def test_heard_text_is_reported():
+    heard = []
+    lst, wakes, _ = listener(FakeWhisper("nanti malam hujan"), on_heard=heard.append)
+    feed_in_chunks(lst, np.concatenate([speech(1.5), silence(1)]))
+    assert heard == ["nanti malam hujan"] and wakes == []
+
+
 def test_transcription_error_does_not_stop_the_listener():
     def broken(audio):
         raise RuntimeError("CUDA OOM")
@@ -372,7 +379,7 @@ class FakeWake:
     command = ""
     instances = []
 
-    def __init__(self, transcribe, on_wake, is_busy, transcribe_command, wake_end, on_warning):
+    def __init__(self, transcribe, on_wake, is_busy, transcribe_command, wake_end, on_warning, on_heard):
         self.transcribe, self.on_wake, self.is_busy = transcribe, on_wake, is_busy
         self.transcribe_command, self.wake_end, self.on_warning = transcribe_command, wake_end, on_warning
         self.stopped = False
@@ -474,6 +481,16 @@ def test_voice_mode_cleanup_stops_the_wake_listener(monkeypatch, tmp_path):
     cli = _voice_mode(monkeypatch, tmp_path, "buka Notepad")
     cli.cleanup()
     assert FakeWake.instances[0].stopped
+
+
+@voice_mode
+def test_voice_mode_prints_only_what_is_not_the_wake_phrase(capsys, monkeypatch, tmp_path):
+    from core import desktop
+    monkeypatch.setattr(desktop, "user_dir", lambda key: tmp_path)
+    import miku
+    miku.MikuCLI._on_wake_heard("nanti malam hujan")
+    miku.MikuCLI._on_wake_heard("Oke Miku")
+    assert capsys.readouterr().out == "   (terdengar: 'nanti malam hujan')\n"
 
 
 # ── GUI ──
