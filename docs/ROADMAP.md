@@ -6,7 +6,10 @@
 
 ## 0. Menunggu merge
 
-MikuVision Setup untuk Linux, bertumpuk: [#40](https://github.com/MocArjunnaja/MikuVision/pull/40) (IL1) → [#41](https://github.com/MocArjunnaja/MikuVision/pull/41) (IL2) → [#42](https://github.com/MocArjunnaja/MikuVision/pull/42) (IL3). Semuanya lulus uji terima di Mint, termasuk binary dari CI. **Keputusan user (1 Nov): tunggu cek ulang di Windows (bagian 2a) dulu**, baru merge berurutan lalu rilis **v1.7.0**. Sebelumnya: #21–#33 dirilis sebagai **v1.5.0** (31 Okt); #35–#38 (MikuVision Setup) sebagai **v1.6.0** (1 Nov).
+- MikuVision Setup untuk Linux, bertumpuk: [#40](https://github.com/MocArjunnaja/MikuVision/pull/40) (IL1) → [#41](https://github.com/MocArjunnaja/MikuVision/pull/41) (IL2) → [#42](https://github.com/MocArjunnaja/MikuVision/pull/42) (IL3). Semuanya lulus uji terima di Mint, termasuk binary dari CI.
+- "Oke Miku" (T2): [#43](https://github.com/MocArjunnaja/MikuVision/pull/43), dari `main`. Suara user 10/10 dan 4/4 permintaan di `python miku.py` di Linux.
+
+**Keputusan user (1 Nov): tunggu cek ulang di Windows (bagian 2a) dulu**. Keempat PR digabung di branch lokal `test/v1.7.0`, supaya cukup sekali boot ke Windows. Sesudah lulus: merge #40 → #41 → #42 → #43, lalu rilis **v1.7.0** (Setup untuk Linux + "Oke Miku"). Sebelumnya: #21–#33 dirilis sebagai **v1.5.0** (31 Okt); #35–#38 (MikuVision Setup) sebagai **v1.6.0** (1 Nov).
 
 ## 1. Urutan berikutnya
 
@@ -63,11 +66,20 @@ Dijalankan setelah boot ke Windows, di folder repo yang sama (`D:`). Lakukan set
 **Bahan untuk rencana berikutnya**
 - Agent visi Fase 2: `find_on_screen` versi Windows butuh UI Automation (`uiautomation`, dipakai di spike Fase 0 Windows); catat apakah paket itu terpasang tanpa masalah. OCR tidak dibutuhkan di Fase 1 karena qwen3-vl membaca teks dari screenshot.
 
-## 2a. Cek ulang di Windows sebelum v1.7.0
+## 2a. Cek ulang di Windows sebelum v1.7.0 (#40–#43)
 
-Setup untuk Linux (#40–#42) menyentuh kode yang juga dipakai Windows. Di Linux semuanya lulus (CHANGELOG IL2 dan IL3), dan CI Windows lulus; yang berikut perlu dicoba dengan exe sungguhan **sebelum #40–#42 di-merge**. Exe-nya ada di artifact **rilis-uji** dari workflow `release-setup` di PR #42 (zip `0.0.0-pr42`, `version.json`, `SHA256SUMS`), atau bangun sendiri dengan `pyinstaller miku_setup.spec` dari branch `feat/setup-linux-binary` (memuat ketiga PR).
+**Persiapan**
+1. Folder repo bersama (`D:`) sudah di branch lokal **`test/v1.7.0`**: `feat/setup-linux-binary` (#40–#42) digabung dengan `feat/wake-phrase` (#43). Branch ini belum di GitHub, jadi jangan `git pull`; cukup pastikan `git branch --show-current` menunjukkan `test/v1.7.0`.
+2. Jalankan ulang `install.ps1` (langkah yang sudah beres dilewati), lalu `pytest`. Hasilnya harus sama dengan CI Windows di #42 dan #43.
+3. Catat hasil Setup di entri CHANGELOG IL3, dan hasil "Oke Miku" di entri T2 (bagian Pengujian).
 
-Hasilnya dicatat di entri CHANGELOG IL3 (bagian Pengujian). Bila semua lulus: merge #40 → #41 → #42, lalu rilis v1.7.0. Bila ada yang gagal: perbaiki di branch `feat/setup-linux-binary` (#42), lalu cek lagi.
+**Sesudahnya**
+- **Semua lulus:** merge #40 → #41 → #42, lalu perbarui #43 dengan `main` (konflik CHANGELOG sudah diselesaikan di `test/v1.7.0`: entri T2 di atas entri IL), merge #43, lalu rilis v1.7.0.
+- **Ada yang gagal:** perbaiki di branch PR-nya (`feat/setup-linux-binary` untuk Setup, `feat/wake-phrase` untuk "Oke Miku"), gabungkan lagi ke `test/v1.7.0`, lalu cek lagi.
+
+### Setup untuk Linux (#40–#42)
+
+Setup untuk Linux menyentuh kode yang juga dipakai Windows. Di Linux semuanya lulus (CHANGELOG IL2 dan IL3), dan CI Windows lulus; yang berikut perlu dicoba dengan exe sungguhan. Exe-nya ada di artifact **rilis-uji** dari workflow `release-setup` di PR #42 (zip `0.0.0-pr42`, `version.json`, `SHA256SUMS`), atau bangun sendiri dengan `pyinstaller miku_setup.spec`.
 
 | Cek | Kenapa | Lulus bila |
 |---|---|---|
@@ -75,6 +87,23 @@ Hasilnya dicatat di entri CHANGELOG IL3 (bagian Pengujian). Bila semua lulus: me
 | Tombol **Tutup** dan **X** di halaman terakhir Hapus | Bug yang ditemukan di uji Linux: `finish()` hanya ada di halaman Selesai, jadi Tutup tidak menutup jendela (juga di Windows). Diperbaiki di #41 | Jendela tertutup |
 | **Perbarui** dari "Apps & features" → Modify (`.tools\MikuVisionSetup.exe`) | Exe satu file PyInstaller berjalan sebagai dua proses dengan exe yang sama; proses bootloader-nya ada di dalam InstallDir. Di Linux #41 mengabaikannya, kode Windows tidak diubah | Tidak muncul "Tutup MikuVision dulu (MikuVisionSetup.exe masih berjalan)". Bila muncul, terapkan aturan yang sama di `running_processes` untuk Windows |
 | Log Setup | Teks log memakai konstanta `ENTRY_PLACE`, jadi tertulis `Tercatat di "Apps & features"` (dengan tanda kutip) | Hanya beda kutip |
+
+### "Oke Miku" (#43)
+
+Dijalankan dari kode sumber di `test/v1.7.0` (`python miku.py`, mode suara, dan `python gui.py`). Di Windows mode suara kini **membuka mikrofon terus-menerus secara bawaan** (`WAKE_PHRASE_ENABLED`), dan itu belum pernah dicoba di Windows. Hasil Linux dan cara ujinya ada di `experiments/wake_eval/RESULTS.md`.
+
+| Cek | Kenapa | Lulus bila |
+|---|---|---|
+| Level mic | Di Linux mic internal semula +60 dB: 30% input memberi 2–5/10, 20% memberi 9–10/10. Miku memberi peringatan bila derau 3 detik pertama terlalu tinggi | Tidak muncul `[Oke Miku] Volume mikrofon terlalu tinggi …`. Bila muncul, turunkan volume input di Settings → System → Sound → Input sampai hilang, lalu catat nilainya |
+| Uji berpandu: `python experiments/wake_eval/live_guided.py --out hasil.json` | Angka yang sama dengan Linux (15 aba-aba; tidak ada aksi yang dijalankan) | "Oke Miku" ≥ 9/10, kalimat biasa 5/5 tidak memicu, perintah tertangkap (misalnya "buka Notepad") |
+| `python miku.py`: "Oke Miku" saja | Alur sapa lalu rekam. Di Windows, pendengar dan perekam sama-sama membuka input mikrofon (dua stream), belum pernah dicoba | Miku menjawab 「はい、何でしょうか？」, lalu permintaan berikutnya ("buka Notepad") dijalankan |
+| "Oke Miku, kecilkan volume ke tiga puluh" sekaligus | Perintah dipotong sesudah "Miku" (cap waktu kata Whisper) dan langsung diproses | Volume 30% tanpa sapaan; log `[Oke Miku] You: kecilkan volume ke 30` |
+| Kalimat biasa, misalnya "nanti malam hujan ya" | Tidak boleh memicu | Hanya baris `(terdengar: '…')` |
+| "Oke Miku" diucapkan saat Miku sedang bicara | Audio dibuang selama Miku merekam, memproses, atau bicara | Tidak memicu sesi baru |
+| Shortcut `Ctrl+Shift+M`, menyeret maskot, dan `python miku.py --trigger` | Jalur lama di loop yang sama, yang dipecah ulang di #43 | Ketiganya tetap mulai merekam |
+| GUI, tombol **Wake Phrase** ON lalu OFF | GUI memakai pendengar yang sama (bukan lagi potongan 1,8 s) | ON: "Oke Miku" → sapaan lalu rekam, atau perintah langsung jalan. OFF: tidak bereaksi lagi |
+| Diam 3 menit dengan pendengar aktif | Whisper hanya jalan saat ada ucapan | Task Manager: CPU proses ±5% atau kurang, GPU diam |
+| Keluar (Ctrl+C atau menu maskot → Exit) | Stream mikrofon pendengar ditutup | Tanpa error; aplikasi lain bisa memakai mikrofon |
 
 ## 3. Keputusan yang dibutuhkan dari user
 
