@@ -433,7 +433,13 @@ class SystemControl:
         except Exception as e:
             return False, f"Gagal eksekusi CDP browser: {e}"
 
-    @registry.register(name="media_control", description="Mengontrol pemutaran media pada komputer (bisa Play/Pause/Jeda musik Spotify maupun video YouTube). Isi parameter `action_type` dengan: 'play', 'pause', 'next' (berikutnya), atau 'prev' (sebelumnya).")
+    # Tanpa "tidak perlu judul lagu" dan frasa Jepang, qwen3:4b menjawab 次の曲にして dengan "lagu apa?"
+    @registry.register(name="media_control",
+                       description="Mengontrol media yang sedang diputar (Spotify, YouTube, pemutar apa pun): "
+                                   "play/pause, lagu berikutnya, atau sebelumnya. Tidak perlu judul lagu. "
+                                   "`action_type`: 'play', 'pause', 'next' (次の曲/スキップ/lagu berikutnya/skip), "
+                                   "atau 'prev' (前の曲/lagu sebelumnya).",
+                       params={"action_type": "'play', 'pause', 'next', atau 'prev'"})
     def media_control(self, action_type: str) -> Tuple[bool, str]:
         """Controls system media playback (tombol media di Windows, MPRIS/playerctl di Linux)."""
         action_type = action_type.lower()
