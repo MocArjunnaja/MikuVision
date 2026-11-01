@@ -1,5 +1,6 @@
 """Backend desktop Linux: perintah yang dijalankan diperiksa, tidak ada yang benar-benar dijalankan."""
 
+import re
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -13,6 +14,7 @@ from core.desktop.linux import LinuxDesktop
 from core.desktop.windowing import WindowInfo
 from core.desktop.windows import WindowsDesktop
 from core.system_control import SystemControl
+from core.tools import registry
 
 
 def _done(stdout="", returncode=0):
@@ -340,6 +342,20 @@ def test_media_control_tool_messages(installed, run):
 
     assert success and "Play/Pause" in msg
     assert run.calls == [["playerctl", "play-pause"]]
+
+
+def test_media_control_accepts_every_action_its_schema_names(installed, run):
+    """Nilai action_type yang disebut skema untuk LLM semuanya dikenali fungsinya."""
+    installed.add("playerctl")
+    schema = registry.get_tool("media_control").to_openai_schema()["function"]
+    named = re.findall(r"'(\w+)'", schema["parameters"]["properties"]["action_type"]["description"])
+
+    assert named == ["play", "pause", "next", "prev"]
+    control = SystemControl(desktop=LinuxDesktop())
+    assert all(control.media_control(action)[0] for action in named)
+    assert run.calls == [["playerctl", "play-pause"]] * 2 + [["playerctl", "next"], ["playerctl", "previous"]]
+    # Tanpa frasa ini qwen3:4b-instruct bertanya "lagu apa?" (bench_skills.py regression)
+    assert "次の曲" in schema["description"]
 
 
 def test_japanese_text_is_pasted_from_clipboard(installed, monkeypatch):

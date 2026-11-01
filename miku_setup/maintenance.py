@@ -37,7 +37,8 @@ APP_ENTRIES = {
     ".gitattributes", ".github", ".gitignore", "CHANGELOG.md", "MikuVisionSetup.py", "README.md", "assets",
     "config.py", "core", "docs", "experiments", "gui.py", "install.bat", "install.ps1", "install.sh", "miku.py",
     "miku_setup", "miku_setup.spec", "models", "overrides-rvc.txt", "pytest.ini", "requirements-setup.txt",
-    "requirements.txt", "routines.example.yaml", "run.bat", "run.sh", "skills", "tests", "tools",
+    "requirements.txt", "routines.example.yaml", "run.bat", "run.sh", "settings.example.yaml", "skills", "tests",
+    "tools",
     ".venv", ".tools", "logs", "temp_audio", USER_DATA, "__pycache__", ".pytest_cache", ".ruff_cache",
 }
 # Sama dengan Test-RvcModelPresent di install.ps1; folder kosongnya ikut di zip rilis (.gitkeep)
