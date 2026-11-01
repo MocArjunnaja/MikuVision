@@ -116,6 +116,9 @@ def _no_real_screen(monkeypatch):
     for module, name in ((capture, "_grab"), (capture, "_x11_active_window"), (capture, "_win32_active_window"),
                          (ui_tree, "_run_helper"), (model, "_client")):
         monkeypatch.setattr(module, name, refuse)
+    # Jendela aktif "tidak terbaca": tool keyboard tidak ditolak kecuali test mengisinya sendiri
+    from core import safety
+    monkeypatch.setattr(safety, "_active_process_name", lambda: None)
 
 
 @pytest.fixture(autouse=True)

@@ -173,6 +173,42 @@ BLOCKED_HOTKEYS = {
 }
 
 
+# Terminal dan shell: teks yang diketik lalu Enter (atau tempel isi clipboard) langsung dijalankan
+# sebagai perintah. Miku yang salah dengar bisa mengetik "del", "rm", atau "format" di sana.
+TERMINAL_PROCESSES = {
+    "cmd", "powershell", "powershell_ise", "pwsh", "windowsterminal", "openconsole", "conhost", "wt",
+    "wsl", "wslhost", "bash", "mintty", "putty", "alacritty", "wezterm-gui", "kitty", "xterm", "urxvt",
+    "gnome-terminal-server", "gnome-terminal", "kgx", "konsole", "xfce4-terminal", "mate-terminal",
+    "lxterminal", "qterminal", "tilix", "terminator", "terminology", "sakura", "guake", "yakuake",
+}
+
+
+def _active_process_name() -> Optional[str]:
+    from core.vision.capture import active_window  # Pillow hanya dimuat saat dipakai
+    window = active_window()
+    if window is None or not window.pid:
+        return None
+    try:
+        return psutil.Process(window.pid).name()
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return None
+
+
+def terminal_focus_reason(process_name: Optional[str] = None) -> Optional[str]:
+    """Alasan menolak mengetik/menekan tombol karena jendela aktif adalah terminal, atau None.
+
+    process_name None = baca jendela yang sedang fokus. Tidak terbaca (Wayland) = tidak ditolak.
+    """
+    name = _active_process_name() if process_name is None else process_name
+    if not name:
+        return None
+    base = name.lower().removesuffix(".exe")
+    if base in TERMINAL_PROCESSES:
+        return (f"jendela aktif adalah terminal ({name}); di sana ketikan bisa dijalankan sebagai perintah. "
+                f"Ketik sendiri di terminal")
+    return None
+
+
 def normalize_keys(keys: Iterable[str]) -> List[str]:
     return [_KEY_ALIASES.get(k, k) for k in (str(k).strip().lower() for k in keys) if k]
 

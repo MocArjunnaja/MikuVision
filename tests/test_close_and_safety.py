@@ -454,6 +454,54 @@ def test_normal_hotkeys_still_work(monkeypatch):
     fake.hotkey.assert_called_once_with("ctrl", "c")
 
 
+@pytest.mark.parametrize("name", ["cmd.exe", "PowerShell.exe", "pwsh.exe", "WindowsTerminal.exe", "OpenConsole.exe",
+                                  "wsl.exe", "gnome-terminal-server", "konsole", "xfce4-terminal", "bash"])
+def test_terminals_are_recognized(name):
+    assert "terminal" in safety.terminal_focus_reason(name)
+
+
+@pytest.mark.parametrize("name", ["notepad.exe", "chrome.exe", "WINWORD.EXE", "Code.exe", "gedit", "firefox"])
+def test_other_windows_are_not_terminals(name):
+    assert safety.terminal_focus_reason(name) is None
+
+
+def test_unreadable_active_window_is_not_refused(monkeypatch):
+    monkeypatch.setattr(safety, "_active_process_name", lambda: None)  # Wayland, tanpa DISPLAY
+    assert safety.terminal_focus_reason() is None
+
+
+@pytest.mark.parametrize("call", [
+    lambda control: control.type_text("del /s /q C:\\Users\n"),
+    lambda control: control.press_key("enter"),
+    lambda control: control.hotkey(["ctrl", "v"]),
+])
+def test_keyboard_tools_refuse_a_focused_terminal(monkeypatch, call):
+    """Salah dengar tidak boleh berakhir sebagai perintah yang diketik dan dijalankan di terminal."""
+    fake = MagicMock()
+    monkeypatch.setattr(sc_module, "pyautogui", fake)
+    monkeypatch.setattr(safety, "_active_process_name", lambda: "powershell.exe")
+    desktop = WindowsDesktop()
+    monkeypatch.setattr(desktop, "type_text", MagicMock(return_value=(True, "diketik")))
+
+    success, message = call(SystemControl(desktop=desktop))
+
+    assert not success and "terminal" in message
+    assert not fake.mock_calls and not desktop.type_text.called
+
+
+def test_keyboard_tools_still_work_outside_a_terminal(monkeypatch):
+    fake = MagicMock()
+    monkeypatch.setattr(sc_module, "pyautogui", fake)
+    monkeypatch.setattr(safety, "_active_process_name", lambda: "notepad.exe")
+    desktop = WindowsDesktop()
+    monkeypatch.setattr(desktop, "type_text", MagicMock(return_value=(True, "diketik")))
+    control = SystemControl(desktop=desktop)
+
+    assert control.type_text("halo")[0] and control.press_key("enter")[0]
+    desktop.type_text.assert_called_once_with("halo")
+    fake.press.assert_called_once_with("enter")
+
+
 # ── Untuk LLM ──
 
 @pytest.mark.parametrize("text, tool", [

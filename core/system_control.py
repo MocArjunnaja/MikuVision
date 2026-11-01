@@ -41,7 +41,7 @@ from . import desktop as desktop_backend
 from .desktop.app_search import AppCache, AppLauncher
 from .tools import registry
 from .confirmation import ConfirmCallback, describe_action, requires_confirmation
-from .safety import blocked_hotkey_reason, miku_process_ids, normalize_keys
+from .safety import blocked_hotkey_reason, miku_process_ids, normalize_keys, terminal_focus_reason
 from .turn_log import TurnLogger
 
 # Waktu tunggu proses menutup diri sebelum dipaksa kill
@@ -604,6 +604,9 @@ class SystemControl:
         """Type text menggunakan keyboard automation"""
         if not PYAUTOGUI_AVAILABLE:
             return False, "PyAutoGUI not available"
+        blocked = terminal_focus_reason()
+        if blocked:
+            return False, f"Teks tidak diketik: {blocked}"
         
         try:
             # Kecepatan tetap (abaikan jeda dari LLM); di Linux teks non-ASCII lewat clipboard
@@ -616,6 +619,9 @@ class SystemControl:
         """Press a keyboard key"""
         if not PYAUTOGUI_AVAILABLE:
             return False, "PyAutoGUI not available"
+        blocked = terminal_focus_reason()
+        if blocked:
+            return False, f"Tombol {key} tidak ditekan: {blocked}"
         
         try:
             pyautogui.press(key)
@@ -637,6 +643,9 @@ class SystemControl:
         if not keys:
             return False, "Hotkey kosong"
         blocked = blocked_hotkey_reason(keys)
+        if blocked:
+            return False, f"Hotkey {'+'.join(keys)} tidak dijalankan: {blocked}"
+        blocked = terminal_focus_reason()  # mis. ctrl+v menempel perintah dari clipboard
         if blocked:
             return False, f"Hotkey {'+'.join(keys)} tidak dijalankan: {blocked}"
 
