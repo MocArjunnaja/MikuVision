@@ -35,6 +35,15 @@ Mulai v1.7.0 rilis melampirkan **`MikuVisionSetup-linux-x86_64`** di samping `Mi
   - Jendela password sistem muncul dan user mengisinya. `pkexec apt-get install -y xclip` lalu menjawab "xclip is already the newest version (0.13-3). 0 upgraded, 0 newly installed", dan installer selesai dalam 21 s tanpa error.
   - Sistem tidak berubah: versi `xclip` sama, dan riwayat apt kosong.
   - Belum: memasang Ollama sebagai root lewat `pkexec` (Ollama sudah ada di laptop ini).
+- **Cek ulang di Windows** (1 Nov; Windows 11, RTX 4050, skala 125%), dengan exe dari artifact `rilis-uji` PR #42 dan rilis uji yang disajikan `python -m http.server`:
+  - `install.ps1` pada `test/v1.7.0`: kode 0, `miku.py --test` lulus. `pytest` 704 lulus, 95 dilewati (sama dengan CI #42 dan #43).
+  - **Perbarui** (exe baru, instalasi 1.6.0-i4b): 1 menit 24 detik, argumen tetap `-Yes -Progress -StartMenu -SkipShortcut`, `data/` utuh, exe di `.tools` diganti.
+  - **Perbaiki dari Modify** (exe di `.tools`): exe PR #42 yang pertama menolak dengan "Tutup MikuVision dulu (MikuVisionSetup.exe masih berjalan)". Exe satu file di Windows juga dua proses, dan pengecualian "exe yang sama" dari IL2 hanya berlaku di Linux. Bug ini sudah ada sejak v1.6.0; uji v1.6.0 menjalankan Perbaiki dari exe di luar InstallDir, jadi tidak tertangkap. Diperbaiki untuk semua OS (`running_processes`, 2 test baru; tanpa perbaikan test `win32` gagal). Dengan exe dari build sesudahnya: masuk Perbaiki langsung, 1 menit 23 detik, kode 0. Versi terbaru dibaca dari GitHub (1.6.0).
+  - **Hapus** lewat `UninstallString` (salinan di Temp): 0 masalah; registry dan Start Menu hilang; shortcut Desktop clone git dan model di D: tidak tersentuh. **Tutup** dan **X** di halaman terakhir menutup jendela (diuji di dua kali Hapus).
+  - **Pasang lagi** ke folder yang tinggal berisi `data/`: 9,5 menit dari nol, kode 0, tercatat lagi.
+  - Log hanya berbeda di tanda kutip `Tercatat di "Apps & features"`.
+  - Teks di bawah "Hapus juga percakapan…" terpotong di Windows ("dipasang d"); lebar 470 px sekarang berlaku untuk semua OS.
+  - `notes_url` di `version.json` build pull request menjadi `releases/tag/42/merge` (tidak dipakai wizard; rilis bertag tidak terpengaruh).
 - **Belum diuji:** distro selain Mint. Teman pengguna Arch bisa mencoba artifact `rilis-uji` (atau rilis v1.7.0); hasilnya dicatat di sini.
 
 ---
