@@ -7,6 +7,11 @@ ada di core/desktop/; modul ini memegang logika bersama: konfirmasi, pelacakan P
 dan cara menutup aplikasi dengan sopan.
 """
 
+import json
+import re
+import urllib.error
+import urllib.parse
+import urllib.request
 import webbrowser
 import os
 import sys
@@ -31,14 +36,47 @@ except (ImportError, NotImplementedError):  # pygetwindow di Linux: NotImplement
     if sys.platform == "win32":
         print("[SystemControl] Warning: Some Windows modules not available")
 
-from config import APP_CACHE_FILE, COMMON_WEBSITES
+from config import APP_CACHE_FILE, COMMON_WEBSITES, TURN_LOG_DIR
 from . import desktop as desktop_backend
 from .desktop.app_search import AppCache, AppLauncher
 from .tools import registry
 from .confirmation import ConfirmCallback, describe_action, requires_confirmation
+from .safety import blocked_hotkey_reason, miku_process_ids, normalize_keys
+from .turn_log import TurnLogger
 
 # Waktu tunggu proses menutup diri sebelum dipaksa kill
 CLOSE_TIMEOUT_SEC = 5
+
+# Aksi berisiko (yang butuh konfirmasi) dan hasilnya dicatat di data/logs/actions_YYYYMMDD.jsonl
+ACTION_LOG = TurnLogger(TURN_LOG_DIR, prefix="actions")
+
+# Chrome DevTools Protocol: browser Chromium (Chrome, Edge, Brave) yang dibuka dengan
+# --remote-debugging-port=9222. Hanya localhost.
+CDP_URL = "http://localhost:9222"
+CDP_TIMEOUT_SEC = 3
+CDP_SETUP_HINT = ("Tutup SEMUA jendela browser (Chrome/Edge/Brave) lalu buka lagi dengan opsi "
+                  "--remote-debugging-port=9222, misalnya di shortcut-nya: chrome.exe --remote-debugging-port=9222")
+
+# Kata yang cocok dengan hampir semua tab; menutup "tab browser" berarti close_application
+_GENERIC_TAB_WORDS = {"tab", "tabs", "browser", "chrome", "edge", "brave", "firefox", "http", "https",
+                      "www", "com", "web", "website", "situs", "halaman", "page", "タブ", "ブラウザ"}
+
+# close_window menolak bila judulnya cocok dengan lebih banyak jendela dari ini
+MAX_WINDOWS_PER_CLOSE = 3
+
+
+def _process_name(pid: int) -> str:
+    try:
+        return psutil.Process(pid).name()
+    except (psutil.NoSuchProcess, psutil.AccessDenied, ValueError):
+        return ""
+
+
+def _tab_keyword(match: str) -> str:
+    """'tab YouTube' / 'YouTubeのタブ' / 'youtube.com' -> kata yang dicari di judul/alamat tab."""
+    text = re.sub(r"(の)?(タブ|ブラウザ)", " ", (match or "").strip().lower())
+    words = [w for w in text.split() if w not in _GENERIC_TAB_WORDS]
+    return " ".join(words)
 
 try:
     from .automation_layer import AutomationManager
@@ -206,7 +244,11 @@ class SystemControl:
                 print(f"[SystemControl] Gagal kill PID {proc.pid}: {e}")
         return len(gone), still_open
 
-    @registry.register("Close an application by name")
+    @registry.register("Close (quit) a desktop application by name, with all its windows: Notepad, Calculator, "
+                       "Spotify, VLC, or a whole browser. E.g. 'メモ帳を閉じて', '電卓を終了して', 'tutup notepad', "
+                       "'tutup aplikasi spotify'. For a website or browser tab (YouTube, Netflix) use "
+                       "close_browser_tab; for one window by its title use close_window.",
+                       params={"app_name": "Application name in English, e.g. 'Notepad', 'Calculator', 'Chrome'."})
     def close_application(self, app_name: str) -> Tuple[bool, str]:
         """Close an application by exact process name (no substring match)"""
         if not app_name or not app_name.strip():
@@ -230,7 +272,17 @@ class SystemControl:
                 procs.setdefault(proc.pid, proc)
 
         if not procs:
+            # "YouTube閉じて" yang dikirim sebagai aplikasi: YouTube adalah tab browser
+            if app_name.strip().lower() in COMMON_WEBSITES:
+                return self.close_browser_tab(app_name)
             return False, f"Tidak menemukan proses {app_name}"
+
+        # cmd, terminal, atau VS Code yang menjalankan MikuVision: menutupnya ikut mematikan Miku
+        miku = miku_process_ids()
+        hosting = [proc for proc in procs.values() if proc.pid in miku]
+        if hosting:
+            return False, (f"{app_name} sedang menjalankan MikuVision (PID {hosting[0].pid}); "
+                           "menutupnya ikut mematikan Miku, jadi tidak ditutup")
 
         closed, still_open = self._close_processes(list(procs.values()))
         if still_open:
@@ -241,6 +293,91 @@ class SystemControl:
         if closed:
             return True, f"Menutup {app_name} ({closed} proses)"
         return False, f"Gagal menutup {app_name}"
+
+    @registry.register("Close one window by part of its title, like pressing its X button (the app can still "
+                       "ask to save): a document, a folder window, a video or media player window. E.g. "
+                       "'レポートのウィンドウを閉じて', 'tutup jendela Downloads', 'tutup jendela laporan.docx'. "
+                       "To quit a whole app use close_application; for a browser tab use close_browser_tab.",
+                       params={"title": "Part of the window title as the user said it, e.g. 'Downloads', 'laporan'."})
+    def close_window(self, title: str) -> Tuple[bool, str]:
+        """Tutup jendela yang judulnya mengandung `title` (WM_CLOSE / _NET_CLOSE_WINDOW, tanpa kill)."""
+        fragment = (title or "").strip().lower()
+        if len(fragment) < 2:
+            return False, "Sebutkan sebagian judul jendela yang mau ditutup (minimal 2 huruf)"
+        if not self.desktop.can_close_windows:
+            return False, f"Menutup jendela belum didukung di sistem ini; tutup '{title}' lewat tombol X-nya"
+
+        matching = [w for w in self.desktop.list_windows() if w.title and fragment in w.title.lower()]
+        if not matching:
+            return False, f"Tidak ada jendela yang judulnya mengandung '{title}'"
+        # Jendela Miku sendiri, terminal yang menjalankannya, desktop, dan taskbar tidak pernah ditutup
+        miku = miku_process_ids()
+        allowed = [w for w in matching
+                   if w.pid not in miku and "mikuvision" not in w.title.lower()
+                   and not self.desktop.is_shell_window(w, _process_name(w.pid))]
+        if not allowed:
+            return False, (f"Jendela '{matching[0].title}' milik desktop/sistem atau MikuVision sendiri, "
+                           "jadi tidak ditutup")
+        if len(allowed) > MAX_WINDOWS_PER_CLOSE:
+            titles = "; ".join(w.title for w in allowed[:5])
+            return False, (f"'{title}' cocok dengan {len(allowed)} jendela ({titles}). "
+                           "Tanyakan user judul yang lebih spesifik")
+
+        for window in allowed:
+            self.desktop.close_window(window.id)
+        skipped = len(matching) - len(allowed)
+        note = f" ({skipped} jendela sistem/Miku dilewati)" if skipped else ""
+        return True, f"Perintah tutup dikirim ke jendela: {'; '.join(w.title for w in allowed)}{note}"
+
+    def _cdp_tabs(self) -> list:
+        """Tab halaman browser lewat CDP; URLError/OSError bila browser tidak dibuka dengan port 9222."""
+        with urllib.request.urlopen(f"{CDP_URL}/json", timeout=CDP_TIMEOUT_SEC) as response:
+            return [t for t in json.loads(response.read().decode()) if t.get("type") == "page"]
+
+    def _cdp_close(self, tab_id: str):
+        url = f"{CDP_URL}/json/close/{urllib.parse.quote(tab_id)}"
+        try:
+            urllib.request.urlopen(url, timeout=CDP_TIMEOUT_SEC).close()
+        except urllib.error.HTTPError as e:
+            # Versi Chrome yang menolak GET untuk endpoint /json/*
+            if e.code != 405:
+                raise
+            urllib.request.urlopen(urllib.request.Request(url, method="PUT"), timeout=CDP_TIMEOUT_SEC).close()
+
+    @registry.register("Close browser tabs whose title or address contains `match`, without closing the "
+                       "browser: a YouTube, Netflix, or any site tab. E.g. 'YouTube閉じて', 'YouTubeのタブを閉じて', "
+                       "'tutup youtube', 'tutup tab youtube', 'close the Netflix tab'.",
+                       params={"match": "Site name in Latin letters as in its address (ユーチューブ -> 'youtube'), "
+                                        "or part of the tab title, e.g. 'youtube', 'netflix', 'github.com'. "
+                                        "Never empty."})
+    def close_browser_tab(self, match: str) -> Tuple[bool, str]:
+        """Tutup tab yang cocok lewat CDP; tanpa CDP hanya memberi tahu jendela browser yang cocok."""
+        keyword = _tab_keyword(match)
+        if len(keyword) < 2:
+            return False, ("Sebutkan situs atau judul tab yang mau ditutup, misalnya 'youtube'. "
+                           "Untuk menutup seluruh browser pakai close_application")
+        try:
+            tabs = self._cdp_tabs()
+        except (urllib.error.URLError, OSError, ValueError):
+            windows = [w.title for w in self.desktop.list_windows() if keyword in w.title.lower()]
+            hint = (f" Jendela browser yang cocok: '{windows[0]}'; close_window('{keyword}') menutup seluruh "
+                    "jendela itu beserta semua tabnya.") if windows else ""
+            return False, f"Tab browser tidak bisa ditutup satu per satu tanpa CDP. {CDP_SETUP_HINT}.{hint}"
+
+        matching = [t for t in tabs
+                    if keyword in t.get("title", "").lower() or keyword in t.get("url", "").lower()]
+        if not matching:
+            return False, f"Tidak ada tab browser yang judul/alamatnya mengandung '{match}'"
+        closed = []
+        for tab in matching:
+            try:
+                self._cdp_close(tab["id"])
+                closed.append(tab.get("title") or tab.get("url", ""))
+            except (urllib.error.URLError, OSError, KeyError) as e:
+                print(f"[SystemControl] Gagal menutup tab {tab.get('title')!r}: {e}")
+        if not closed:
+            return False, f"Gagal menutup tab '{match}' lewat CDP"
+        return True, f"Menutup {len(closed)} tab: {'; '.join(closed[:3])}"
 
     @registry.register("Open a specific local folder or directory path in the file manager. E.g. 'Desktop', 'Downloads', atau nama folder spesifik.")
     def open_folder(self, folder_name_or_path: str) -> Tuple[bool, str]:
@@ -373,24 +510,14 @@ class SystemControl:
     @registry.register(name="browser_media_control", description="Mengontrol tab YouTube/Media spesifik di browser menggunakan Chrome DevTools Protocol (CDP) port 9222. Bisa untuk play/pause tab YouTube spesifik jika ada 2 tab menyala bersamaan. Parameter 'action' isi dengan 'play' atau 'pause'. Parameter 'target_title' isi kata kunci judul tab-nya, misal 'Podcast' atau biarkan kosong untuk semua YouTube.")
     def browser_media_control(self, action: str = "pause", target_title: str = "YouTube") -> Tuple[bool, str]:
         """Tingkat Dewa: Mengontrol media browser via CDP/WebSocket"""
-        import json
-        import urllib.request
         try:
             import websocket
         except ImportError:
             return False, "Modul 'websocket-client' belum terinstall."
 
         try:
-            # Dapatkan list semua tab web dari Chrome CDP
-            req = urllib.request.Request('http://localhost:9222/json')
-            with urllib.request.urlopen(req, timeout=3) as response:
-                tabs = json.loads(response.read().decode())
-            
             # Cari filter tab YouTube yang cocok
-            matching_tabs = [
-                t for t in tabs 
-                if t.get('type') == 'page' and target_title.lower() in t.get('title', '').lower()
-            ]
+            matching_tabs = [t for t in self._cdp_tabs() if target_title.lower() in t.get('title', '').lower()]
             
             if not matching_tabs:
                 return False, f"Tidak ada tab browser aktif yang judulnya mengandung '{target_title}'."
@@ -506,9 +633,12 @@ class SystemControl:
         # pyautogui.hotkey(*"ctrl+c") menekan tiap karakter satu per satu.
         if isinstance(keys, str):
             keys = keys.split("+")
-        keys = [k.strip().lower() for k in keys if k and k.strip()]
+        keys = normalize_keys(k for k in keys if k)
         if not keys:
             return False, "Hotkey kosong"
+        blocked = blocked_hotkey_reason(keys)
+        if blocked:
+            return False, f"Hotkey {'+'.join(keys)} tidak dijalankan: {blocked}"
 
         try:
             pyautogui.hotkey(*keys)
@@ -552,15 +682,22 @@ class SystemControl:
     def execute_action(self, action: str, params: Dict[str, Any]) -> Tuple[bool, str]:
         """Execute an action dynamically via registry"""
         params = params or {}
-        if requires_confirmation(action):
+        risky = requires_confirmation(action, params)
+        if risky:
             summary = describe_action(action, params)
             approved = bool(self.confirm_callback and self.confirm_callback(summary))
             if not approved:
+                ACTION_LOG.log({"action": action, "params": params, "approved": False})
                 return False, f"Dibatalkan, user tidak mengonfirmasi: {summary}"
 
         result = registry.execute(action, self, params)
         if isinstance(result, tuple) and len(result) == 2:
-            return result
-        # Macro tools mengembalikan string; pesan "Gagal..." jangan dilaporkan sebagai sukses
-        text = str(result)
-        return not text.startswith("Gagal"), text
+            success, message = result
+        else:
+            # Macro tools mengembalikan string; pesan "Gagal..." jangan dilaporkan sebagai sukses
+            message = str(result)
+            success = not message.startswith("Gagal")
+        if risky:
+            ACTION_LOG.log({"action": action, "params": params, "approved": True,
+                            "success": success, "result": message})
+        return success, message

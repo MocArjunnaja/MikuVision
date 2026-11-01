@@ -10,6 +10,7 @@ from core import macro_tools
 from core import system_control as sc_module
 from core.desktop import linux
 from core.desktop.linux import LinuxDesktop
+from core.desktop.windowing import WindowInfo
 from core.desktop.windows import WindowsDesktop
 from core.system_control import SystemControl
 
@@ -196,10 +197,12 @@ def test_open_website_unknown_dotless_name_is_not_opened(installed, spawned, mon
 # ── Menutup aplikasi ──
 
 # conftest mengganti keduanya saat test berjalan; ambil kode aslinya saat modul di-import
-_ORIGINAL = {"windows_by_pid": LinuxDesktop.windows_by_pid, "close_window": LinuxDesktop.close_window}
+_ORIGINAL = {"windows_by_pid": LinuxDesktop.windows_by_pid, "close_window": LinuxDesktop.close_window,
+             "list_windows": LinuxDesktop.list_windows}
 
 
-def test_wmctrl_window_list_is_parsed(run):
+def test_wmctrl_window_list_is_parsed(run, monkeypatch):
+    monkeypatch.setattr(LinuxDesktop, "list_windows", _ORIGINAL["list_windows"])
     run.replies["wmctrl"] = _done(
         "0x05400003  0 4321   laptop MikuVision - Hatsune Miku\n"
         "0x04a00007  0 999    laptop Untitled - xed\n"
@@ -211,6 +214,20 @@ def test_wmctrl_window_list_is_parsed(run):
 
     assert found == {999: ["0x04a00007", "0x04a0000b"], 0: ["0x03c00001"]}
     assert run.calls == [["wmctrl", "-lp"]]
+
+
+def test_wmctrl_window_titles_and_desktops_are_parsed(run):
+    run.replies["wmctrl"] = _done(
+        "0x04a00007  0 999    laptop Untitled - xed\n"
+        "0x0480000b -1 1200   laptop Desktop\n"
+        "0x03c00001  0 0      laptop\n"
+    )
+
+    windows = _ORIGINAL["list_windows"](LinuxDesktop())
+
+    assert windows == [WindowInfo("0x04a00007", "Untitled - xed", 999, "0"),
+                       WindowInfo("0x0480000b", "Desktop", 1200, "-1"),
+                       WindowInfo("0x03c00001", "", 0, "0")]
 
 
 def test_close_window_is_polite(run):

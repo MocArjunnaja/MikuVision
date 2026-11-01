@@ -6,15 +6,18 @@ luar komputer (kirim pesan) atau mematikan proses tidak boleh jalan otomatis.
 """
 
 import re
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 # Callback UI: terima ringkasan aksi, kembalikan True jika user setuju.
 ConfirmCallback = Callable[[str], bool]
 
+# Mengirim keluar, atau menutup sesuatu (pekerjaan yang belum disimpan bisa hilang)
 CONFIRM_REQUIRED_ACTIONS = {
     "send_whatsapp_message",
     "send_telegram_message",
     "close_application",
+    "close_window",
+    "close_browser_tab",
 }
 
 # Negasi dicek lebih dulu karena "いいえ" mengandung "いい".
@@ -24,7 +27,10 @@ _NEGATIVE_WORDS = {"tidak", "nggak", "gak", "enggak", "jangan", "batal", "no", "
 _POSITIVE_WORDS = {"ya", "iya", "yes", "boleh", "oke", "ok", "okay", "lanjut", "kirim", "betul", "benar", "silakan", "y"}
 
 
-def requires_confirmation(action: str) -> bool:
+def requires_confirmation(action: str, params: Optional[Dict[str, Any]] = None) -> bool:
+    if action == "edit_word_document":
+        # Menghapus teks dari dokumen tidak bisa dibatalkan dari Miku; append/replace tidak ditanya
+        return str((params or {}).get("action", "")).lower() == "delete"
     return action in CONFIRM_REQUIRED_ACTIONS
 
 
@@ -39,6 +45,13 @@ def describe_action(action: str, params: Dict[str, Any]) -> str:
             f"Tutup aplikasi '{params.get('app_name', '?')}' "
             "(SEMUA jendelanya ikut ditutup, termasuk yang tidak dibuka Miku)"
         )
+    if action == "close_window":
+        return f"Tutup jendela yang judulnya mengandung '{params.get('title', '?')}'"
+    if action == "close_browser_tab":
+        return f"Tutup tab browser yang judul/alamatnya mengandung '{params.get('match', '?')}' (semua yang cocok)"
+    if action == "edit_word_document":
+        return (f"Hapus teks \"{params.get('target_text', '')}\" dari dokumen "
+                f"'{params.get('filename', '?')}'")
     return f"{action} {params}"
 
 

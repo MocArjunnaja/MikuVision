@@ -29,14 +29,15 @@ SKILLS: Tuple[Skill, ...] = (
           ("get_volume", "set_volume", "mute", "media_control"),
           _p(r"音量|ボリューム|ミュート|音を|再生|停止|一時停止|次の曲|前の曲"
              r"|volume|suara|\bmute|unmute|lagu|musik|play|pause|next|prev")),
-    Skill("apps", "Aplikasi & folder", "Buka/tutup aplikasi dan folder",
-          ("open_application", "close_application", "open_folder"),
-          _p(r"開いて|開けて|閉じて|起動|終了|アプリ|フォルダ|メモ帳|電卓"
-             r"|\bbuka|tutup|aplikasi|folder|\bopen|\bclose|notepad|calculator|kalkulator"
+    Skill("apps", "Aplikasi & folder", "Buka/tutup aplikasi, jendela, tab browser, dan folder",
+          ("open_application", "close_application", "close_window", "close_browser_tab", "open_folder"),
+          _p(r"開いて|開けて|閉じて|起動|終了|アプリ|フォルダ|メモ帳|電卓|ウィンドウ|タブ"
+             r"|\bbuka|tutup|aplikasi|folder|jendela|\bopen|\bclose|\btab\b|window|notepad|calculator|kalkulator"
              r"|chrome|edge|firefox|brave|word|excel|powerpoint|vscode|explorer|spotify|discord|whatsapp|telegram"
              r"|terminal|settings")),
     Skill("web", "Web & pencarian", "Situs, Google, YouTube, Spotify, kontrol tab browser",
-          ("open_website", "google_search", "youtube_search", "spotify_search", "browser_media_control"),
+          ("open_website", "google_search", "youtube_search", "spotify_search", "browser_media_control",
+           "close_browser_tab"),
           _p(r"検索|探して|サイト|ユーチューブ|グーグル|ブラウザ|動画"
              r"|youtube|google|spotify|website|situs|\bcari|carikan|browser|video|\burl")),
     Skill("keyboard", "Keyboard", "Mengetik, tombol, shortcut",

@@ -63,6 +63,7 @@ def _no_real_desktop(monkeypatch):
     from core.desktop import linux, windows
     for backend in (linux.LinuxDesktop, windows.WindowsDesktop):
         monkeypatch.setattr(backend, "windows_by_pid", lambda self, pids: {})
+        monkeypatch.setattr(backend, "list_windows", lambda self: [])
         monkeypatch.setattr(backend, "close_window", lambda self, window: None)
         monkeypatch.setattr(backend, "can_close_windows", property(lambda self: True))
         # Menu aplikasi sistem kosong; test yang butuh mengisinya sendiri
@@ -119,9 +120,18 @@ def _no_real_screen(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _isolated_app_cache(monkeypatch, tmp_path):
-    """Test tidak boleh membaca/menulis cache aplikasi asli di data/."""
+    """Test tidak boleh membaca/menulis cache aplikasi asli di data/, mengisi log aksi asli, atau
+    menyentuh browser sungguhan lewat CDP (localhost:9222)."""
     from core import system_control
+    from core.turn_log import TurnLogger
     monkeypatch.setattr(system_control, "APP_CACHE_FILE", tmp_path / "app_cache.json")
+    monkeypatch.setattr(system_control, "ACTION_LOG", TurnLogger(tmp_path / "logs", prefix="actions"))
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("Test memanggil CDP browser sungguhan")
+
+    monkeypatch.setattr(system_control.SystemControl, "_cdp_tabs", refuse)
+    monkeypatch.setattr(system_control.SystemControl, "_cdp_close", refuse)
 
 
 @pytest.fixture(autouse=True)

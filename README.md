@@ -28,10 +28,10 @@ Mendengar suara Anda, berpikir dengan LLM lokal, menjalankan aksi di komputer, l
 | | |
 |---|---|
 | **Suara dua arah** | Faster-Whisper mendengar bahasa Jepang dan Indonesia; MeloTTS Jepang + RVC untuk suara khas Miku |
-| **Aksi di komputer** | Volume, buka/tutup aplikasi apa pun, folder, situs, YouTube, dokumen Word/PowerPoint lengkap dengan isinya, WhatsApp/Telegram, keyboard |
+| **Aksi di komputer** | Volume, buka/tutup aplikasi apa pun, tutup jendela atau tab browser (YouTube), folder, situs, YouTube, dokumen Word/PowerPoint lengkap dengan isinya, WhatsApp/Telegram, keyboard |
 | **Membaca layar** | "error apa ini?", "bacakan tulisan di layar": Miku melihat jendela yang aktif lewat model visi lokal. Hanya melihat, tidak mengklik |
 | **LLM lokal** | `qwen3:4b-instruct` lewat Ollama dengan tool calling, balasan ±1 detik di RTX 4050 |
-| **Aman** | Aksi berisiko (kirim pesan, menutup aplikasi) selalu minta konfirmasi; aplikasi ditutup dengan sopan seperti tombol ✕ |
+| **Aman** | Aksi berisiko (kirim pesan, menutup aplikasi/jendela/tab) selalu minta konfirmasi dan dicatat; aplikasi ditutup dengan sopan seperti tombol ✕; dokumen hanya ditulis di `Miku_Documents` tanpa menimpa file lama |
 | **Ingatan, routine & skill** | Memori jangka panjang (`"ingat ya, ..."`), lanjutkan sesi lama, satu perintah untuk banyak aksi (`"jalankan mode belajar"`), dan skill yang disimpan dari percakapan (`"simpan ini sebagai skill"`) |
 | **"Oke Miku"** | Panggil Miku dengan suara, tanpa menyentuh keyboard: "Oke Miku" saja, atau langsung dengan perintahnya ("Oke Miku, kecilkan volume ke tiga puluh"). Pendengarnya jalan di komputer Anda; Whisper hanya bekerja saat ada ucapan |
 | **Maskot** | Sprite Miku beranimasi sesuai emosi, di GUI maupun sebagai maskot desktop; `Ctrl+Shift+M` untuk mulai bicara dari aplikasi mana pun |
@@ -106,8 +106,10 @@ Setup yang dibuka lagi (atau **Modify** di "Apps & features") menawarkan **Perba
 
 **Membaca layar:** "error apa ini?", "bacakan tulisan di layar", 「画面に何が表示されてる？」. Miku melihat jendela yang sedang aktif (bila yang aktif jendela GUI Miku sendiri, seluruh layar), jadi paling enak lewat maskot atau `Ctrl+Shift+M` sambil jendela yang ditanyakan tetap aktif. Butuh model visi `qwen3-vl:4b-instruct`, yang dimuat hanya saat itu; satu giliran ±10–15 s. Di Linux, "tombol apa saja di jendela ini?" dibaca dari pohon aksesibilitas tanpa model visi (±3 s).
 
+**Menutup:** "tutup notepad" / 「メモ帳を閉じて」 menutup aplikasinya, "tutup jendela Downloads" satu jendela menurut judulnya, dan "tutup tab youtube" / 「YouTube閉じて」 hanya tab browser yang cocok. Tab hanya bisa ditutup satu per satu bila Chrome/Edge/Brave dibuka dengan `--remote-debugging-port=9222` (tutup semua jendela browser dulu, lalu buka lewat shortcut dengan opsi itu); tanpa itu Miku memberi tahu jendela browser yang cocok dan tidak menutup apa pun. Firefox belum didukung. Miku tidak pernah menutup dirinya sendiri, terminal yang menjalankannya, desktop/taskbar, atau proses sistem.
+
 > [!IMPORTANT]
-> Aksi berisiko (kirim WhatsApp/Telegram, menutup aplikasi) **selalu meminta konfirmasi**: `y/n` di mode teks, "ya/はい" di mode suara, atau dialog Yes/No di GUI.
+> Aksi berisiko (kirim WhatsApp/Telegram, menutup aplikasi, jendela, atau tab, menghapus teks dokumen) **selalu meminta konfirmasi**: `y/n` di mode teks, "ya/はい" di mode suara, atau dialog Yes/No di GUI. Setiap aksi itu dan jawabannya dicatat di `data/logs/actions_YYYYMMDD.jsonl`.
 
 **Routine:** salin `routines.example.yaml` ke `data/routines.yaml` lalu ubah isinya; jalankan dengan ucapan ("jalankan mode belajar", "勉強モードにして") atau `/routine mode belajar`.
 
