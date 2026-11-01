@@ -256,6 +256,23 @@ def test_config_value(tmp_path, name):
     assert _bash(tmp_path, f"config_value {name}").stdout.strip() == expected
 
 
+@pytest.mark.parametrize("line, expected", [
+    ("OLLAMA_MODEL: qwen3:8b", "qwen3:8b"),
+    ('OLLAMA_MODEL: "qwen3:14b"   # lebih pintar, butuh VRAM lebih', "qwen3:14b"),
+    ("  OLLAMA_MODEL: 'llama3.1:8b'", "llama3.1:8b"),
+    ("# OLLAMA_MODEL: qwen3:8b", None),   # dikomentari: nilai config.py
+    ("VISION_MODEL: qwen3-vl:8b-instruct", None),
+])
+def test_config_value_prefers_user_settings(tmp_path, line, expected):
+    """data/settings.yaml (tetap ada setelah Perbarui) menimpa config.py, jadi model pilihan user ikut diunduh."""
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "settings.yaml").write_text(line + "\n", encoding="utf-8")
+    shutil.copy(ROOT / "config.py", tmp_path / "config.py")
+    default = re.search(r'^OLLAMA_MODEL = "([^"]+)"', (ROOT / "config.py").read_text(encoding="utf-8"), re.M).group(1)
+    out = _bash(tmp_path, f'ROOT="{tmp_path}"\nconfig_value OLLAMA_MODEL').stdout.strip()
+    assert out == (expected or default)
+
+
 def _rvc_files(tmp_path, model_name="miku.pth", index_name="trained_v2.index"):
     source = tmp_path / "unduhan"
     source.mkdir()

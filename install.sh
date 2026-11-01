@@ -293,7 +293,16 @@ rvc_model_present() {
 
 # Nilai string di config.py, misalnya config_value OLLAMA_MODEL -> qwen3:4b-instruct
 config_value() {
-    sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$ROOT/config.py" | head -n1
+    # data/settings.yaml (pengaturan user, tetap ada setelah Perbarui) menimpa config.py
+    local value=""
+    if [ -f "$ROOT/data/settings.yaml" ]; then
+        value="$(sed -n "s/^[[:space:]]*$1[[:space:]]*:[[:space:]]*[\"']\{0,1\}\([^\"'#[:space:]]*\).*/\1/p" \
+            "$ROOT/data/settings.yaml" | head -n1)"
+    fi
+    if [ -z "$value" ]; then
+        value="$(sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$ROOT/config.py" | head -n1)"
+    fi
+    printf '%s\n' "$value"
 }
 
 # Nilai $1 (HF_HOME, OLLAMA_MODELS) di MODEL_ENV_FILE, atau kosong

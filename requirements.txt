@@ -28,6 +28,7 @@ pygame>=2.5.0
 pyautogui>=0.9.54        # Linux: hanya sesi X11
 psutil>=5.9.0
 websocket-client>=1.6.0  # browser_media_control (Chrome DevTools Protocol)
+PyYAML>=6.0              # data/settings.yaml dan routine (sebelumnya hanya ikut terpasang lewat paket lain)
 
 # Khusus Windows. pywin32 tidak punya paket Linux, pygetwindow melempar
 # NotImplementedError di Linux, dan keyboard di Linux butuh root.

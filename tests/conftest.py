@@ -5,6 +5,7 @@ bisa dites tanpa hardware dan tanpa Ollama.
 
 import http.server
 import importlib
+import os
 import sys
 import threading
 import types
@@ -13,6 +14,9 @@ from unittest.mock import MagicMock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+
+# Test tidak boleh terpengaruh data/settings.yaml milik pengembang (config.py membacanya saat di-import)
+os.environ["MIKUVISION_SETTINGS"] = str(ROOT / "tests" / "settings-tidak-ada.yaml")
 
 # Daftarkan package `core` tanpa menjalankan core/__init__.py,
 # yang meng-import seluruh modul suara/GUI.
