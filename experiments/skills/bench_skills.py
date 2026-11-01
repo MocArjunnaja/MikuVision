@@ -8,6 +8,7 @@ import json
 import statistics
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 sys.path.insert(0, ".")
@@ -132,10 +133,13 @@ def main(runs: int, only: str = ""):
     for label, loader in variants if not only or only == "regression" else ():
         user_skills.load_user_skills = loader
         ok = no_skill = 0
+        latencies = []
         try:
             for text, want in REGRESSION:
                 for _ in range(runs):
+                    start = time.perf_counter()
                     brain, reply, calls = run(text)
+                    latencies.append(time.perf_counter() - start)
                     names = [c["action"] for c in calls]
                     no_skill += not brain.turn_user_skills
                     ok += want in names
@@ -145,7 +149,8 @@ def main(runs: int, only: str = ""):
         finally:
             user_skills.load_user_skills = original
         summary[f"regression_{label}"] = {"no_user_skill": f"{no_skill}/{len(REGRESSION) * runs}",
-                                          "correct": f"{ok}/{len(REGRESSION) * runs}"}
+                                          "correct": f"{ok}/{len(REGRESSION) * runs}",
+                                          "latency_median_s": round(statistics.median(latencies), 2)}
     summary["prompt_tokens_median"] = {k: int(statistics.median(v)) for k, v in tokens.items() if v}
     print(json.dumps(summary, ensure_ascii=False))
 

@@ -1,0 +1,48 @@
+# Pengaturan MikuVision milik Anda.
+#
+# Salin file ini ke data/settings.yaml, lalu hapus tanda # di depan baris yang ingin diubah.
+# data/ tidak pernah ditimpa oleh Perbarui (MikuVision Setup) maupun git pull, jadi pilihan Anda tetap ada.
+# Kunci yang tidak ditulis memakai nilai bawaan di config.py (nilai di bawah ini adalah bawaannya).
+# Nilai yang salah tipe atau kunci yang tidak dikenal dilewati dengan pesan di konsol.
+#
+# Setelah mengganti model, jalankan Setup -> Perbaiki (atau install.bat / ./install.sh) supaya
+# model barunya diunduh, lalu buka ulang MikuVision. Panduan memilih model: docs/CUSTOMIZE.md
+
+# ---- Otak Miku (LLM lewat Ollama) ----
+# Harus model Ollama yang mendukung tool calling. Prompt dan contoh disetel untuk qwen3:4b-instruct.
+# Ukuran unduhan: qwen3:4b-instruct 2,5 GB; qwen3:8b 5,2 GB; qwen3:14b 9,3 GB.
+# qwen3:8b dan 14b memakai mode berpikir: untuk itu isi OLLAMA_THINK: false.
+# OLLAMA_MODEL: qwen3:4b-instruct
+# OLLAMA_THINK: null
+# OLLAMA_NUM_CTX: 8192
+# OLLAMA_KEEP_ALIVE: -1
+# OLLAMA_TIMEOUT_SEC: 120
+# OLLAMA_BASE_URL: http://localhost:11434
+
+# ---- Membaca layar (model visi, dimuat hanya saat ditanya tentang layar) ----
+# qwen3-vl:2b-instruct 1,9 GB; qwen3-vl:4b-instruct 3,3 GB; qwen3-vl:8b-instruct 6,2 GB.
+# VISION_MODEL: qwen3-vl:4b-instruct
+# VISION_NUM_CTX: 4096
+# VISION_MAX_IMAGE_SIDE: 1280
+# VISION_NUM_GPU: 999
+
+# ---- Pendengaran (Faster-Whisper) ----
+# tiny, base, small, medium, large-v3, large-v3-turbo, atau path folder model CTranslate2.
+# Tanpa GPU NVIDIA, small atau medium jauh lebih cepat; isi juga WHISPER_DEVICE: cpu.
+# WHISPER_MODEL: large-v3-turbo
+# WHISPER_LANGUAGES: [ja, id]
+# WHISPER_DEVICE: cuda
+
+# ---- Suara khas Miku (RVC) ----
+# Path relatif dihitung dari folder aplikasi. Model lain: RVC v2 (.pth dan .index).
+# RVC_PITCH = naikkan nada dalam semitone.
+# RVC_ENABLED: true
+# RVC_MODEL_PATH: models/miku_default_rvc/weights/miku_default_rvc.pth
+# RVC_INDEX_PATH: models/miku_default_rvc/logs/miku_default_rvc/added_IVF4457_Flat_nprobe_1_miku_default_rvc_v2.index
+# RVC_PITCH: 6
+
+# ---- Cara memanggil Miku ----
+# WAKE_HOTKEY: ctrl+shift+m
+# HOTKEY_ENABLED: true
+# WAKE_PHRASE_ENABLED: true
+# WAKE_SHOW_HEARD: true

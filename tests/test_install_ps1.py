@@ -129,6 +129,36 @@ def test_config_value_reads_vision_model(tmp_path):
     assert _source(tmp_path, "Get-ConfigValue VISION_MODEL").strip() == expected
 
 
+@pytest.mark.parametrize("line, expected", [
+    ("OLLAMA_MODEL: qwen3:8b", "qwen3:8b"),
+    ('OLLAMA_MODEL: "qwen3:14b"   # lebih pintar, butuh VRAM lebih', "qwen3:14b"),
+    ("  OLLAMA_MODEL: 'llama3.1:8b'", "llama3.1:8b"),
+    ("# OLLAMA_MODEL: qwen3:8b", None),   # dikomentari: nilai config.py
+    ("VISION_MODEL: qwen3-vl:8b-instruct", None),
+])
+def test_config_value_prefers_user_settings(tmp_path, line, expected):
+    """data/settings.yaml (tetap ada setelah Perbarui) menimpa config.py, jadi model pilihan user ikut diunduh."""
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "settings.yaml").write_text(line + "\n", encoding="utf-8")
+    shutil.copy(ROOT / "config.py", tmp_path / "config.py")
+    default = re.search(r'^OLLAMA_MODEL = "([^"]+)"', (ROOT / "config.py").read_text(encoding="utf-8"), re.M).group(1)
+    out = _source(tmp_path, f"$Root = '{_q(tmp_path)}'\nGet-ConfigValue OLLAMA_MODEL")
+    assert out.strip() == (expected or default)
+
+
+@pytest.mark.parametrize("shell", SHELLS)
+def test_locked_log_file_does_not_show_an_error(tmp_path, shell):
+    """Antivirus/indexer mengunci log sesaat saat ollama pull mencetak progres: tidak boleh muncul error merah."""
+    log = tmp_path / "install.log"
+    script = (f". '{_q(INSTALL_PS1)}'\n$LogFile = '{_q(log)}'\n"
+              "$lock = [IO.File]::Open($LogFile, 'OpenOrCreate', 'ReadWrite', 'None')\n"
+              "Write-Log 'saat terkunci'\n$lock.Close()\nWrite-Log 'setelah dibuka'")
+    code, out, err = _run(["-Command", script], shell)
+    assert code == 0 and err.strip() == "", out + err
+    assert "saat terkunci" in out and "setelah dibuka" in out  # tetap tampil di layar
+    assert "setelah dibuka" in log.read_text(encoding="utf-8-sig")
+
+
 def _rvc_files(tmp_path, model_name="miku.pth", index_name="trained_v2.index"):
     source = tmp_path / "unduhan"
     source.mkdir()

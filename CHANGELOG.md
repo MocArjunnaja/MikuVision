@@ -6,6 +6,35 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ---
 
+## Belum dirilis: pengaturan user, kebutuhan perangkat per komponen, panduan mengganti model
+
+Permintaan user (1 Nov): README perlu spesifikasi minimum per komponen, dan karena proyek ini publik dan open source, user harus bisa mengganti model (misalnya LLM yang lebih besar) tanpa mengubah kode.
+
+### Ditambahkan
+- **`data/settings.yaml`**: pengaturan user yang menimpa nilai bawaan `config.py`. `data/` tidak ditimpa Perbarui (MikuVision Setup) dan diabaikan git, jadi pilihan user tetap ada setelah update.
+  - Hanya kunci di daftar `SETTING_TYPES` (model LLM/visi/Whisper, konteks, `OLLAMA_THINK`, perangkat Whisper, bahasa, RVC, cara memanggil Miku) dengan cek tipe. Kunci tak dikenal atau salah tipe dilewati dengan alasannya di konsol; file rusak diabaikan dan semua nilai bawaan dipakai. Path RVC relatif dihitung dari folder aplikasi.
+  - `settings.example.yaml` di root: semua kunci (dikomentari) dengan nilai bawaan dan penjelasan. `MIKUVISION_SETTINGS` menunjuk file lain (dipakai test).
+  - `PyYAML` kini tertulis di `requirements.txt` (sebelumnya hanya ikut terpasang lewat paket lain).
+- **Installer mengunduh model pilihan user**: `install.ps1` dan `install.sh` membaca `OLLAMA_MODEL` / `VISION_MODEL` dari `data/settings.yaml` dulu, lalu `config.py`. Setup → Perbaiki memakai jalur yang sama.
+- **`docs/CUSTOMIZE.md`**: cara mengganti model, tabel LLM (unduhan, ukuran dimuat, hasil terukur vs perkiraan), panduan per VRAM, Whisper, MeloTTS/RVC, kebutuhan perangkat per komponen, cara mengukur model baru dan melaporkannya, peta kode untuk pengembang.
+- README: tabel kebutuhan menjadi "minimum yang terbukti" (GPU NVIDIA 6 GB, RAM 16 GB) dengan tautan ke rincian per komponen; "Pilihan model" menunjuk ke `data/settings.yaml`.
+- `bench_skills.py` mode regresi mencetak median latensi per giliran.
+
+### Diperbaiki
+- `install.ps1`: saat `ollama pull` mencetak progres cepat, antivirus/indexer kadang mengunci file log sesaat dan muncul error merah "being used by another process" (instalasi tetap lanjut). Penulisan log kini dicoba ulang sebentar, lalu baris itu dilewati tanpa error.
+
+### Pengujian
+- 20 test baru di venv aplikasi (13 pengaturan user, 5 `Get-ConfigValue`, 2 log terkunci untuk PowerShell 5.1 dan 7), plus 5 kasus `config_value` di `install.sh` (jalan di Linux/CI): kunci dikenal diterapkan; RVC mengubah setiap karakter tanpa mengubah config asli; salah tipe/tak dikenal/bukan mapping dilewati dengan alasan; `import config` membaca file lewat `MIKUVISION_SETTINGS`; file rusak tetap memakai bawaan; `settings.example.yaml` hanya memakai kunci dikenal dan nilai bawaannya sama dengan `config.py`; Perbarui (`safe_extract`) tidak menyentuh `data/settings.yaml`; installer memilih nilai settings (biasa, berkutip, berkomentar, dikomentari, kunci lain). Test log terkunci gagal tanpa perbaikan. 742 test lulus.
+- Uji nyata di laptop pengembang dengan `data/settings.yaml` berisi `OLLAMA_MODEL: qwen3:8b`, `OLLAMA_THINK: false`: `install.ps1` mengunduh `qwen3:8b`; `miku.py --test` memuat `qwen3:8b`, Whisper, dan RVC.
+- **qwen3:8b vs bawaan di RTX 4050 6 GB** (`bench_skills.py` regresi, 10 perintah × 5):
+
+  | Model | `ollama ps` | Tool call tepat | Median per giliran |
+  |---|---|---|---|
+  | `qwen3:4b-instruct` | 3,9 GB, 100% GPU | 45/50 | 3,0 s |
+  | `qwen3:8b` | 6,6 GB, 37%/63% CPU/GPU | 40/50 | 4,3 s |
+
+  Model 8B tidak muat di 6 GB sehingga lebih lambat dan lebih sering meleset ("buka youtube" → `open_application`; "次の曲にして" bertanya balik). Bawaan tetap `qwen3:4b-instruct`. Kedua model meleset pada "次の曲にして" (bawaan 5/5 bertanya balik alih-alih `media_control`), dicatat terpisah.
+
 ## v1.7.2 (2026-11-01): Setup memasang Visual Studio Build Tools untuk suara RVC
 
 Rilis kecil ([#48](https://github.com/MocArjunnaja/MikuVision/pull/48)): suara RVC di Windows tanpa menyiapkan compiler C++ sendiri. Aplikasi MikuVision tidak berubah; tanpa RVC tidak ada yang berbeda.

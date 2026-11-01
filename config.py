@@ -3,6 +3,7 @@ MikuVision configuration
 Miku-only edition with RVC voice and sprite-based UI.
 """
 
+import os
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Dict, List, Optional
@@ -105,7 +106,6 @@ try:
     WHISPER_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 except ImportError:
     WHISPER_DEVICE = "cpu"
-print(f"[Config] Whisper will use: {WHISPER_DEVICE}")
 
 # ============ Ollama/LLM Config ============
 # qwen3:4b-instruct: 50/50 tool call tepat, median 0,9 s per balasan.
@@ -477,3 +477,80 @@ COMMON_WEBSITES = {
     "netflix": "https://www.netflix.com",
     "twitch": "https://www.twitch.tv",
 }
+
+
+# ============ Pengaturan user: data/settings.yaml ============
+# Menimpa nilai di atas tanpa mengubah file ini, jadi tetap ada setelah Perbarui (Setup) atau git pull.
+# Contoh dan penjelasan tiap kunci: settings.example.yaml. Installer juga membaca OLLAMA_MODEL dan
+# VISION_MODEL dari file ini, jadi model yang dipilih ikut diunduh. MIKUVISION_SETTINGS = file lain (test).
+USER_SETTINGS_FILE = Path(os.environ.get("MIKUVISION_SETTINGS") or DATA_DIR / "settings.yaml")
+_NONE = type(None)
+SETTING_TYPES: Dict[str, tuple] = {
+    "OLLAMA_MODEL": (str,), "OLLAMA_BASE_URL": (str,), "OLLAMA_TIMEOUT_SEC": (int,), "OLLAMA_NUM_CTX": (int,),
+    "OLLAMA_THINK": (bool, _NONE), "OLLAMA_KEEP_ALIVE": (int, str),
+    "VISION_MODEL": (str,), "VISION_NUM_CTX": (int,), "VISION_MAX_IMAGE_SIDE": (int,), "VISION_NUM_GPU": (int, _NONE),
+    "WHISPER_MODEL": (str,), "WHISPER_LANGUAGES": (list,), "WHISPER_DEVICE": (str,),
+    "WAKE_HOTKEY": (str,), "HOTKEY_ENABLED": (bool,), "WAKE_PHRASE_ENABLED": (bool,), "WAKE_SHOW_HEARD": (bool,),
+    "RVC_ENABLED": (bool,), "RVC_MODEL_PATH": (str,), "RVC_INDEX_PATH": (str,), "RVC_PITCH": (int,),
+}
+# Kunci yang diterapkan dari file pengaturan (untuk log dan test)
+USER_SETTINGS_APPLIED: List[str] = []
+# Kunci RVC -> field RVCConfig di setiap karakter yang memakai RVC
+_RVC_FIELDS = {"RVC_ENABLED": "enabled", "RVC_MODEL_PATH": "model_path", "RVC_INDEX_PATH": "index_path",
+               "RVC_PITCH": "f0_up_key"}
+
+
+def apply_user_settings(values, namespace: Dict) -> List[str]:
+    """Terapkan pengaturan user ke namespace config; daftar peringatan untuk yang dilewati."""
+    if not isinstance(values, dict):
+        return ["isinya harus berupa baris NAMA: nilai"]
+    warnings, applied = [], []
+    for name, value in values.items():
+        kinds = SETTING_TYPES.get(name)
+        if kinds is None:
+            warnings.append(f"{name} tidak dikenal (daftar kunci: settings.example.yaml)")
+            continue
+        # bool juga int di Python: true tidak boleh menjadi OLLAMA_NUM_CTX
+        if not isinstance(value, kinds) or (isinstance(value, bool) and bool not in kinds):
+            expected = " atau ".join("kosong" if kind is _NONE else kind.__name__ for kind in kinds)
+            warnings.append(f"{name} harus {expected}, bukan {value!r}")
+            continue
+        if name == "WHISPER_LANGUAGES":
+            if not value or not all(isinstance(code, str) for code in value):
+                warnings.append(f"{name} harus daftar kode bahasa, misalnya [ja, id]")
+                continue
+            value = tuple(value)
+        if name == "WHISPER_DEVICE" and value not in ("cuda", "cpu"):
+            warnings.append(f"{name} harus cuda atau cpu, bukan {value!r}")
+            continue
+        if name in ("RVC_MODEL_PATH", "RVC_INDEX_PATH"):
+            path = Path(value).expanduser()
+            value = str(path if path.is_absolute() else namespace["BASE_DIR"] / path)
+        if name in _RVC_FIELDS:
+            for character in namespace["CHARACTERS"].values():
+                if character.rvc_config is not None:
+                    setattr(character.rvc_config, _RVC_FIELDS[name], value)
+        else:
+            namespace[name] = value
+        applied.append(name)
+    namespace["USER_SETTINGS_APPLIED"] = applied
+    return warnings
+
+
+def _load_user_settings():
+    if not USER_SETTINGS_FILE.is_file():
+        return
+    try:
+        import yaml
+        values = yaml.safe_load(USER_SETTINGS_FILE.read_text(encoding="utf-8")) or {}
+    except Exception as e:  # YAML rusak, encoding, izin: aplikasi tetap jalan dengan nilai bawaan
+        print(f"[Config] {USER_SETTINGS_FILE} tidak terbaca, diabaikan: {e}")
+        return
+    for warning in apply_user_settings(values, globals()):
+        print(f"[Config] {USER_SETTINGS_FILE.name}: {warning} (dilewati)")
+    if USER_SETTINGS_APPLIED:
+        print(f"[Config] Pengaturan user dari {USER_SETTINGS_FILE.name}: {', '.join(USER_SETTINGS_APPLIED)}")
+
+
+_load_user_settings()
+print(f"[Config] Whisper will use: {WHISPER_DEVICE}")  # setelah settings.yaml (WHISPER_DEVICE bisa ditimpa)
