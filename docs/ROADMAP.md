@@ -6,7 +6,7 @@
 
 ## 0. Menunggu merge
 
-MikuVision Setup untuk Linux, bertumpuk: [#40](https://github.com/MocArjunnaja/MikuVision/pull/40) (IL1) → [#41](https://github.com/MocArjunnaja/MikuVision/pull/41) (IL2) → [#42](https://github.com/MocArjunnaja/MikuVision/pull/42) (IL3). Merge berurutan, lalu cek ulang di Windows (bagian 2a) sebelum rilis **v1.7.0**. Sebelumnya: #21–#33 dirilis sebagai **v1.5.0** (31 Okt); #35–#38 (MikuVision Setup) sebagai **v1.6.0** (1 Nov).
+MikuVision Setup untuk Linux, bertumpuk: [#40](https://github.com/MocArjunnaja/MikuVision/pull/40) (IL1) → [#41](https://github.com/MocArjunnaja/MikuVision/pull/41) (IL2) → [#42](https://github.com/MocArjunnaja/MikuVision/pull/42) (IL3). Semuanya lulus uji terima di Mint, termasuk binary dari CI. **Keputusan user (1 Nov): tunggu cek ulang di Windows (bagian 2a) dulu**, baru merge berurutan lalu rilis **v1.7.0**. Sebelumnya: #21–#33 dirilis sebagai **v1.5.0** (31 Okt); #35–#38 (MikuVision Setup) sebagai **v1.6.0** (1 Nov).
 
 ## 1. Urutan berikutnya
 
@@ -22,7 +22,7 @@ MikuVision Setup untuk Linux, bertumpuk: [#40](https://github.com/MocArjunnaja/M
 | 8 | L4: benchmark Linux vs Windows | keduanya | LINUX L4 | Butuh angka Windows dari bagian 2 |
 | 9 | L5: uji di VM Fedora, Arch, Ubuntu | Linux | LINUX L5 | Installer sudah siap, belum dicoba di distro aslinya |
 | 10 | W1: Wayland | Linux | VISION, LINUX L5 | Menunggu keputusan 3 di bagian 3 |
-| 11 | **MikuVision Setup**: installer dengan antarmuka (`MikuVisionSetup.exe`), tanpa GitHub/terminal | Windows dulu, Linux menyusul | [PLAN_INSTALLER](PLAN_INSTALLER.md) | Untuk user yang repot lewat GitHub. Dikerjakan dari sesi Windows; I1 (opsi baru `install.ps1`) dan I2 (kerangka wizard, `python -m miku_setup.main --dry-run`) selesai 31 Okt; I3 (unduh rilis, runner `install.ps1`, progres, batal lalu lanjut), I4 ("Apps & features", Perbarui/Perbaiki/Hapus), dan I5 (`MikuVisionSetup.exe`, workflow rilis) selesai 1 Nov; exe pertama terbit di v1.6.0. Linux (IL): IL1 (opsi `install.sh`) dan IL2 (wizard yang sama jalan di Linux, uji terima di Mint lulus) selesai 1 Nov; IL3 (binary Linux di rilis) berikutnya, lalu rilis v1.7.0 |
+| 11 | **MikuVision Setup**: installer dengan antarmuka (`MikuVisionSetup.exe`), tanpa GitHub/terminal | Windows dulu, Linux menyusul | [PLAN_INSTALLER](PLAN_INSTALLER.md) | Untuk user yang repot lewat GitHub. Dikerjakan dari sesi Windows; I1 (opsi baru `install.ps1`) dan I2 (kerangka wizard, `python -m miku_setup.main --dry-run`) selesai 31 Okt; I3 (unduh rilis, runner `install.ps1`, progres, batal lalu lanjut), I4 ("Apps & features", Perbarui/Perbaiki/Hapus), dan I5 (`MikuVisionSetup.exe`, workflow rilis) selesai 1 Nov; exe pertama terbit di v1.6.0. Linux (IL): IL1 (opsi `install.sh`) dan IL2 (wizard yang sama jalan di Linux, uji terima di Mint lulus) selesai 1 Nov; IL3 (binary Linux di rilis, #42) selesai 1 Nov; menunggu cek ulang di Windows (bagian 2a), lalu merge #40–#42 dan rilis v1.7.0 |
 | 12 | Cek pembaruan dari aplikasi: Miku memberi tahu bila ada rilis baru, satu klik ke Setup mode Perbarui | keduanya | [PLAN_INSTALLER bagian 6, fase I6](PLAN_INSTALLER.md) | Butuh `version.json` di rilis (I5) dan mode Perbarui (I4). Sekarang aplikasi bahkan belum punya nomor versi; menunggu keputusan 6 di bagian 3 |
 
 ## 2. Daftar cek di Windows
@@ -65,7 +65,9 @@ Dijalankan setelah boot ke Windows, di folder repo yang sama (`D:`). Lakukan set
 
 ## 2a. Cek ulang di Windows sebelum v1.7.0
 
-Setup untuk Linux (#40–#42) menyentuh kode yang juga dipakai Windows. Di Linux semuanya lulus (CHANGELOG IL2 dan IL3), dan CI Windows lulus; yang berikut perlu dicoba dengan exe sungguhan. Exe-nya ada di artifact **rilis-uji** dari workflow `release-setup` di PR #42 (zip `0.0.0-pr42`, `version.json`, `SHA256SUMS`), atau bangun sendiri dengan `pyinstaller miku_setup.spec`.
+Setup untuk Linux (#40–#42) menyentuh kode yang juga dipakai Windows. Di Linux semuanya lulus (CHANGELOG IL2 dan IL3), dan CI Windows lulus; yang berikut perlu dicoba dengan exe sungguhan **sebelum #40–#42 di-merge**. Exe-nya ada di artifact **rilis-uji** dari workflow `release-setup` di PR #42 (zip `0.0.0-pr42`, `version.json`, `SHA256SUMS`), atau bangun sendiri dengan `pyinstaller miku_setup.spec` dari branch `feat/setup-linux-binary` (memuat ketiga PR).
+
+Hasilnya dicatat di entri CHANGELOG IL3 (bagian Pengujian). Bila semua lulus: merge #40 → #41 → #42, lalu rilis v1.7.0. Bila ada yang gagal: perbaiki di branch `feat/setup-linux-binary` (#42), lalu cek lagi.
 
 | Cek | Kenapa | Lulus bila |
 |---|---|---|

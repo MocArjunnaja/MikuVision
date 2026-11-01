@@ -2,7 +2,7 @@
 
 **Tujuan:** siapa saja bisa memasang MikuVision tanpa membuka GitHub, git, atau terminal. Caranya: unduh satu file `MikuVisionSetup.exe` (±25 MB), klik Lanjut beberapa kali, lalu Miku menyapa. Rasanya seperti installer aplikasi desktop besar (misalnya Ansys): ada pilihan folder, pilihan komponen, progres unduhan, serta Perbarui/Perbaiki/Hapus.
 
-**Status:** I1–I5 selesai (I1 dan I2 31 Okt 2026, I3–I5 1 Nov 2026); exe pertama terbit bersama rilis v1.6.0. I6 rencana. Dikerjakan di Windows dulu (fase I1–I6); Linux menyusul (fase IL). Urutan terhadap rencana lain: [`ROADMAP.md`](ROADMAP.md).
+**Status:** I1–I5 selesai (I1 dan I2 31 Okt 2026, I3–I5 1 Nov 2026); exe pertama terbit bersama rilis v1.6.0. I6 rencana. Dikerjakan di Windows dulu (fase I1–I6); Linux menyusul (fase IL): IL1–IL3 selesai 1 Nov di #40–#42, menunggu cek ulang di Windows ([`ROADMAP.md`](ROADMAP.md) bagian 2a) sebelum di-merge dan dirilis sebagai v1.7.0. Urutan terhadap rencana lain: [`ROADMAP.md`](ROADMAP.md).
 
 **Untuk yang mengerjakan:** baca bagian 1–4 untuk gambaran, lalu kerjakan fase di bagian 8 satu per satu. Tiap fase satu PR, dengan kriteria selesai yang bisa dicek. Kode installer yang sudah teruji (`install.ps1`) **dibungkus, bukan ditulis ulang**.
 
