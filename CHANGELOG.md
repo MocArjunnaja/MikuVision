@@ -8,7 +8,7 @@ Angka benchmark diukur di laptop pengembang: RTX 4050 Laptop 6 GB, Windows 11, O
 
 ## v1.7.1 (2026-11-01): cek keamanan, folder Setup yang aman, README "Oke Miku"
 
-Rilis perbaikan untuk v1.7.0 ([#45](https://github.com/MocArjunnaja/MikuVision/pull/45)). **Pakai MikuVisionSetup v1.7.1, bukan v1.7.0:** Setup v1.6.0–v1.7.0 menerima folder aplikasi yang sudah berisi file lain (misalnya `D:\`), dan Hapus lalu menghapus isinya. Aplikasi MikuVision sendiri tidak berubah; instalasi v1.7.0 di folder bawaan aman dan tidak perlu diperbarui.
+Rilis perbaikan untuk v1.7.0 ([#45](https://github.com/MocArjunnaja/MikuVision/pull/45), [#47](https://github.com/MocArjunnaja/MikuVision/pull/47)). **Pakai MikuVisionSetup v1.7.1, bukan v1.7.0:** Setup v1.6.0–v1.7.0 menerima folder aplikasi yang sudah berisi file lain (misalnya `D:\`), dan Hapus lalu menghapus isinya. Aplikasi MikuVision sendiri tidak berubah; instalasi v1.6.0–v1.7.0 di folder bawaan aman dan tidak perlu diperbarui. Bila dulu memasang ke folder yang juga berisi file lain, jalankan Setup v1.7.1 → Perbarui dulu, baru Hapus.
 
 ### Diperbaiki
 - **Setup tidak lagi memakai folder yang sudah berisi file lain.** Sebelumnya folder aplikasi boleh folder apa pun yang bisa ditulis (misalnya `D:\` atau `Documents`), dan Hapus lalu menghapus seluruh isinya kecuali `data/`. Folder model juga: "Hapus juga model" menghapus seluruh folder itu.
