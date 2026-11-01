@@ -25,8 +25,9 @@ else:
     KEEP_OLLAMA = ("Ollama tetap terpasang. Bila tidak dipakai lagi, cara menghapusnya ada di dokumentasi Ollama "
                    "untuk Linux (bagian Uninstall).")
     RETRY = "jalankan Hapus MikuVision lagi dari menu aplikasi"
-# Paragraf yang menjorok di bawah kotak centang; font Linux lebih lebar, jadi dibungkus lebih awal
-INDENTED_WIDTH = 500 if sys.platform == "win32" else 470
+# Paragraf yang menjorok 28 px di bawah kotak centang: area isi ±512 px, jadi lebar 500 terpotong di kanan
+# (terlihat di Windows, skala 125%)
+INDENTED_WIDTH = 470
 
 
 class UninstallPage(Page):
